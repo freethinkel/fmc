@@ -1,0 +1,402 @@
+{
+"273": {
+"group": "Default",
+"name": "Activity Mood"
+},
+"274": {
+"group": "Default",
+"name": "Sun Circle"
+},
+"275": {
+"group": "Default",
+"name": "SlopeTime"
+},
+"276": {
+"group": "Default",
+"name": "Dichotomy"
+},
+"277": {
+"group": "Default",
+"name": "Prismatic Time"
+},
+"280": {
+"group": "Default",
+"name": "Multifunction"
+},
+"281": {
+"group": "Digital",
+"name": "Metaball"
+},
+"282": {
+"group": "Digital",
+"name": "Radar Sweep"
+},
+"283": {
+"group": "Digital",
+"name": "Radio"
+},
+"284": {
+"group": "Creative",
+"name": "Square"
+},
+"285": {
+"group": "Digital",
+"name": "Widgets"
+},
+"286": {
+"group": "Analog",
+"name": "Sundial"
+},
+"287": {
+"group": "Analog",
+"name": "Simple Dial"
+},
+"288": {
+"group": "Digital",
+"name": "Type"
+},
+"289": {
+"group": "Digital",
+"name": "Rotate"
+},
+"290": {
+"group": "Digital",
+"name": "Gradual"
+},
+"291": {
+"group": "Digital",
+"name": "Vertical"
+},
+"292": {
+"group": "Analog",
+"name": "City"
+},
+"293": {
+"group": "Digital",
+"name": "Stairs"
+},
+"294": {
+"group": "Analog",
+"name": "Sudoku"
+},
+"295": {
+"group": "Diwali",
+"name": "Vortex"
+},
+"296": {
+"group": "Digital",
+"name": "Ladder"
+},
+"297": {
+"group": "Digital",
+"name": "Ray"
+},
+"298": {
+"group": "Digital",
+"name": "Eclectic"
+},
+"299": {
+"group": "Digital",
+"name": "Echo"
+},
+"300": {
+"group": "Digital",
+"name": "Mono Dial"
+},
+"301": {
+"group": "Digital",
+"name": "Orbit"
+},
+"302": {
+"group": "Digital",
+"name": "Calendar"
+},
+"303": {
+"group": "Digital",
+"name": "Space"
+},
+"304": {
+"group": "Multifunction",
+"name": "Elaborate 2"
+},
+"305": {
+"group": "Analog",
+"name": "Dots"
+},
+"306": {
+"group": "Analog",
+"name": "Large Number"
+},
+"307": {
+"group": "Digital",
+"name": "Sprung"
+},
+"308": {
+"group": "Digital",
+"name": "Sundial 2"
+},
+"309": {
+"group": "Analog",
+"name": "Gradient"
+},
+"310": {
+"group": "Analog",
+"name": "Glare"
+},
+"311": {
+"group": "Analog",
+"name": "Bold"
+},
+"312": {
+"group": "Creative",
+"name": "Disc"
+},
+"313": {
+"group": "Analog",
+"name": "Classical"
+},
+"314": {
+"group": "Analog",
+"name": "Fragment"
+},
+"315": {
+"group": "Analog",
+"name": "Infinite"
+},
+"316": {
+"group": "Analog",
+"name": "Trailing"
+},
+"317": {
+"group": "Creative",
+"name": "Disc 2"
+},
+"318": {
+"group": "Creative",
+"name": "Dominos"
+},
+"319": {
+"group": "Digital",
+"name": "One Line"
+},
+"320": {
+"group": "Digital",
+"name": "Orienteer"
+},
+"321": {
+"group": "Digital",
+"name": "Revolution"
+},
+"322": {
+"group": "Analog",
+"name": "Glare 2"
+},
+"323": {
+"group": "Digital",
+"name": "Dash"
+},
+"324": {
+"group": "Digital",
+"name": "Finesse"
+},
+"325": {
+"group": "Digital",
+"name": "Metric"
+},
+"326": {
+"group": "Analog",
+"name": "Chrono Master"
+},
+"327": {
+"group": "Analog",
+"name": "Digit Max"
+},
+"328": {
+"group": "Analog",
+"name": "Coherent"
+},
+"329": {
+"group": "Analog",
+"name": "Wheel"
+},
+"330": {
+"group": "Analog",
+"name": "Zenith"
+},
+"331": {
+"group": "Analog",
+"name": "Intersection"
+},
+"332": {
+"group": "Creative",
+"name": "Flux"
+},
+"333": {
+"group": "Digital",
+"name": "Circularity"
+},
+"334": {
+"group": "Digital",
+"name": "Globe of Time"
+},
+"335": {
+"group": "Analog",
+"name": "Time Phase"
+},
+"336": {
+"group": "Analog",
+"name": "Energetic"
+},
+"337": {
+"group": "Digital",
+"name": "Time Finder"
+},
+"338": {
+"group": "Analog",
+"name": "Chronos"
+},
+"339": {
+"group": "Digital",
+"name": "Suprematism"
+},
+"340": {
+"group": "Digital",
+"name": "Sport Mode"
+},
+"341": {
+"group": "Analog",
+"name": "Dual View"
+},
+"342": {
+"group": "Creative",
+"name": "Perfect Match"
+},
+"343": {
+"group": "Creative",
+"name": "Progress Day"
+},
+"344": {
+"group": "Multifunction",
+"name": "InfoMeter"
+},
+"345": {
+"group": "Digital",
+"name": "Time Dot"
+},
+"346": {
+"group": "Analog",
+"name": "Time Windmill"
+},
+"347": {
+"group": "Analog",
+"name": "Large Panel"
+},
+"348": {
+"group": "Multifunction",
+"name": "Tumbler"
+},
+"349": {
+"group": "Analog",
+"name": "Theatre"
+},
+"350": {
+"group": "Digital",
+"name": "Timeline"
+},
+"351": {
+"group": "Digital",
+"name": "Cyclopes"
+},
+"352": {
+"group": "Analog",
+"name": "Elegant Sweep"
+},
+"353": {
+"group": "Digital",
+"name": "Dual phase"
+},
+"354": {
+"group": "Multifunction",
+"name": "Dual"
+},
+"357": {
+"group": "Digital",
+"name": "Silhouette"
+},
+"358": {
+"group": "Creative",
+"name": "Asteroid"
+},
+"359": {
+"group": "Digital",
+"name": "Ring data"
+},
+"360": {
+"group": "Analog",
+"name": "Explorer"
+},
+"361": {
+"group": "Digital",
+"name": "TempoG"
+},
+"362": {
+"group": "Digital",
+"name": "Steady"
+},
+"363": {
+"group": "Multifunction",
+"name": "Vintage"
+},
+"364": {
+"group": "Analog",
+"name": "SportPulse"
+},
+"365": {
+"group": "Digital",
+"name": "Elegance"
+},
+"366": {
+"group": "Multifunction",
+"name": "Combo"
+},
+"367": {
+"group": "Multifunction",
+"name": "Complex Figure"
+},
+"368": {
+"group": "Multifunction",
+"name": "Function"
+},
+"369": {
+"group": "Digital",
+"name": "Solar System"
+},
+"370": {
+"group": "Analog",
+"name": "Hemisphere"
+},
+"371": {
+"group": "Analog",
+"name": "ActiveTrio"
+},
+"372": {
+"group": "Analog",
+"name": "Time Wheel"
+},
+"373": {
+"group": "Analog",
+"name": "Traditional Pointer"
+},
+"374": {
+"group": "Multifunction",
+"name": "Cirquary"
+},
+"375": {
+"group": "Multifunction",
+"name": "InfoHub"
+},
+"376": {
+"group": "Digital",
+"name": "Digits time"
+}
+}
