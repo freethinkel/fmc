@@ -23,6 +23,7 @@
 		"@types/web-bluetooth": "^0.0.21",
 		"@vitejs/plugin-basic-ssl": "^2.3.0",
 		"@vitest/browser": "^4.1.10",
+		"@vitest/browser-playwright": "^4.1.10",
 		"clsx": "^2.1.1",
 		"pixelmatch": "^7.2.0",
 		"playwright": "^1.61.1",
