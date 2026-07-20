@@ -22,9 +22,19 @@ const UUID = {
   battery:   '00002a19-0000-1000-8000-00805f9b34fb',
 };
 const SERVICES: (number | string)[] = [
-  0xefe7, 0xfff0, 0x180f,
+  0xefe7, 0xfff0, 0x180f, 0x180a, 0xffd0,
   '02f00000-0000-0000-0000-00000000ffe0',
-  '77d4ff00-2fe2-2334-0d35-9ccd078f529c',
+  '02f00000-0000-0000-0000-00000000fe00',
+  '77d4ff00-2fe2-2334-0d35-9ccd078f529c', // docs' assumed shell service UUID — kept as a hedge
+  // Web Bluetooth only ever discovers services listed here, even with a full unfiltered
+  // getPrimaryServices() call — chrome://bluetooth-internals (Chrome's own C++ layer, no
+  // optionalServices scoping) showed 10 real services on the watch where JS only saw 3; adding
+  // the rest here is what unlocked real in-browser pairing (see pair()). 77d4e67c specifically
+  // is the shell/pairing service's *live* UUID on this watch — not fixed at 77d4ff00 as the
+  // reference docs assumed. Unverified whether it's the same on other physical units.
+  '77d4e67c-2fe2-2334-0d35-9ccd078f529c',
+  'e49a3001-f69a-11e8-8eb2-f2801f1b9fd1',
+  'f48a23c0-f69a-11e8-8eb2-f2801f1b9fd1',
 ];
 
 // commands used here (cmd1<<16 | cmd2); see protocol.go
@@ -361,14 +371,10 @@ export class Watch {
     // §9.5g: old_wf_id must name the installed custom dial; 0 (append) needs a free slot and
     // works only once. This firmware's wfInstalled/gallery report does NOT reliably reflect
     // side-loaded dials (confirmed empirically: stays [] right after a successful side-load) —
-    // so, matching the fmc CLI reference (session.go): our own last-successful-upload id is
-    // the most trustworthy source, the watch's live gallery is a fallback, and fmc CLI's cache
-    // (a separate, uncoordinated client) is the last, least-trustworthy resort.
+    // so our own last-successful-upload id is the trustworthy source, the watch's live gallery
+    // is the fallback for a browser that never uploaded here before.
     let oldId = Number(localStorage.getItem('fmc_last_wfid') || 0);
     if (!oldId && this.galleryWf.length) oldId = this.galleryWf[this.galleryWf.length - 1];
-    if (!oldId) {
-      try { oldId = Number((await (await fetch('/__fmclastid')).text()).trim()) || 0; } catch { /* prod: endpoint отсутствует */ }
-    }
     dbg('upload ids:', { newId: id, oldId, gallery: this.galleryWf });
 
     this.status(`uploading “${name}”…`);
@@ -425,22 +431,10 @@ export class Watch {
 
   async pair() {
     if (!this.chars[UUID.shellWrite]) {
-      // dev convenience: reuse the fmc CLI key served by the vite middleware — Web Bluetooth
-      // on macOS doesn't discover the shell/pairing service at all (verified: full unfiltered
-      // getPrimaryServices() only ever returns 3 of the watch's 5 services), so this is the
-      // only way to authenticate a fresh browser session without a native BLE client
-      let h = '';
-      try { h = (await (await fetch('/__fmckey')).text()).trim(); } catch { /* prod build: no dev endpoint */ }
-      if (/^[0-9a-f]{32}$/i.test(h)) {
-        try {
-          await this.authenticate(fromHex(h));
-          saveKey(fromHex(h)); // сохраняем только рабочий ключ — протухший CLI-ключ не должен залипать
-          return;
-        } catch (e) {
-          dbg('dev CLI key rejected:', (e as Error).message);
-        }
-      }
-      throw new Error('watch refused to expose the pairing service — pair with the fmc CLI first (native BLE sees the pairing service; Web Bluetooth on macOS currently does not), then reconnect here to reuse its key');
+      // the shell service's own UUID isn't fixed (seen as 77d4e67c, docs assumed 77d4ff00) —
+      // Web Bluetooth only exposes services listed in optionalServices at requestDevice() time,
+      // so if it ever rotates to something not in SERVICES, add the new UUID there
+      throw new Error('pairing service not found — reconnect and try again; if this keeps happening the watch may be using a new service UUID (see SERVICES in ble.ts)');
     }
     this.status('pairing — confirm on the watch');
     await this.codec.setKey(null);
