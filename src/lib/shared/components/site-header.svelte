@@ -25,7 +25,7 @@
 			<Breadcrumb.List>
 				<Breadcrumb.Item>
 					<Breadcrumb.Link href="/" class="flex items-center gap-1.5">
-						<Watch class="size-4" /> FCM Watchfaces
+						<Watch class="size-4" /> FMC Watchfaces
 					</Breadcrumb.Link>
 				</Breadcrumb.Item>
 				{#if title}

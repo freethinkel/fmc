@@ -103,12 +103,6 @@ export const loadBufferFx = createEffect(
     return { face, label };
   });
 
-export const importFacerFx = createEffect(async (files: File[]) => {
-  const { facerToFace } = await import('../lib/facer');
-  const { face, skipped } = await facerToFace(files);
-  return { face, label: 'facer', dirty: true, skipped };
-});
-
 export const newFaceFx = createEffect(async (name: string = 'Custom') => {
   const black = (w: number, h: number): Resource => {
     const px = new Uint8ClampedArray(w * h * 4);
@@ -136,12 +130,8 @@ export const newFaceFx = createEffect(async (name: string = 'Custom') => {
   return { face, label: 'new', dirty: true };
 });
 
-sample({ clock: [loadBufferFx.doneData, importFacerFx.doneData, newFaceFx.doneData], target: faceLoaded });
-importFacerFx.doneData.watch(({ skipped }) => {
-  if (skipped?.length) errored(`facer: skipped text layers — ${skipped.join(', ')}`);
-});
+sample({ clock: [loadBufferFx.doneData, newFaceFx.doneData], target: faceLoaded });
 loadBufferFx.fail.watch(({ params, error }) => errored(`${params.label}: ${error.message}`));
-importFacerFx.fail.watch(({ error }) => errored(`facer import: ${error.message}`));
 
 // ---- операции с виджетами ----
 function findParent(nodes: FaceNode[], target: FaceNode): FaceNode | null {

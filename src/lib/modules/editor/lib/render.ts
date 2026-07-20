@@ -164,6 +164,32 @@ function sectorImage(ctx: Ctx, b: ImageBitmap, x: number, y: number, spec: ArcSp
   ctx.restore();
 }
 
+// no ring image resolved (short struct form with no image ref, or undecoded bitmap) — stroke the arc instead
+function drawProceduralArc(ctx: Ctx | null, spec: ArcSpec, x: number, y: number, frac: number, hits: Hit[] | null, node: FaceNode): Size {
+  const r = spec.radius || 60;
+  const cx = r >= 230 ? 233 : x + r, cy = r >= 230 ? 233 : y + r;
+  const a0 = spec.start * Math.PI / 180;
+  const sweep = (spec.end - spec.start) * Math.PI / 180;
+  if (ctx) {
+    ctx.save();
+    ctx.lineWidth = Math.min(spec.width || 6, 24);
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, a0, a0 + sweep, sweep < 0);
+    ctx.stroke();
+    if (frac > 0.002) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, a0, a0 + sweep * frac, sweep < 0);
+      ctx.stroke();
+    }
+    ctx.restore();
+    hits?.push({ node, x: cx - r, y: cy - r, w: 2 * r, h: 2 * r });
+  }
+  return { w: 2 * r, h: 2 * r };
+}
+
 function progressFrac(id: number, sim: Sim, t: TimeParts, spec: ArcSpec): number {
   let v = idValue(id, sim, t);
   if (spec.max <= 100 && v > spec.max) {
@@ -213,8 +239,10 @@ function drawWidget(
   }
 
   const struct = node.subs?.find(s => s.tag === TAG.struct);
-  if (!struct || !struct.images) return null;
-  const imgs = struct.images;
+  // progress rings (0x80/0x81) can be procedural — a short struct form carries no image ref at all
+  const isArc = node.tag === 0x80 || node.tag === 0x81;
+  if (!struct || (!struct.images && !isArc)) return null;
+  const imgs = struct.images ?? [];
   const x = origin ? origin.x : ox + (struct.x || 0);
   const y = origin ? origin.y : oy + (struct.y || 0);
 
@@ -263,13 +291,14 @@ function drawWidget(
     return { w, h };
   }
 
-  // 0x81: progress ring — ring image clipped to a sector by value
+  // 0x81: progress ring — ring image clipped to a sector by value, procedural arc if imageless
   if (node.tag === 0x81) {
     const spec = parseArcSpec(node);
+    if (!spec) return null;
     const b = bmp(res, imgs[0]);
-    if (!spec || !b) return null;
     const { id } = metaInfo(struct);
     const frac = progressFrac(id, sim, t, spec);
+    if (!b) return drawProceduralArc(ctx, spec, x, y, frac, hits, node);
     if (ctx && frac > 0.002) sectorImage(ctx, b, x, y, spec, frac);
     if (ctx) hits?.push({ node, x, y, w: b.width, h: b.height });
     return { w: b.width, h: b.height };
@@ -300,28 +329,7 @@ function drawWidget(
       if (ctx) hits?.push({ node, x, y, w: b.width, h: b.height });
       return { w: b.width, h: b.height };
     }
-    const r = spec.radius || 60;
-    const cx = r >= 230 ? 233 : x + r, cy = r >= 230 ? 233 : y + r;
-    const a0 = spec.start * Math.PI / 180;
-    const sweep = (spec.end - spec.start) * Math.PI / 180;
-    if (ctx) {
-      ctx.save();
-      ctx.lineWidth = Math.min(spec.width || 6, 24);
-      ctx.lineCap = 'round';
-      ctx.strokeStyle = 'rgba(255,255,255,0.15)';
-      ctx.beginPath();
-      ctx.arc(cx, cy, r, a0, a0 + sweep, sweep < 0);
-      ctx.stroke();
-      if (frac > 0.002) {
-        ctx.strokeStyle = 'rgba(255,255,255,0.85)';
-        ctx.beginPath();
-        ctx.arc(cx, cy, r, a0, a0 + sweep * frac, sweep < 0);
-        ctx.stroke();
-      }
-      ctx.restore();
-      hits?.push({ node, x: cx - r, y: cy - r, w: 2 * r, h: 2 * r });
-    }
-    return { w: 2 * r, h: 2 * r };
+    return drawProceduralArc(ctx, spec, x, y, frac, hits, node);
   }
 
   // 0x30 and others: a single image or a pick by value (7 days / 12 months / 2 AM-PM)

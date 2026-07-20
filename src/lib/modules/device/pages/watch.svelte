@@ -14,7 +14,7 @@
 	const lastFlashed = Number(localStorage.getItem('fmc_last_wfid') || 0);
 </script>
 
-<svelte:head><title>Watch — FCM Watchfaces</title></svelte:head>
+<svelte:head><title>Watch — FMC Watchfaces</title></svelte:head>
 
 <main class="flex flex-1 flex-col gap-4 overflow-y-auto p-4 lg:p-6">
 	<!-- ponytail: не гейтим по navigator.bluetooth при рендере — Safari-полифилл инжектится позже; реальная проверка в ble.ts при клике -->

@@ -5,6 +5,6 @@
 	window.wfEd = editorModel; // console access for debugging/automated runs
 </script>
 
-<svelte:head><title>Editor — FCM Watchfaces</title></svelte:head>
+<svelte:head><title>Editor — FMC Watchfaces</title></svelte:head>
 
 <EditorPage />

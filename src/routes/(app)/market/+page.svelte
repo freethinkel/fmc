@@ -2,6 +2,6 @@
 	import { MarketPage } from '$lib/modules/market/pages';
 </script>
 
-<svelte:head><title>Marketplace — FCM Watchfaces</title></svelte:head>
+<svelte:head><title>Marketplace — FMC Watchfaces</title></svelte:head>
 
 <MarketPage />

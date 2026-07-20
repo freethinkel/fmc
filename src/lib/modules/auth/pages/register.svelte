@@ -8,7 +8,7 @@
 	$effect(() => { if ($user) goto("/market"); });
 </script>
 
-<svelte:head><title>Sign up — FCM Watchfaces</title></svelte:head>
+<svelte:head><title>Sign up — FMC Watchfaces</title></svelte:head>
 
 <div class="bg-muted flex flex-1 items-center justify-center overflow-y-auto p-6 md:p-10">
 	<SignupForm class="w-full max-w-sm" />

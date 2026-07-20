@@ -2,7 +2,7 @@
   import { Button } from '$lib/shared/components/ui/button';
   import * as Tabs from '$lib/shared/components/ui/tabs';
   import * as Sheet from '$lib/shared/components/ui/sheet';
-  import { Undo2, Redo2, FolderOpen, FilePlus2, Download, Watch, UploadCloud, Zap, ListTree, SlidersHorizontal, Play, Save } from '@lucide/svelte';
+  import { Undo2, Redo2, FolderInput, FilePlus2, Download, UploadCloud, Zap, ListTree, SlidersHorizontal, Play, Save } from '@lucide/svelte';
   import { authModel } from '$lib/modules/auth/model';
   import { marketModel } from '$lib/modules/market/model';
   import PublishDialog from '../components/PublishDialog.svelte';
@@ -19,7 +19,7 @@
   const { bleStatus, bleInfo, flashFx } = bleModel;
   const { saveFx, openedWf, openedWfSet } = marketModel;
   const { editor, select, screenTagSet, checkpoint, undo, redo, patched,
-    loadBufferFx, importFacerFx, newFaceFx, exportBin, buildCurrentBin, previewBlob, errored } = editorModel;
+    loadBufferFx, newFaceFx, exportBin, buildCurrentBin, previewBlob, errored } = editorModel;
 
   let canvas = $state(null);
   let publishOpen = $state(false);
@@ -35,12 +35,6 @@
     openedWfSet(null);
     e.preventDefault();
     if (e.target.value !== undefined) e.target.value = '';
-  }
-
-  function openFacer(e) {
-    if (e.target.files?.length) importFacerFx([...e.target.files]).catch(() => {});
-    openedWfSet(null);
-    e.target.value = '';
   }
 
   // Save: новый → черновик; уже открытый свой → обновление с сохранением статуса
@@ -177,15 +171,11 @@
 
 {#snippet toolbar()}
   <Button size="sm" variant="outline">
-    <label class="flex cursor-pointer items-center gap-1.5"><FolderOpen class="size-4" /> <span class="hidden lg:inline">Open</span>
+    <label class="flex cursor-pointer items-center gap-1.5"><FolderInput class="size-4" /> <span class="hidden lg:inline">Import bin</span>
       <input type="file" accept=".bin" hidden onchange={openFile} /></label>
   </Button>
   <Button size="sm" variant="outline" onclick={() => { openedWfSet(null); newFaceFx(); }} title="New">
     <FilePlus2 class="size-4" /> <span class="hidden lg:inline">New</span>
-  </Button>
-  <Button size="sm" variant="outline">
-    <label class="flex cursor-pointer items-center gap-1.5"><Watch class="size-4" /> <span class="hidden lg:inline">Import Facer</span>
-      <input type="file" webkitdirectory hidden onchange={openFacer} /></label>
   </Button>
   {#if $editor.face}
     <span class="hidden max-w-40 truncate px-1 text-sm text-emerald-400 lg:inline">{$editor.face.name}</span>

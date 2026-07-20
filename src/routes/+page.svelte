@@ -8,7 +8,7 @@
 	const h = (now.getHours() % 12) * 3600 + m;
 </script>
 
-<svelte:head><title>FCM Watchfaces — watchface editor for CMF Watch Pro 2</title></svelte:head>
+<svelte:head><title>FMC Watchfaces — watchface editor for CMF Watch Pro 2</title></svelte:head>
 
 <div class="min-h-screen overflow-hidden bg-[#0a0a0a] text-zinc-200">
 	<!-- dot grid -->
@@ -19,7 +19,7 @@
 	<div class="pointer-events-none fixed -right-40 top-1/4 size-[600px] rounded-full bg-cmf/10 blur-[120px]"></div>
 
 	<header class="relative z-10 flex items-center justify-between px-6 py-5 md:px-12">
-		<span class="font-display text-sm font-bold tracking-widest">FCM<span class="text-cmf">·</span>WF</span>
+		<span class="font-display text-sm font-bold tracking-widest">FMC<span class="text-cmf">·</span>WF</span>
 		<nav class="flex gap-6 font-mono text-xs text-zinc-400">
 			<a href="/market" class="transition-colors hover:text-cmf">marketplace</a>
 			<a href="/editor" class="transition-colors hover:text-cmf">editor</a>
@@ -58,7 +58,7 @@
 					style="background: repeating-conic-gradient(#3f3f46 0deg 0.6deg, transparent 0.6deg 30deg); mask: radial-gradient(circle closest-side, transparent 87%, black 88%);">
 				</div>
 				<div class="absolute inset-0 grid place-items-center">
-					<span class="mt-24 font-mono text-[10px] tracking-[0.4em] text-zinc-600">FCM·WF</span>
+					<span class="mt-24 font-mono text-[10px] tracking-[0.4em] text-zinc-600">FMC·WF</span>
 				</div>
 				{#each [{ len: 26, w: 4, dur: 43200, off: h, cls: 'bg-zinc-300' }, { len: 36, w: 3, dur: 3600, off: m, cls: 'bg-zinc-400' }, { len: 42, w: 1, dur: 60, off: s, cls: 'bg-cmf' }] as hand}
 				<div class="absolute left-1/2 top-1/2 origin-bottom rounded-full {hand.cls}"
@@ -71,12 +71,11 @@
 	</main>
 
 	<section class="relative z-10 border-t border-zinc-900">
-		<div class="mx-auto grid max-w-6xl gap-px bg-zinc-900 px-0 md:grid-cols-4">
+		<div class="mx-auto grid max-w-6xl gap-px bg-zinc-900 px-0 md:grid-cols-3">
 			{#each [
 				{ n: '01', t: 'Editor in the browser', d: 'Drag & drop, undo/redo, live preview with hands and simulated data.' },
-				{ n: '02', t: 'Facer import', d: 'facer.io exports convert on the fly — background, hands, digits.' },
-				{ n: '03', t: 'Marketplace', d: 'Publish watchfaces, collect likes and downloads, remix others as a base.' },
-				{ n: '04', t: 'Flash over BLE', d: 'Push the .bin to the watch right from the tab — no wires, no toolchains.' }
+				{ n: '02', t: 'Marketplace', d: 'Publish watchfaces, collect likes and downloads, remix others as a base.' },
+				{ n: '03', t: 'Flash over BLE', d: 'Push the .bin to the watch right from the tab — no wires, no toolchains.' }
 			] as f}
 				<article class="group bg-[#0a0a0a] p-8 transition-colors hover:bg-[#0f0f0f]">
 					<p class="font-mono text-xs text-cmf">{f.n}</p>
@@ -89,7 +88,7 @@
 
 	<footer class="relative z-10 border-t border-zinc-900 px-6 py-6 md:px-12">
 		<p class="font-mono text-[10px] tracking-widest text-zinc-600">
-			FCM WATCHFACES — unofficial tooling for CMF Watch Pro 2
+			FMC WATCHFACES — unofficial tooling for CMF Watch Pro 2
 		</p>
 	</footer>
 </div>

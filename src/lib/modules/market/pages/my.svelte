@@ -36,7 +36,7 @@
   }
 </script>
 
-<svelte:head><title>My watchfaces — FCM Watchfaces</title></svelte:head>
+<svelte:head><title>My watchfaces — FMC Watchfaces</title></svelte:head>
 
 {#if $marketErr}<p class="px-4 pt-3 text-sm text-destructive lg:px-6">{$marketErr}</p>{/if}
 

@@ -1,42 +1,47 @@
-# sv
+# FMC Watchfaces Frontend
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+Редактор циферблатов + маркетплейс для CMF Watch Pro 2. SvelteKit (Svelte 5) SPA,
+статическая сборка (`@sveltejs/adapter-static`). Бэкенд — [`fmc_pocketbase`](../fmc_pocketbase)
+(PocketBase), должен быть запущен для работы auth/маркетплейса.
 
-## Creating a project
+Страницы: лендинг (`/`), маркетплейс (`/market`, `/my`), редактор (`/editor`, с прошивкой
+циферблата на часы по Web Bluetooth), вход/регистрация (`/login`, `/register`).
 
-If you're seeing this, you've probably already done this step. Congrats!
-
-```sh
-# create a new project
-npx sv create my-app
-```
-
-To recreate this project with the same configuration:
+## Разработка
 
 ```sh
-# recreate this project
-npx sv@0.16.3 create --template minimal --types jsdoc --install npm fcm_frontend
-```
-
-## Developing
-
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
-
-```sh
+npm install
 npm run dev
-
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
 ```
 
-## Building
+Открыть `http://localhost:5173`. Нужен запущенный `fmc_pocketbase` (`./pocketbase serve`,
+см. его `README.md`) — в dev `/api` проксируется на `http://127.0.0.1:8090` (`vite.config.js`),
+никакой отдельной настройки не требуется.
 
-To create a production version of your app:
+Адрес бэкенда можно переопределить переменной `VITE_PB_URL`; без неё — same-origin
+(`location.origin`), что и используется на проде за Caddy.
+
+### Настройка OAuth (один раз, опционально)
+
+Email-вход и регистрация работают из коробки. Для OAuth (Google/GitHub):
+
+1. `cd ../fmc_pocketbase && ./pocketbase superuser upsert you@example.com <пароль>`
+2. Открыть `http://127.0.0.1:8090/_/` → Collections → users → Options → OAuth2.
+3. Включить нужного провайдера, вписать client id/secret (redirect URL показывает сама админка).
+
+## Сборка и деплой
 
 ```sh
-npm run build
+npm run build      # статика в build/
+make deploy DEPLOY_HOST=root@1.2.3.4   # соберёт и зальёт rsync'ом на VPS
 ```
 
-You can preview the production build with `npm run preview`.
+`make deploy` заливает `build/` в `www/` внутри клона `fmc_pocketbase` на сервере — его
+раздаёт Caddy. Подробности прод-инфры — в [`fmc_pocketbase/README.md`](../fmc_pocketbase/README.md).
 
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
+## Проверка типов и тесты
+
+```sh
+npm run check   # svelte-check
+npm test        # round-trip тест парсера/компилятора .bin на стоковых файлах watchfaces/files/
+```
