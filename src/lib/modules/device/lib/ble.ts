@@ -358,12 +358,17 @@ export class Watch {
     if (!name || name !== trailer) throw new Error('trailer name mismatch — corrupted file?');
 
     const id = crypto.getRandomValues(new Uint32Array(1))[0];
-    // §9.5g: old_wf_id must name the installed custom dial; 0 (append) needs a free slot
+    // §9.5g: old_wf_id must name the installed custom dial; 0 (append) needs a free slot and
+    // works only once. This firmware's wfInstalled/gallery report does NOT reliably reflect
+    // side-loaded dials (confirmed empirically: stays [] right after a successful side-load) —
+    // so, matching the fmc CLI reference (session.go): our own last-successful-upload id is
+    // the most trustworthy source, the watch's live gallery is a fallback, and fmc CLI's cache
+    // (a separate, uncoordinated client) is the last, least-trustworthy resort.
     let oldId = Number(localStorage.getItem('fmc_last_wfid') || 0);
-    if (!oldId) { // dev: id последней прошивки через fmc CLI (vite middleware)
+    if (!oldId && this.galleryWf.length) oldId = this.galleryWf[this.galleryWf.length - 1];
+    if (!oldId) {
       try { oldId = Number((await (await fetch('/__fmclastid')).text()).trim()) || 0; } catch { /* prod: endpoint отсутствует */ }
     }
-    if (!oldId && this.galleryWf.length) oldId = this.galleryWf[this.galleryWf.length - 1];
     dbg('upload ids:', { newId: id, oldId, gallery: this.galleryWf });
 
     this.status(`uploading “${name}”…`);
@@ -399,8 +404,14 @@ export class Watch {
         this.handlers.set(CMD.wfFinishAck1, async p => {
           cleanup();
           try { await this.sendData(CMD.wfFinishAck2, new Uint8Array([MARKER])); } catch { /* ack is best-effort */ }
-          if (p.length && p[0] === 1) resolve();
-          else reject(new Error(`watch did not accept the file (finish: ${toHex(p)})`));
+          if (p.length && p[0] === 1) {
+            // §9.5g: только один слот под сторонний циферблат — после успешной загрузки он
+            // занят этим id, а часы это в wfInstalled в течение той же сессии не подтверждают;
+            // следующий аплоад в этой сессии должен знать, что теперь заменять именно его,
+            // а не снова пытаться "добавить в пустой слот" (oldId=0) и получить тихий отказ 0x0a
+            this.galleryWf = [id];
+            resolve();
+          } else reject(new Error(`watch did not accept the file (finish: ${toHex(p)})`));
         });
       });
     } finally {
