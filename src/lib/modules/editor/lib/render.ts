@@ -236,28 +236,52 @@ function crossOffset(align: number, avail: number, size: number): number {
 
 const bmp = (res: Resource[], i: number) => res[i]?.bitmap;
 
-function numberString(node: FaceNode, sim: Sim, t: TimeParts): string {
+// goal-relative ids (steps/calories "slot" aliases) read as a raw count everywhere, EXCEPT
+// when a NUMBER shares the screen with a progress ring bound to the same id — there it must
+// show that ring's own percent-of-goal (e.g. "80%"), not the raw counter, or it overflows the
+// ring's digit budget (fmt caps it at ~3 digits) and no longer matches the design. The ring and
+// its number aren't nested together (each is positioned independently by x/y), so the lookup
+// is screen-wide, not just among the number's immediate siblings.
+function collectArcsById(nodes: FaceNode[]): Map<number, FaceNode> {
+  const out = new Map<number, FaceNode>();
+  const walk = (n: FaceNode) => {
+    if ((n.tag === 0x80 || n.tag === 0x81)) {
+      const struct = n.subs?.find(s => s.tag === TAG.struct);
+      const { id } = struct ? metaInfo(struct) : { id: 0 };
+      if (id && !out.has(id)) out.set(id, n);
+    }
+    n.subs?.forEach(walk);
+  };
+  nodes.forEach(walk);
+  return out;
+}
+
+function numberString(node: FaceNode, sim: Sim, t: TimeParts, arcsById: Map<number, FaceNode>): string {
   const struct = node.subs?.find(s => s.tag === TAG.struct);
   const fmt = node.subs?.find(s => s.tag === TAG.fmt);
   const { id } = metaInfo(struct!);
   const f = fmt ? unhex(fmt.hex!)[0] || 0 : 0;
   const digits = f & 0x1f, pad = f & 0x80;
-  let s = String(Math.abs(Math.round(idValue(id, sim, t))));
+  const arcSpec = arcsById.has(id) ? parseArcSpec(arcsById.get(id)!) : null;
+  const value = arcSpec ? Math.round(progressFrac(id, sim, t, arcSpec) * 100) : Math.round(idValue(id, sim, t));
+  let s = String(Math.abs(value));
   if (pad && digits) s = s.padStart(digits, '0');
   return s;
 }
 
 // measure/draw a single widget. ctx=null — measure only (for group layout).
 // origin: if set, draw at this point (auto-layout), otherwise at the struct's x/y.
+// arcsById: screen-wide id -> progress-ring lookup, see numberString.
 function drawWidget(
   ctx: Ctx | null, node: FaceNode, res: Resource[], sim: Sim, t: TimeParts,
   ox: number, oy: number, origin: { x: number; y: number } | null, hits: Hit[] | null,
+  arcsById: Map<number, FaceNode>,
 ): Size | null {
   if (node.tag === TAG.preview || node.tag === TAG.name) return null;
   if (!visible(node, sim, t)) return null;
 
   if (node.tag === TAG.group) {
-    return drawGroup(ctx, node, res, sim, t, ox, oy, origin, hits);
+    return drawGroup(ctx, node, res, sim, t, ox, oy, origin, hits, arcsById);
   }
 
   const struct = node.subs?.find(s => s.tag === TAG.struct);
@@ -296,7 +320,7 @@ function drawWidget(
   }
 
   if (node.tag === TAG.number || (node.subs?.some(s => s.tag === TAG.fmt) && imgs.length >= 10)) {
-    const str = numberString(node, sim, t);
+    const str = numberString(node, sim, t, arcsById);
     let w = 0, h = 0;
     for (const ch of str) {
       const b = bmp(res, imgs[+ch] ?? imgs[0]);
@@ -358,6 +382,8 @@ function drawWidget(
   // sibling 0x5f: [slotIndex][count][activeIdx][count × metric id][zero padding]. count === imgs.length-1,
   // the trailing image is the "nothing assigned" icon. Show images[activeIdx], not a value-driven pick —
   // struct.meta.id is always 0 for this tag across the corpus, so the generic branch below always drew images[0].
+  // slotIndex is just this node's 0-based position among sibling 0x85 nodes (verified, zero exceptions in
+  // the corpus) — presumably how the companion app numbers slots in its settings UI; unused for rendering.
   if (node.tag === 0x85) {
     const sf = node.subs?.find(s => s.tag === 0x5f);
     const v = sf ? unhex(sf.hex || '') : null;
@@ -395,6 +421,7 @@ function drawWidget(
 function drawGroup(
   ctx: Ctx | null, node: FaceNode, res: Resource[], sim: Sim, t: TimeParts,
   ox: number, oy: number, origin: { x: number; y: number } | null, hits: Hit[] | null,
+  arcsById: Map<number, FaceNode>,
 ): Size | null {
   const fr = parseFrame(node);
   if (!fr) return null;
@@ -405,7 +432,7 @@ function drawGroup(
     const st = k.subs?.find(s => s.tag === TAG.struct);
     return !!st && metaInfo(st).w === 0x8000;
   };
-  const sizes = kids.map(k => isAuto(k) ? drawWidget(null, k, res, sim, t, 0, 0, { x: 0, y: 0 }, null) : null);
+  const sizes = kids.map(k => isAuto(k) ? drawWidget(null, k, res, sim, t, 0, 0, { x: 0, y: 0 }, null, arcsById) : null);
   const shown = sizes.filter((z): z is Size => !!z);
 
   const autoStructs = kids
@@ -424,10 +451,10 @@ function drawGroup(
         const pos = vertical
           ? { x: x + crossOffset(fr.align, fr.w, z.w), y: c }
           : { x: c, y: y + crossOffset(fr.align, fr.h, z.h) };
-        drawWidget(ctx, k, res, sim, t, 0, 0, pos, hits);
+        drawWidget(ctx, k, res, sim, t, 0, 0, pos, hits, arcsById);
         c += (vertical ? z.h : z.w) + fr.gap;
       } else if (!isAuto(k)) {
-        drawWidget(ctx, k, res, sim, t, x, y, null, hits);
+        drawWidget(ctx, k, res, sim, t, x, y, null, hits, arcsById);
       }
     });
     hits?.push({ node, x, y, w: fr.w, h: fr.h });
@@ -441,7 +468,9 @@ export function render(ctx: Ctx, face: Face, screenTag: number, sim: Sim): Hit[]
   const hits: Hit[] = [];
   ctx.clearRect(0, 0, 466, 466);
   const scr = face.screens.find(s => s.tag === screenTag) || face.screens[0];
-  for (const w of scr?.subs || []) drawWidget(ctx, w, face.resources, sim, t, 0, 0, null, hits);
+  const top = scr?.subs || [];
+  const arcsById = collectArcsById(top);
+  for (const w of top) drawWidget(ctx, w, face.resources, sim, t, 0, 0, null, hits, arcsById);
   return hits;
 }
 
