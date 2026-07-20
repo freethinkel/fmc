@@ -117,16 +117,23 @@ function visible(node: FaceNode, sim: Sim, t: TimeParts): boolean {
   const bind = node.subs?.find(s => s.tag === TAG.bind);
   if (!bind) return true;
   const eq: { id: number; val: number }[] = [], neq: { id: number; val: number }[] = [];
+  const ge: { id: number; val: number }[] = [], le: { id: number; val: number }[] = [];
   for (const e of parseBind(bind.hex)) {
     // bit 0x80 in op shows up on exclusive variants (0x81) — semantically the same equality.
     // op 0x03 = "value == no-data marker" (e.g. heart rate 1000), also equality.
+    // op 0x05/0x06 = inclusive range bounds (>=/<=) — seen paired on minute-bucket highlights
+    // (e.g. Digital__281__Metaball's metaball chain, each node lit for its 5-minute window).
     const op = e.op & 0x7f;
     if (op === 0x01 || op === 0x03) eq.push(e);
     else if (op === 0x02) neq.push(e);
+    else if (op === 0x05) ge.push(e);
+    else if (op === 0x06) le.push(e);
   }
   let ok = true;
   if (eq.length) ok = eq.some(e => idValue(e.id, sim, t) === e.val);
   if (ok && neq.length) ok = neq.every(e => idValue(e.id, sim, t) !== e.val);
+  if (ok && ge.length) ok = ge.every(e => idValue(e.id, sim, t) >= e.val);
+  if (ok && le.length) ok = le.every(e => idValue(e.id, sim, t) <= e.val);
   return ok;
 }
 
@@ -144,7 +151,7 @@ export function parseArcSpec(node: FaceNode): ArcSpec | null {
   return {
     kind: sp.tag, min: i32(0), max: i32(4),
     start: i16(8) / 10, end: i16(10) / 10,
-    width: v[12] | v[13] << 8, radius: v.length >= 16 ? v[14] | v[15] << 8 : 0,
+    width: v[12] | v[13] << 8, radius: sp.tag === 0x5a && v.length >= 16 ? v[14] | v[15] << 8 : 0,
   };
 }
 
@@ -166,6 +173,7 @@ function sectorImage(ctx: Ctx, b: ImageBitmap, x: number, y: number, spec: ArcSp
 
 // no ring image resolved (short struct form with no image ref, or undecoded bitmap) — stroke the arc instead
 function drawProceduralArc(ctx: Ctx | null, spec: ArcSpec, x: number, y: number, frac: number, hits: Hit[] | null, node: FaceNode): Size {
+  // ponytail: 0x5b (ring) carries no radius field at all — 60 is a generic guess, not derived from the file
   const r = spec.radius || 60;
   const cx = r >= 230 ? 233 : x + r, cy = r >= 230 ? 233 : y + r;
   const a0 = spec.start * Math.PI / 180;
@@ -203,13 +211,27 @@ function progressFrac(id: number, sim: Sim, t: TimeParts, spec: ArcSpec): number
   return Math.max(0, Math.min(1, (v - spec.min) / d));
 }
 
-export interface Frame { x: number; y: number; w: number; h: number; gap: number; node: FaceNode }
+// align (byte 9): cross-axis alignment of auto-laid-out children, Flutter Row/Column
+// crossAxisAlignment equivalent — 0 center (default, matches every real face in the corpus,
+// where this byte is always zero), 1 start, 2 end. Not a real firmware field: the whole
+// 12-byte tail after gap is always zero across the 100-face corpus, so this is an editor-only
+// extension with no device-side meaning beyond "0 = same as stock".
+export interface Frame { x: number; y: number; w: number; h: number; gap: number; align: number; node: FaceNode }
 export function parseFrame(node: FaceNode): Frame | null {
   const f = node.subs?.find(s => s.tag === TAG.frame);
   if (!f) return null;
   const v = unhex(f.hex || '');
   if (v.length < 9) return null;
-  return { x: v[0] | v[1] << 8, y: v[2] | v[3] << 8, w: v[4] | v[5] << 8, h: v[6] | v[7] << 8, gap: v[8], node: f };
+  return {
+    x: v[0] | v[1] << 8, y: v[2] | v[3] << 8, w: v[4] | v[5] << 8, h: v[6] | v[7] << 8,
+    gap: v[8], align: v[9] || 0, node: f,
+  };
+}
+
+function crossOffset(align: number, avail: number, size: number): number {
+  if (align === 1) return 0;
+  if (align === 2) return avail - size;
+  return (avail - size) / 2;
 }
 
 const bmp = (res: Resource[], i: number) => res[i]?.bitmap;
@@ -332,6 +354,20 @@ function drawWidget(
     return drawProceduralArc(ctx, spec, x, y, frac, hits, node);
   }
 
+  // 0x85: widget slot — user assigns one of several metrics to this slot in the companion app.
+  // sibling 0x5f: [slotIndex][count][activeIdx][count × metric id][zero padding]. count === imgs.length-1,
+  // the trailing image is the "nothing assigned" icon. Show images[activeIdx], not a value-driven pick —
+  // struct.meta.id is always 0 for this tag across the corpus, so the generic branch below always drew images[0].
+  if (node.tag === 0x85) {
+    const sf = node.subs?.find(s => s.tag === 0x5f);
+    const v = sf ? unhex(sf.hex || '') : null;
+    const activeIdx = v && v.length >= 3 ? v[2] : imgs.length - 1;
+    const b = bmp(res, imgs[activeIdx] ?? imgs[imgs.length - 1]);
+    if (!b) return null;
+    if (ctx) { ctx.drawImage(b, x, y); hits?.push({ node, x, y, w: b.width, h: b.height }); }
+    return { w: b.width, h: b.height };
+  }
+
   // 0x30 and others: a single image or a pick by value (7 days / 12 months / 2 AM-PM)
   let idx = 0;
   if (imgs.length > 1) {
@@ -385,7 +421,9 @@ function drawGroup(
     kids.forEach((k, i) => {
       const z = sizes[i];
       if (z) {
-        const pos = vertical ? { x: x + (fr.w - z.w) / 2, y: c } : { x: c, y: y + (fr.h - z.h) / 2 };
+        const pos = vertical
+          ? { x: x + crossOffset(fr.align, fr.w, z.w), y: c }
+          : { x: c, y: y + crossOffset(fr.align, fr.h, z.h) };
         drawWidget(ctx, k, res, sim, t, 0, 0, pos, hits);
         c += (vertical ? z.h : z.w) + fr.gap;
       } else if (!isAuto(k)) {

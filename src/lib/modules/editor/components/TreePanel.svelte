@@ -3,7 +3,7 @@
   import { Button } from '$lib/shared/components/ui/button';
   import { ImagePlus, Hash, Clock3, Trash2, Monitor, Moon, Type, Eye, Image, Folder,
     Braces, GitBranch, Crosshair, Film, Circle, LoaderCircle, SquareDashed, Box, ChevronRight } from '@lucide/svelte';
-  import { TAG } from '../lib/wf';
+  import { TAG, unhex } from '../lib/wf';
   import { metaInfo, ID_LABELS } from '../lib/render';
   import { editorModel } from '../model';
   const { editor, select, addWidgetFx, deleteWidget } = editorModel;
@@ -30,6 +30,13 @@
     if (st?.meta) {
       const { id } = metaInfo(st);
       if (id) s += ` · ${ID_LABELS[id] || 'id 0x' + id.toString(16)}`;
+    }
+    if (n.tag === 0x85) {
+      // 0x5f: [slotIndex][count][activeIdx][count × metric id] — show the currently assigned metric
+      const sf = n.subs?.find(c => c.tag === 0x5f);
+      const v = sf?.hex ? unhex(sf.hex) : null;
+      const activeId = v && v.length >= 3 ? v[3 + v[2]] : undefined;
+      if (activeId != null) s += ` · ${ID_LABELS[activeId] || '0x' + activeId.toString(16)}`;
     }
     if (n._kind) s += ` · ${n._kind}`;
     return s;

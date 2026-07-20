@@ -10,11 +10,13 @@
 		"prepare": "svelte-kit sync || echo ''",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
-		"test": "node test.mjs"
+		"test": "node test.mjs",
+		"test:e2e": "playwright test"
 	},
 	"devDependencies": {
 		"@internationalized/date": "^3.12.2",
 		"@lucide/svelte": "^1.25.0",
+		"@playwright/test": "^1.61.1",
 		"@sveltejs/adapter-static": "^3.0.10",
 		"@sveltejs/kit": "^2.63.0",
 		"@sveltejs/vite-plugin-svelte": "^7.1.2",
@@ -22,6 +24,8 @@
 		"@types/web-bluetooth": "^0.0.21",
 		"@vitejs/plugin-basic-ssl": "^2.3.0",
 		"clsx": "^2.1.1",
+		"pixelmatch": "^7.2.0",
+		"pngjs": "^7.0.0",
 		"svelte": "^5.56.1",
 		"svelte-check": "^4.6.0",
 		"tailwind-merge": "^3.6.0",

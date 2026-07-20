@@ -18,6 +18,7 @@ export interface FaceNode {
   x?: number;
   y?: number;
   meta?: string;
+  tail?: string;
   prefix?: string;
   refType?: number;
   images?: number[];
@@ -108,10 +109,15 @@ function parseRefTail(v: Uint8Array, off: number, resources: Resource[], resOffs
     for (let k = 0; k < count; k++) {
       if (!resOffset.has(cur)) return null;
       const i = resOffset.get(cur)!;
-      const blk = resources[i].data.length + 8;
-      if (blk !== u16(v, p + 2 * k)) return null;
       images.push(i);
-      cur += blk;
+      // the stored block size only locates the NEXT frame — the trailing one's value is
+      // unused and unvalidated elsewhere, so a writer can put anything there (seen in the wild:
+      // count=1 with a mismatched value) without it being an actually-broken reference.
+      if (k < count - 1) {
+        const blk = resources[i].data.length + 8;
+        if (blk !== u16(v, p + 2 * k)) return null;
+        cur += blk;
+      }
     }
     return { refType: typ, images };
   }
@@ -134,17 +140,21 @@ function nodeToJSON(n: TLVNode, resources: Resource[], resOffset: Map<number, nu
       return j;
     }
   }
-  if (n.tag === TAG.struct && v.length >= 25) {
-    const rt = parseRefTail(v, 18, resources, resOffset);
+  // struct: [x u16][y u16][meta 14b] then either a refTail (image ref) or nothing —
+  // short arcs (0x81/0x80 rings with no bitmap, ring drawn procedurally) carry no ref at all.
+  if (n.tag === TAG.struct && v.length >= 18) {
+    j.x = u16(v, 0);
+    j.y = u16(v, 2);
+    j.meta = hex(v.subarray(4, 18));
+    if (parentTag === TAG.hand && handKinds[v[13]]) j._kind = handKinds[v[13]];
+    const rt = v.length >= 25 ? parseRefTail(v, 18, resources, resOffset) : null;
     if (rt) {
-      j.x = u16(v, 0);
-      j.y = u16(v, 2);
-      j.meta = hex(v.subarray(4, 18));
       j.refType = rt.refType;
       j.images = rt.images;
-      if (parentTag === TAG.hand && handKinds[v[13]]) j._kind = handKinds[v[13]];
-      return j;
+    } else if (v.length > 18) {
+      j.tail = hex(v.subarray(18));
     }
+    return j;
   }
   if (n.tag === TAG.pvStruct && v.length >= 12) {
     const rt = parseRefTail(v, 5, resources, resOffset);
@@ -235,6 +245,13 @@ function nodeBytes(j: FaceNode, resources: Resource[], offsets: number[]): Uint8
     }
     parts.push(refTailBytes(j, resources, offsets));
     val = concat(parts);
+  } else if (j.x != null && j.tag === TAG.struct) {
+    // short struct: x/y + meta, no image ref (e.g. imageless progress ring)
+    const head = new Uint8Array(4);
+    head[0] = j.x; head[1] = j.x >> 8; head[2] = j.y!; head[3] = j.y! >> 8;
+    const meta = unhex(j.meta!);
+    if (meta.length !== 14) throw new Error(`tag ${j.tag}: meta must be 14 bytes`);
+    val = concat([head, meta, unhex(j.tail || '')]);
   } else if (j.pivotX != null) {
     val = new Uint8Array(5);
     val[0] = j.flag || 0;
