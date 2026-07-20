@@ -1,6 +1,8 @@
 <script>
+  import { SvelteSet } from 'svelte/reactivity';
   import { Button } from '$lib/shared/components/ui/button';
-  import { ImagePlus, Hash, Clock3, Trash2 } from '@lucide/svelte';
+  import { ImagePlus, Hash, Clock3, Trash2, Monitor, Moon, Type, Eye, Image, Folder,
+    Braces, GitBranch, Crosshair, Film, Circle, LoaderCircle, SquareDashed, Box, ChevronRight } from '@lucide/svelte';
   import { TAG } from '../lib/wf';
   import { metaInfo, ID_LABELS } from '../lib/render';
   import { editorModel } from '../model';
@@ -12,6 +14,14 @@
     [TAG.struct]: 'struct', [TAG.bind]: 'cond', [TAG.pivot]: 'pivot', [TAG.fmt]: 'format',
     [TAG.frame]: 'frame', [TAG.pvStruct]: 'preview', 0x38: 'Widget 0x38',
     0x80: 'Arc', 0x81: 'Progress ring', 0x82: 'Arc 0x82', 0x85: 'Widget slot',
+  };
+
+  const tagIcons = {
+    [TAG.main]: Monitor, [TAG.aod]: Moon, [TAG.name]: Type, [TAG.preview]: Eye,
+    [TAG.image]: Image, [TAG.number]: Hash, [TAG.group]: Folder, [TAG.hand]: Clock3,
+    [TAG.struct]: Braces, [TAG.bind]: GitBranch, [TAG.pivot]: Crosshair, [TAG.fmt]: Braces,
+    [TAG.frame]: Film, [TAG.pvStruct]: Eye,
+    0x80: Circle, 0x81: LoaderCircle, 0x82: Circle, 0x85: SquareDashed,
   };
 
   export function nodeLabel(n) {
@@ -29,6 +39,12 @@
     const files = e.target.files;
     if (files?.length) addWidgetFx({ kind, files: [...files] }).catch(() => {});
     e.target.value = '';
+  }
+
+  const openNodes = new SvelteSet(); // аккордион: закрыт по умолчанию, ключ — сам узел (дерево мутабельное, ссылки стабильны)
+  function toggleOpen(n, e) {
+    e.stopPropagation();
+    if (openNodes.has(n)) openNodes.delete(n); else openNodes.add(n);
   }
 </script>
 
@@ -63,15 +79,25 @@
 </div>
 
 {#snippet treeNode(n, depth)}
+  {@const Icon = tagIcons[n.tag] || Box}
+  {@const kids = depth < 4 ? (n.subs || []).filter(c => c.subs || c.tag === TAG.struct) : []}
   <button
-    class="block w-full truncate px-2 py-0.5 text-left hover:bg-accent {$editor.sel === n ? 'bg-primary/15 text-primary' : ''}"
+    class="flex w-full items-center gap-1.5 px-2 py-0.5 text-left hover:bg-accent {$editor.sel === n ? 'bg-primary/15 text-primary' : ''}"
     style="padding-left:{10 + depth * 14}px"
     onclick={() => select(n)}>
-    {nodeLabel(n)}
+    {#if kids.length}
+      <ChevronRight
+        class="size-3 shrink-0 text-muted-foreground transition-transform {openNodes.has(n) ? 'rotate-90' : ''}"
+        onclick={e => toggleOpen(n, e)} />
+    {:else}
+      <span class="size-3 shrink-0"></span>
+    {/if}
+    <Icon class="size-3.5 shrink-0 {$editor.sel === n ? '' : 'text-muted-foreground'}" />
+    <span class="truncate">{nodeLabel(n)}</span>
   </button>
-  {#if n.subs && depth < 4}
-    {#each n.subs as c}
-      {#if c.subs || c.tag === TAG.struct}{@render treeNode(c, depth + 1)}{/if}
+  {#if kids.length && openNodes.has(n)}
+    {#each kids as c}
+      {@render treeNode(c, depth + 1)}
     {/each}
   {/if}
 {/snippet}

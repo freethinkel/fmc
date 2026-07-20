@@ -2,14 +2,18 @@
 	import Store from "@lucide/svelte/icons/store";
 	import Pencil from "@lucide/svelte/icons/pencil";
 	import WatchIcon from "@lucide/svelte/icons/watch";
+	import FolderHeart from "@lucide/svelte/icons/folder-heart";
 	import { page } from "$app/state";
 	import { cn } from "$lib/shared/helpers";
+	import { authModel } from "$lib/modules/auth/model";
 
-	const nav = [
+	const { user } = authModel;
+	const nav = $derived([
 		{ title: "Market", url: "/market", icon: Store },
 		{ title: "Editor", url: "/editor", icon: Pencil },
+		...($user ? [{ title: "My", url: "/my", icon: FolderHeart }] : []),
 		{ title: "Watch", url: "/watch", icon: WatchIcon },
-	];
+	]);
 </script>
 
 <!-- мобильный нижний таб-бар; на md+ навигация в сайдбаре -->

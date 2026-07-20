@@ -3,19 +3,20 @@
   import { Button } from '$lib/shared/components/ui/button';
   import { Input } from '$lib/shared/components/ui/input';
   import { Label } from '$lib/shared/components/ui/label';
+  import { Textarea } from '$lib/shared/components/ui/textarea';
   import { goto } from '$app/navigation';
   import { authModel } from '$lib/modules/auth/model';
   import { marketModel } from '$lib/modules/market/model';
   import { editorModel } from '../model';
 
   const { user } = authModel;
-  const { publishFx } = marketModel;
+  const { saveFx } = marketModel;
   const { editor, buildCurrentBin, previewBlob, errored } = editorModel;
 
   let { open = $bindable(false) } = $props();
   let name = $state('');
   let description = $state('');
-  const busy = publishFx.pending;
+  const busy = saveFx.pending;
 
   $effect(() => {
     if (open) name = $editor.face?.name || 'Custom';
@@ -23,8 +24,8 @@
 
   async function publish() {
     try {
-      await publishFx({
-        name, description, ownerId: $user.id,
+      await saveFx({
+        name, description, ownerId: $user.id, published: true,
         bin: buildCurrentBin(), preview: await previewBlob(),
       });
       open = false;
@@ -49,8 +50,7 @@
       </div>
       <div class="flex flex-col gap-1.5">
         <Label for="pub-desc">Description</Label>
-        <textarea id="pub-desc" bind:value={description} rows="3" maxlength="1000"
-          class="rounded-md border bg-transparent px-3 py-2 text-sm"></textarea>
+        <Textarea id="pub-desc" bind:value={description} rows={3} maxlength={1000} />
       </div>
     </div>
     <Dialog.Footer>

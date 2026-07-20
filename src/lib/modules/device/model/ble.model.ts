@@ -1,6 +1,6 @@
 // Web Bluetooth: подключение и прошивка часов.
 import { createEffect, createEvent, createStore } from 'effector';
-import { Watch, type WatchDials, type WatchInfo } from '../lib/ble';
+import { Watch, forgetKnownDevices, type WatchDials, type WatchInfo } from '../lib/ble';
 
 export type { WatchDials };
 
@@ -34,3 +34,9 @@ export const dials = createStore<WatchDials | null>(null)
 
 export const flashFx = createEffect((bin: Uint8Array) => watch!.uploadWatchface(bin));
 flashFx.failData.watch(e => statusChanged(`error: ${e.message}`));
+
+export const forgetFx = createEffect(async () => {
+  const n = await forgetKnownDevices();
+  statusChanged(n ? `forgot ${n} device(s) — connect to pick again` : 'nothing to forget');
+});
+forgetFx.failData.watch(e => statusChanged(`error: ${e.message}`));

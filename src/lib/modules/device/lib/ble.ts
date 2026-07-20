@@ -45,7 +45,8 @@ const CMD = {
   wfFinishAck1: C(0xffff, 0xa065), wfFinishAck2: C(0xffff, 0x9065),
   wfInstalled: C(0xffff, 0xa055),
 };
-const PLAINTEXT = new Set([CMD.authPairReq, CMD.authPairRep, CMD.wfChunkWrite]);
+// authFailed часы шлют открытым текстом (6 байт — не кратно блоку AES): ключ им не расшифровать
+const PLAINTEXT = new Set([CMD.authPairReq, CMD.authPairRep, CMD.wfChunkWrite, CMD.authFailed]);
 const MARKER = 0xa5;
 
 const AES_IV = new Uint8Array([0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57, 0x60, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x5a]);
@@ -91,7 +92,12 @@ class Codec {
     return new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-CBC', iv: AES_IV as BufferSource }, this.cryptoKey!, plain as BufferSource));
   }
   async decrypt(data: Uint8Array): Promise<Uint8Array> {
-    return new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-CBC', iv: AES_IV as BufferSource }, this.cryptoKey!, data as BufferSource));
+    try {
+      return new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-CBC', iv: AES_IV as BufferSource }, this.cryptoKey!, data as BufferSource));
+    } catch {
+      // WebCrypto кидает OperationError с пустым message при неверном ключе (битый PKCS7)
+      throw new Error('decrypt failed — wrong session key');
+    }
   }
   async encode(key: number, payload: Uint8Array): Promise<Uint8Array[]> {
     let chunks: Uint8Array[] = [];
@@ -123,7 +129,10 @@ class Codec {
       if (PLAINTEXT.has(key)) {
         payload = frame.slice(11);
       } else {
-        const dec = await this.decrypt(frame.slice(11, 11 + plen));
+        // заголовок не шифруется — при провале расшифровки видно, какая команда пришла
+        const dec = await this.decrypt(frame.slice(11, 11 + plen)).catch(e => {
+          throw new Error(`${cmdName(key)} (${plen}B): ${(e as Error).message}`);
+        });
         if (dec.length < 4) throw new Error('payload too short for crc');
         payload = dec.slice(0, -4);
         if (crc32(payload) !== new DataView(dec.buffer).getUint32(dec.length - 4, true))
@@ -145,6 +154,17 @@ class Codec {
 const KEY_STORE = 'fmc_authkey';
 const loadKey = (): Uint8Array | null => { const h = localStorage.getItem(KEY_STORE); return h && h.length === 32 ? fromHex(h) : null; };
 const saveKey = (k: Uint8Array) => localStorage.setItem(KEY_STORE, toHex(k));
+
+// dev-гигиена: сбрасывает Chrome-разрешения на устройство и локальный auth-ключ.
+// ponytail: не чинит блокировку на стороне часов (bond держит firmware, не браузер) —
+// только чистит наше состояние, чтобы следующий connect() стартовал с нуля.
+export async function forgetKnownDevices(): Promise<number> {
+  localStorage.removeItem(KEY_STORE);
+  if (!navigator.bluetooth?.getDevices) return 0;
+  const devices = await navigator.bluetooth.getDevices();
+  await Promise.all(devices.map(d => d.forget()));
+  return devices.length;
+}
 
 export class Watch {
   onStatus: (s: string) => void;
@@ -183,6 +203,7 @@ export class Watch {
       return d;
     };
     let device = await pick();
+    (window as unknown as { __wf?: BluetoothDevice }).__wf = device; // ponytail: dev console hook, remove after debugging
     this.status('connecting…');
     // gatt.connect() висит вечно, если часы уже держат соединение с кем-то ещё
     const timeout = (ms: number, what: string) => new Promise<never>((_, rej) =>
@@ -192,15 +213,19 @@ export class Watch {
       dbg('gatt.connect()…');
       const server = await device.gatt!.connect();
       dbg('gatt connected, discovering services…');
-      // адресный discovery: полный getPrimaryServices() на macOS иногда виснет
-      for (const svcUuid of SERVICES) {
+      // полный (ненаправленный) discovery: CoreBluetooth иногда не находит сервис через
+      // адресный getPrimaryService(uuid) сразу после коннекта, хотя он есть — сравнение с
+      // fmc CLI (ble.go), которая всегда делает DiscoverServices(nil) и видит shell-сервис
+      // надёжно. Внешний Promise.race(…, timeout(15000)) в connectOrRepick подстраховывает
+      // от того самого зависания, из-за которого раньше выбрали адресный вариант.
+      const svcs = await server.getPrimaryServices();
+      for (const svc of svcs) {
         try {
-          const svc = await server.getPrimaryService(svcUuid);
           const cc = await svc.getCharacteristics();
-          dbg('service', svcUuid, '→', cc.map(c => c.uuid));
+          dbg('service', svc.uuid, '→', cc.map(c => c.uuid));
           for (const ch of cc) this.chars[ch.uuid] = ch;
         } catch (e) {
-          dbg('service', svcUuid, 'missing:', (e as Error).message);
+          dbg('service', svc.uuid, 'characteristics failed:', (e as Error).message);
         }
       }
       dbg('required chars:', Object.fromEntries(
@@ -232,22 +257,51 @@ export class Watch {
       try { device.gatt!.disconnect(); } catch { /* already gone */ }
       throw e;
     }
-    for (const key of ['cmdRead', 'dataRead', 'shellRead'] as const) {
-      const ch = this.chars[UUID[key]];
-      // shell service is only needed for first-time pairing; some firmwares hide it
-      if (!ch) { if (key === 'shellRead') continue; throw new Error(`characteristic ${key} not found`); }
-      dbg('startNotifications', key);
-      await ch.startNotifications();
-      ch.addEventListener('characteristicvaluechanged', e => {
-        const value = (e.target as BluetoothRemoteGATTCharacteristic).value!;
-        this.onNotify(ch.uuid, new Uint8Array(value.buffer));
-      });
+    const subscribe = async () => {
+      for (const key of ['cmdRead', 'dataRead', 'shellRead'] as const) {
+        const ch = this.chars[UUID[key]];
+        // shell service is only needed for first-time pairing; some firmwares hide it
+        if (!ch) { if (key === 'shellRead') continue; throw new Error(`characteristic ${key} not found`); }
+        dbg('startNotifications', key);
+        await ch.startNotifications();
+        ch.addEventListener('characteristicvaluechanged', e => {
+          const value = (e.target as BluetoothRemoteGATTCharacteristic).value!;
+          this.onNotify(ch.uuid, new Uint8Array(value.buffer, value.byteOffset, value.byteLength));
+        });
+      }
+    };
+    try {
+      await subscribe();
+      dbg('subscriptions done, key saved:', !!loadKey());
+      const k = loadKey();
+      if (k) {
+        try {
+          await this.authenticate(k);
+        } catch (e) {
+          // протухший ключ (часы перепарили/сбросили) — это authFailed или молчание на первый
+          // шифрованный обмен (authMac = 0x49); остальные ошибки не трогают сохранённый ключ
+          if (!/rejected the auth key|timeout waiting for 0x49/.test((e as Error).message)) throw e;
+          dbg('stored key stale, clearing:', (e as Error).message);
+          localStorage.removeItem(KEY_STORE);
+          // pairing нужен shell-сервис — если его не видно на текущем соединении, реконнектимся,
+          // как и при первом парении (§233), и переподписываемся на уведомления заново
+          if (!this.chars[UUID.shellWrite]) {
+            this.status('pairing service hidden — reconnecting…');
+            device.gatt!.disconnect();
+            await new Promise(r => setTimeout(r, 3000));
+            await connectOrRepick('reconnection');
+            await subscribe();
+          }
+          await this.pair();
+        }
+      } else await this.pair();
+      await this.fetchInfo();
+    } catch (e) {
+      // без этого неудачный pair()/authenticate() оставляет физическую GATT-связь висеть:
+      // часы думают, что заняты нами, и следующий Connect снова не увидит shell-сервис
+      try { device.gatt!.disconnect(); } catch { /* already gone */ }
+      throw e;
     }
-    dbg('subscriptions done, key saved:', !!loadKey());
-    const k = loadKey();
-    if (k) await this.authenticate(k);
-    else await this.pair();
-    await this.fetchInfo();
     this.status('connected');
     return { battery: this.battery, firmware: this.firmware, serial: this.serial };
   }
@@ -360,14 +414,22 @@ export class Watch {
 
   async pair() {
     if (!this.chars[UUID.shellWrite]) {
-      // dev convenience: reuse the fmc CLI key served by the vite middleware
+      // dev convenience: reuse the fmc CLI key served by the vite middleware — Web Bluetooth
+      // on macOS doesn't discover the shell/pairing service at all (verified: full unfiltered
+      // getPrimaryServices() only ever returns 3 of the watch's 5 services), so this is the
+      // only way to authenticate a fresh browser session without a native BLE client
       let h = '';
       try { h = (await (await fetch('/__fmckey')).text()).trim(); } catch { /* prod build: no dev endpoint */ }
       if (/^[0-9a-f]{32}$/i.test(h)) {
-        saveKey(fromHex(h));
-        return this.authenticate(fromHex(h));
+        try {
+          await this.authenticate(fromHex(h));
+          saveKey(fromHex(h)); // сохраняем только рабочий ключ — протухший CLI-ключ не должен залипать
+          return;
+        } catch (e) {
+          dbg('dev CLI key rejected:', (e as Error).message);
+        }
       }
-      throw new Error('watch refused to expose the pairing service — reset Bluetooth on the watch (or unpair it from the phone app) and connect again');
+      throw new Error('watch refused to expose the pairing service — pair with the fmc CLI first (native BLE sees the pairing service; Web Bluetooth on macOS currently does not), then reconnect here to reuse its key');
     }
     this.status('pairing — confirm on the watch');
     await this.codec.setKey(null);
@@ -390,13 +452,22 @@ export class Watch {
   async authenticate(k1: Uint8Array) {
     this.status('authenticating…');
     await this.codec.setKey(k1);
-    await this.send(CMD.authName, cat(new Uint8Array([MARKER]), utf8('fmc')));
-    await this.waitFor(CMD.authMac);
-    await this.send(CMD.authNonceReq, new Uint8Array([MARKER]));
-    const nonce = await this.waitFor(CMD.authNonceRep);
-    await this.codec.setKey((await sha256(cat(nonce, k1))).slice(0, 16));
-    await this.send(CMD.authConfirmReq, new Uint8Array([MARKER]));
-    await this.waitFor(CMD.authConfirmRep);
+    // часы шлют authFailed, если ключ им не расшифровать — реагируем сразу, не ждём таймаута
+    const failed = new Promise<never>((_, rej) =>
+      this.waiters.set(CMD.authFailed, () => rej(new Error('watch rejected the auth key'))));
+    failed.catch(() => {}); // race может не успеть подписаться — глушим unhandled rejection
+    const wait = (key: number) => Promise.race([this.waitFor(key), failed]);
+    try {
+      await this.send(CMD.authName, cat(new Uint8Array([MARKER]), utf8('fmc')));
+      await wait(CMD.authMac);
+      await this.send(CMD.authNonceReq, new Uint8Array([MARKER]));
+      const nonce = await wait(CMD.authNonceRep);
+      await this.codec.setKey((await sha256(cat(nonce, k1))).slice(0, 16));
+      await this.send(CMD.authConfirmReq, new Uint8Array([MARKER]));
+      await wait(CMD.authConfirmRep);
+    } finally {
+      this.waiters.delete(CMD.authFailed);
+    }
   }
 
   async fetchInfo() {

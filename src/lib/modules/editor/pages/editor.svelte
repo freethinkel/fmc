@@ -2,39 +2,70 @@
   import { Button } from '$lib/shared/components/ui/button';
   import * as Tabs from '$lib/shared/components/ui/tabs';
   import * as Sheet from '$lib/shared/components/ui/sheet';
-  import { Undo2, Redo2, FolderOpen, FilePlus2, Download, Watch, UploadCloud, Zap, ListTree, SlidersHorizontal, Play } from '@lucide/svelte';
+  import { Undo2, Redo2, FolderOpen, FilePlus2, Download, Watch, UploadCloud, Zap, ListTree, SlidersHorizontal, Play, Save } from '@lucide/svelte';
   import { authModel } from '$lib/modules/auth/model';
+  import { marketModel } from '$lib/modules/market/model';
   import PublishDialog from '../components/PublishDialog.svelte';
   import { bleModel } from '$lib/modules/device/model';
   import { TAG, unhex, hex } from '../lib/wf';
   import { render, parseFrame } from '../lib/render';
   import { editorModel } from '../model';
   import TreePanel from '../components/TreePanel.svelte';
+  import { headerSlot } from '$lib/shared/components/header-slot.svelte.js';
   import PropsPanel from '../components/PropsPanel.svelte';
   import SimPanel from '../components/SimPanel.svelte';
 
   const { user } = authModel;
   const { bleStatus, bleInfo, flashFx } = bleModel;
+  const { saveFx, openedWf, openedWfSet } = marketModel;
   const { editor, select, screenTagSet, checkpoint, undo, redo, patched,
-    loadBufferFx, importFacerFx, newFaceFx, exportBin, buildCurrentBin } = editorModel;
+    loadBufferFx, importFacerFx, newFaceFx, exportBin, buildCurrentBin, previewBlob, errored } = editorModel;
 
   let canvas = $state(null);
   let publishOpen = $state(false);
   let mobilePanel = $state(null); // 'tree' | 'props' | 'sim' — нижняя шторка на мобиле
+  let rightPanel = $state('props'); // 'props' | 'sim' — вкладки правой панели
   let hits = [];
   const flashing = flashFx.pending;
+  const saving = saveFx.pending;
 
   function openFile(e) {
     const f = e.target.files?.[0] || e.dataTransfer?.files?.[0];
     if (f) f.arrayBuffer().then(buf => loadBufferFx({ buf, label: f.name }).catch(() => {}));
+    openedWfSet(null);
     e.preventDefault();
     if (e.target.value !== undefined) e.target.value = '';
   }
 
   function openFacer(e) {
     if (e.target.files?.length) importFacerFx([...e.target.files]).catch(() => {});
+    openedWfSet(null);
     e.target.value = '';
   }
+
+  // Save: новый → черновик; уже открытый свой → обновление с сохранением статуса
+  async function saveDraft() {
+    try {
+      await saveFx({
+        name: $editor.face.name || 'Custom', ownerId: $user.id,
+        published: $openedWf?.published ?? false,
+        bin: buildCurrentBin(), preview: await previewBlob(),
+      });
+    } catch (e) {
+      errored(`save: ${e.message}`);
+    }
+  }
+
+  // тулбар редактора живёт в общей шапке, пока открыта эта страница
+  $effect(() => {
+    headerSlot.snippet = toolbar;
+    return () => (headerSlot.snippet = null);
+  });
+
+  // выбор ноды (в дереве или на канвасе) возвращает правую панель на свойства
+  $effect(() => {
+    if ($editor.sel) rightPanel = 'props';
+  });
 
   // ---- rendering ----
   $effect(() => {
@@ -144,47 +175,53 @@
 
 <svelte:window onkeydown={onKey} ondragover={e => e.preventDefault()} ondrop={openFile} />
 
-<div class="flex h-full min-h-0 flex-1 flex-col bg-background text-foreground">
-  <header class="flex flex-wrap items-center gap-2 border-b px-3 py-2">
-    <Button size="sm" variant="outline">
-      <label class="flex cursor-pointer items-center gap-1.5"><FolderOpen class="size-4" /> <span class="hidden sm:inline">Open</span>
-        <input type="file" accept=".bin" hidden onchange={openFile} /></label>
-    </Button>
-    <Button size="sm" variant="outline" onclick={() => newFaceFx()} title="New">
-      <FilePlus2 class="size-4" /> <span class="hidden sm:inline">New</span>
-    </Button>
-    <Button size="sm" variant="outline">
-      <label class="flex cursor-pointer items-center gap-1.5"><Watch class="size-4" /> <span class="hidden sm:inline">Import Facer</span>
-        <input type="file" webkitdirectory hidden onchange={openFacer} /></label>
-    </Button>
-    {#if $editor.face}
-      <span class="px-1 text-sm text-emerald-400">{$editor.face.name}</span>
-      <Tabs.Root value={$editor.screenTag === TAG.aod ? 'aod' : 'main'}
-        onValueChange={v => screenTagSet(v === 'aod' ? TAG.aod : TAG.main)}>
-        <Tabs.List class="h-8">
-          <Tabs.Trigger value="main" class="text-xs">Main</Tabs.Trigger>
-          <Tabs.Trigger value="aod" class="text-xs" disabled={!hasAOD}>AOD</Tabs.Trigger>
-        </Tabs.List>
-      </Tabs.Root>
-      <Button size="sm" variant="ghost" disabled={!$editor.undoN} onclick={() => undo()} title="Undo (⌘Z)"><Undo2 class="size-4" /></Button>
-      <Button size="sm" variant="ghost" disabled={!$editor.redoN} onclick={() => redo()} title="Redo (⇧⌘Z)"><Redo2 class="size-4" /></Button>
-      <Button size="sm" onclick={exportBin} title="Export .bin"><Download class="size-4" /> <span class="hidden sm:inline">Export .bin</span></Button>
-      {#if $user}
-        <Button size="sm" variant="secondary" onclick={() => (publishOpen = true)} title="Publish">
-          <UploadCloud class="size-4" /> <span class="hidden sm:inline">Publish</span>
-        </Button>
-      {/if}
-    {/if}
-    {#if $bleInfo && $editor.face}
-      <Button size="sm" onclick={flashWatch} disabled={$flashing} title="Upload to the watch">
-        <Zap class="size-4" /> {$flashing ? 'Flashing…' : 'Flash'}
+{#snippet toolbar()}
+  <Button size="sm" variant="outline">
+    <label class="flex cursor-pointer items-center gap-1.5"><FolderOpen class="size-4" /> <span class="hidden lg:inline">Open</span>
+      <input type="file" accept=".bin" hidden onchange={openFile} /></label>
+  </Button>
+  <Button size="sm" variant="outline" onclick={() => { openedWfSet(null); newFaceFx(); }} title="New">
+    <FilePlus2 class="size-4" /> <span class="hidden lg:inline">New</span>
+  </Button>
+  <Button size="sm" variant="outline">
+    <label class="flex cursor-pointer items-center gap-1.5"><Watch class="size-4" /> <span class="hidden lg:inline">Import Facer</span>
+      <input type="file" webkitdirectory hidden onchange={openFacer} /></label>
+  </Button>
+  {#if $editor.face}
+    <span class="hidden max-w-40 truncate px-1 text-sm text-emerald-400 lg:inline">{$editor.face.name}</span>
+    <Tabs.Root value={$editor.screenTag === TAG.aod ? 'aod' : 'main'}
+      onValueChange={v => screenTagSet(v === 'aod' ? TAG.aod : TAG.main)}>
+      <Tabs.List class="h-8">
+        <Tabs.Trigger value="main" class="text-xs">Main</Tabs.Trigger>
+        <Tabs.Trigger value="aod" class="text-xs" disabled={!hasAOD}>AOD</Tabs.Trigger>
+      </Tabs.List>
+    </Tabs.Root>
+    <Button size="sm" variant="ghost" disabled={!$editor.undoN} onclick={() => undo()} title="Undo (⌘Z)"><Undo2 class="size-4" /></Button>
+    <Button size="sm" variant="ghost" disabled={!$editor.redoN} onclick={() => redo()} title="Redo (⇧⌘Z)"><Redo2 class="size-4" /></Button>
+    <Button size="sm" onclick={exportBin} title="Export .bin"><Download class="size-4" /> <span class="hidden lg:inline">Export .bin</span></Button>
+    {#if $user}
+      <Button size="sm" variant="secondary" onclick={saveDraft} disabled={$saving}
+        title={$openedWf ? 'Save changes' : 'Save as draft'}>
+        <Save class="size-4" /> <span class="hidden lg:inline">{$saving ? 'Saving…' : 'Save'}</span>
+      </Button>
+      <Button size="sm" variant="secondary" onclick={() => (publishOpen = true)} title="Publish">
+        <UploadCloud class="size-4" /> <span class="hidden lg:inline">Publish</span>
       </Button>
     {/if}
-    {#if $flashing && $bleStatus}
-      <span class="text-xs text-muted-foreground">{$bleStatus}</span>
-    {/if}
-    {#if $editor.err}<span class="text-sm text-destructive">{$editor.err}</span>{/if}
-  </header>
+  {/if}
+  {#if $bleInfo && $editor.face}
+    <Button size="sm" onclick={flashWatch} disabled={$flashing} title="Upload to the watch">
+      <Zap class="size-4" /> {$flashing ? 'Flashing…' : 'Flash'}
+    </Button>
+  {/if}
+{/snippet}
+
+<div class="flex h-full min-h-0 flex-1 flex-col bg-background text-foreground">
+  {#if $editor.err || ($flashing && $bleStatus)}
+    <p class="border-b px-3 py-1.5 text-sm {$editor.err ? 'text-destructive' : 'text-muted-foreground'}">
+      {$editor.err || $bleStatus}
+    </p>
+  {/if}
 
   <div class="grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)_auto] md:grid-cols-[280px_1fr_330px] md:grid-rows-1">
     <aside class="hidden min-h-0 border-r md:block">
@@ -200,12 +237,15 @@
       <p class="hidden text-xs text-muted-foreground md:block">click — select · drag / arrow keys (⇧ ×10) — move · ⌘Z undo</p>
     </section>
 
-    <aside class="hidden min-h-0 overflow-y-auto border-l p-3 md:block">
-      <PropsPanel />
-      {#if $editor.face}
-        <div class="my-3 border-t"></div>
-        <SimPanel />
-      {/if}
+    <aside class="hidden min-h-0 flex-col border-l md:flex">
+      <Tabs.Root bind:value={rightPanel} class="flex min-h-0 flex-1 flex-col gap-0">
+        <Tabs.List class="m-2 grid grid-cols-2">
+          <Tabs.Trigger value="props" class="text-xs">Properties</Tabs.Trigger>
+          <Tabs.Trigger value="sim" class="text-xs" disabled={!$editor.face}>Simulator</Tabs.Trigger>
+        </Tabs.List>
+        <Tabs.Content value="props" class="min-h-0 flex-1 overflow-y-auto p-3 pt-0"><PropsPanel /></Tabs.Content>
+        <Tabs.Content value="sim" class="min-h-0 flex-1 overflow-y-auto p-3 pt-0"><SimPanel /></Tabs.Content>
+      </Tabs.Root>
     </aside>
 
     <!-- мобильные кнопки панелей: каждая открывает нижнюю шторку -->

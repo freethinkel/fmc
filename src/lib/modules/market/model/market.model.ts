@@ -1,16 +1,21 @@
 // Маркетплейс: effector-сторы поверх PocketBase.
-import { createEffect, createStore, sample } from 'effector';
+import { createEffect, createEvent, createStore, sample } from 'effector';
 import type { RecordModel } from 'pocketbase';
 import { pb } from '$lib/shared/api';
+
+const MAX_BIN = 1048576; // лимит .bin, продублирован в схеме PB
 
 export const loadMarketFx = createEffect(async () => {
   const [wf, lk] = await Promise.all([
     // ponytail: one page of 50 + full likes list; paginate when the list outgrows it
-    pb.collection('watchfaces').getList(1, 50, { sort: '-created', expand: 'owner' }),
+    pb.collection('watchfaces').getList(1, 50, { sort: '-created', expand: 'owner', filter: 'published = true' }),
     pb.collection('likes').getFullList(),
   ]);
   return { items: wf.items, likes: lk };
 });
+
+export const loadMyFx = createEffect((userId: string) =>
+  pb.collection('watchfaces').getFullList({ sort: '-updated', filter: `owner = '${userId}'` }));
 
 export const toggleLikeFx = createEffect(
   async ({ wf, userId }: { wf: RecordModel; userId: string }) => {
@@ -23,23 +28,43 @@ export const toggleLikeFx = createEffect(
 export const removeFx = createEffect((wf: RecordModel) => pb.collection('watchfaces').delete(wf.id));
 sample({ clock: removeFx.done, target: loadMarketFx });
 
-export const publishFx = createEffect(
-  async ({ name, description, ownerId, bin, preview }: {
-    name: string; description: string; ownerId: string; bin: Uint8Array; preview: Blob;
-  }) => {
-    const fd = new FormData();
-    fd.set('name', name);
-    fd.set('description', description);
-    fd.set('owner', ownerId);
-    fd.set('bin', new Blob([bin as BlobPart]), `${name || 'watchface'}.bin`);
-    fd.set('preview', preview, 'preview.png');
-    await pb.collection('watchfaces').create(fd);
-  });
+// циферблат, открытый в редакторе со страниц market/my — Save/Publish обновляют его, а не плодят копии
+export const openedWfSet = createEvent<RecordModel | null>();
+export const openedWf = createStore<RecordModel | null>(null).on(openedWfSet, (_, wf) => wf);
+
+export interface SavePayload {
+  name: string; description?: string; ownerId: string; bin: Uint8Array; preview: Blob; published: boolean;
+}
+
+// create или update открытой своей записи; возвращает запись, чтобы след. Save шёл в неё же
+export const saveFx = createEffect(async (p: SavePayload) => {
+  if (p.bin.length > MAX_BIN)
+    throw new Error(`bin is ${(p.bin.length / 1024 / 1024).toFixed(1)} MB — limit is 1 MB`);
+  const fd = new FormData();
+  fd.set('name', p.name);
+  if (p.description !== undefined) fd.set('description', p.description);
+  fd.set('owner', p.ownerId);
+  fd.set('published', p.published ? 'true' : 'false');
+  fd.set('bin', new Blob([p.bin as BlobPart]), `${p.name || 'watchface'}.bin`);
+  fd.set('preview', p.preview, 'preview.png');
+  const opened = openedWf.getState();
+  const col = pb.collection('watchfaces');
+  return opened && opened.owner === p.ownerId ? col.update(opened.id, fd) : col.create(fd);
+});
+sample({ clock: saveFx.doneData, target: openedWfSet });
+
+export const togglePublishFx = createEffect((wf: RecordModel) =>
+  pb.collection('watchfaces').update(wf.id, { published: !wf.published }));
 
 export const items = createStore<RecordModel[]>([]).on(loadMarketFx.doneData, (_, d) => d.items);
+export const myItems = createStore<RecordModel[]>([])
+  .on(loadMyFx.doneData, (_, d) => d)
+  .on(togglePublishFx.doneData, (list, r) => list.map(i => (i.id === r.id ? r : i)));
+sample({ clock: removeFx.done, source: myItems, fn: (list, { params }) => list.filter(i => i.id !== params.id), target: myItems });
+
 export const likes = createStore<RecordModel[]>([])
   .on(loadMarketFx.doneData, (_, d) => d.likes)
   .on(toggleLikeFx.doneData, (_, l) => l);
 export const marketErr = createStore('')
-  .on([loadMarketFx.failData, toggleLikeFx.failData, removeFx.failData], (_, e) => e.message)
+  .on([loadMarketFx.failData, loadMyFx.failData, toggleLikeFx.failData, removeFx.failData, togglePublishFx.failData], (_, e) => e.message)
   .reset(loadMarketFx.done);

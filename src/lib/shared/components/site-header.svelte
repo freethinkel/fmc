@@ -9,9 +9,10 @@
 	import LogInIcon from "@lucide/svelte/icons/log-in";
 	import { page } from "$app/state";
 	import { authModel } from "$lib/modules/auth/model";
+	import { headerSlot } from "./header-slot.svelte.js";
 
 	const { user, logout } = authModel;
-	const titles = { "/market": "Marketplace", "/editor": "Editor", "/watch": "Watch", "/login": "Sign in", "/register": "Sign up" };
+	const titles = { "/market": "Marketplace", "/editor": "Editor", "/my": "My watchfaces", "/watch": "Watch", "/login": "Sign in", "/register": "Sign up" };
 	const title = $derived(titles[page.url.pathname] ?? "");
 	const initials = $derived(($user?.name || $user?.email || "?").slice(0, 2).toUpperCase());
 </script>
@@ -35,6 +36,12 @@
 				{/if}
 			</Breadcrumb.List>
 		</Breadcrumb.Root>
+
+		{#if headerSlot.snippet}
+			<div class="ms-auto flex min-w-0 items-center gap-1.5 overflow-x-auto">
+				{@render headerSlot.snippet()}
+			</div>
+		{/if}
 
 		<!-- на мобиле сайдбара нет — юзер живёт в шапке -->
 		<div class="ms-auto md:hidden">

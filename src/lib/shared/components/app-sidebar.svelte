@@ -2,15 +2,19 @@
 	import Store from "@lucide/svelte/icons/store";
 	import Pencil from "@lucide/svelte/icons/pencil";
 	import WatchIcon from "@lucide/svelte/icons/watch";
+	import FolderHeart from "@lucide/svelte/icons/folder-heart";
 	import NavUser from "./nav-user.svelte";
 	import * as Sidebar from "$lib/shared/components/ui/sidebar/index.js";
 	import { page } from "$app/state";
+	import { authModel } from "$lib/modules/auth/model";
 
-	const nav = [
+	const { user } = authModel;
+	const nav = $derived([
 		{ title: "Marketplace", url: "/market", icon: Store },
 		{ title: "Editor", url: "/editor", icon: Pencil },
+		...($user ? [{ title: "My watchfaces", url: "/my", icon: FolderHeart }] : []),
 		{ title: "Watch", url: "/watch", icon: WatchIcon },
-	];
+	]);
 
 	let { ...restProps } = $props();
 </script>

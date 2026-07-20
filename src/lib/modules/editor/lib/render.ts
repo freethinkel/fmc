@@ -342,10 +342,12 @@ function drawWidget(
 }
 
 // 0x68: frame 0x48 (x,y,w,h,gap) + children. Two layout modes per child (docs §9.6a):
-// struct meta w = 0x8000 — auto-layout, joins a horizontal row centered in the frame;
+// struct meta w = 0x8000 — auto-layout, joins a row/column centered in the frame;
 // anything else — absolute at frame origin + child x/y (verified: Progress_Day dot circle,
 // Glare_2 stacked kcal block; no layout flag exists in frame 0x48 — bytes 9..20 are
 // always zero across the 100-face corpus, byte 8 is just the row gap).
+// ponytail: exact firmware direction rule is unverified — guessed from the original child
+// x/y spread (bigger vertical spread = stacked column); flip to a real flag if one turns up.
 function drawGroup(
   ctx: Ctx | null, node: FaceNode, res: Resource[], sim: Sim, t: TimeParts,
   ox: number, oy: number, origin: { x: number; y: number } | null, hits: Hit[] | null,
@@ -361,14 +363,23 @@ function drawGroup(
   };
   const sizes = kids.map(k => isAuto(k) ? drawWidget(null, k, res, sim, t, 0, 0, { x: 0, y: 0 }, null) : null);
   const shown = sizes.filter((z): z is Size => !!z);
-  const total = shown.reduce((s, z) => s + z.w, 0) + fr.gap * Math.max(0, shown.length - 1);
-  let cx = x + (fr.w - total) / 2;
+
+  const autoStructs = kids
+    .map((k, i) => sizes[i] ? k.subs?.find(s => s.tag === TAG.struct) : null)
+    .filter((s): s is FaceNode => !!s);
+  const spread = (vals: number[]) => vals.length ? Math.max(...vals) - Math.min(...vals) : 0;
+  const vertical = autoStructs.length > 1
+    && spread(autoStructs.map(s => s.y || 0)) > spread(autoStructs.map(s => s.x || 0));
+
+  const total = shown.reduce((s, z) => s + (vertical ? z.h : z.w), 0) + fr.gap * Math.max(0, shown.length - 1);
+  let c = (vertical ? y : x) + ((vertical ? fr.h : fr.w) - total) / 2;
   if (ctx) {
     kids.forEach((k, i) => {
       const z = sizes[i];
       if (z) {
-        drawWidget(ctx, k, res, sim, t, 0, 0, { x: cx, y: y + (fr.h - z.h) / 2 }, hits);
-        cx += z.w + fr.gap;
+        const pos = vertical ? { x: x + (fr.w - z.w) / 2, y: c } : { x: c, y: y + (fr.h - z.h) / 2 };
+        drawWidget(ctx, k, res, sim, t, 0, 0, pos, hits);
+        c += (vertical ? z.h : z.w) + fr.gap;
       } else if (!isAuto(k)) {
         drawWidget(ctx, k, res, sim, t, x, y, null, hits);
       }

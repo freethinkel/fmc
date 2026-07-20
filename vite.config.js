@@ -7,7 +7,10 @@ import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
-// ponytail: dev-only — отдаёт ключ авторизации fmc CLI, чтобы BLE-коннект не спрашивал его руками
+// ponytail: dev-only — отдаёт auth-ключ и id последней прошивки fmc CLI.
+// Не мёртвый код: на macOS Web Bluetooth в Chrome не видит shell/pairing GATT-сервис часов
+// (подтверждено — CoreBluetooth отдаёт только 3 из 5 сервисов, полный discovery не помогает),
+// а нативный BLE-стек fmc (tinygo) видит и спаривается нормально. Это единственный мост.
 const fmcKey = () => ({
 	name: 'fmc-key',
 	configureServer(server) {

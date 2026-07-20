@@ -2,6 +2,7 @@
   import { Input } from '$lib/shared/components/ui/input';
   import { Label } from '$lib/shared/components/ui/label';
   import { Checkbox } from '$lib/shared/components/ui/checkbox';
+  import { Download } from '@lucide/svelte';
   import { TAG, unhex, hex } from '../lib/wf';
   import { metaInfo, ID_LABELS, parseFrame } from '../lib/render';
   import { editorModel } from '../model';
@@ -33,6 +34,12 @@
     c.width = r.w; c.height = r.h;
     if (r.bitmap) c.getContext('2d').drawImage(r.bitmap, 0, 0);
     return c.toDataURL();
+  }
+  function downloadRes(ri) {
+    const a = document.createElement('a');
+    a.href = thumbURL($editor.face.resources[ri]);
+    a.download = `res${ri}.png`;
+    a.click();
   }
 </script>
 
@@ -89,13 +96,19 @@
     {#if st?.images}
       <div class="flex flex-wrap gap-2">
         {#each st.images as ri}
-          <label title="res{ri} · {$editor.face.resources[ri].w}×{$editor.face.resources[ri].h} · cf{$editor.face.resources[ri].cf} — click to replace"
-            class="cursor-pointer">
-            <img src={thumbURL($editor.face.resources[ri])} alt="res{ri}"
-              class="max-h-14 max-w-14 rounded border border-border bg-[repeating-conic-gradient(#333_0_25%,#222_0_50%)] bg-[length:12px_12px]" />
-            <input type="file" accept="image/*" hidden
-              onchange={e => e.target.files[0] && replaceImageFx({ resIdx: ri, file: e.target.files[0] }).catch(() => {})} />
-          </label>
+          <div class="group relative">
+            <label title="res{ri} · {$editor.face.resources[ri].w}×{$editor.face.resources[ri].h} · cf{$editor.face.resources[ri].cf} — click to replace"
+              class="cursor-pointer">
+              <img src={thumbURL($editor.face.resources[ri])} alt="res{ri}"
+                class="max-h-14 max-w-14 rounded border border-border bg-[repeating-conic-gradient(#333_0_25%,#222_0_50%)] bg-[length:12px_12px]" />
+              <input type="file" accept="image/*" hidden
+                onchange={e => e.target.files[0] && replaceImageFx({ resIdx: ri, file: e.target.files[0] }).catch(() => {})} />
+            </label>
+            <button title="Download PNG" onclick={() => downloadRes(ri)}
+              class="bg-background/80 text-foreground absolute end-0.5 top-0.5 rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100">
+              <Download class="size-3.5" />
+            </button>
+          </div>
         {/each}
       </div>
     {/if}

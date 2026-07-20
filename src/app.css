@@ -1,5 +1,10 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+
+/* bits-ui выставляет data-state="checked|unchecked", а стили shadcn (switch/checkbox)
+   написаны под варианты data-checked/data-unchecked — маппим одно на другое */
+@custom-variant data-checked (&[data-state="checked"]);
+@custom-variant data-unchecked (&[data-state="unchecked"]);
 /* dark: следует за системной темой (дефолт Tailwind v4 — prefers-color-scheme) */
 
 :root {
