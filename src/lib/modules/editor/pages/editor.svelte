@@ -207,8 +207,8 @@
 {/snippet}
 
 <div class="flex h-full min-h-0 flex-1 flex-col bg-background text-foreground">
-  {#if $editor.err || ($flashing && $bleStatus)}
-    <p class="border-b px-3 py-1.5 text-sm {$editor.err ? 'text-destructive' : 'text-muted-foreground'}">
+  {#if $editor.err || ($flashing && $bleStatus) || $bleStatus?.startsWith('error:')}
+    <p class="border-b px-3 py-1.5 text-sm {$editor.err || $bleStatus?.startsWith('error:') ? 'text-destructive' : 'text-muted-foreground'}">
       {$editor.err || $bleStatus}
     </p>
   {/if}

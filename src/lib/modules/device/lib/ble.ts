@@ -375,54 +375,69 @@ export class Watch {
     // is the fallback for a browser that never uploaded here before.
     let oldId = Number(localStorage.getItem('fmc_last_wfid') || 0);
     if (!oldId && this.galleryWf.length) oldId = this.galleryWf[this.galleryWf.length - 1];
-    dbg('upload ids:', { newId: id, oldId, gallery: this.galleryWf });
 
-    this.status(`uploading “${name}”…`);
-    await this.sendData(CMD.wfInit1Req, new Uint8Array([MARKER]));
-    const r1 = await this.waitFor(CMD.wfInit1Rep);
-    if (!r1.length || r1[0] !== 1) throw new Error(`watch rejected the upload (init1: ${toHex(r1)})`);
+    const attempt = async (oldId: number) => {
+      dbg('upload ids:', { newId: id, oldId, gallery: this.galleryWf });
+      this.status(`uploading “${name}”…`);
+      await this.sendData(CMD.wfInit1Req, new Uint8Array([MARKER]));
+      const r1 = await this.waitFor(CMD.wfInit1Rep);
+      if (!r1.length || r1[0] !== 1) throw new Error(`watch rejected the upload (init1: ${toHex(r1)})`);
 
-    // §9.5e: 13 bytes, little-endian, no marker: ctr_type(3) ‖ old_wf_id ‖ new_wf_id ‖ size
-    const init2 = new Uint8Array(13), dv2 = new DataView(init2.buffer);
-    init2[0] = 3;
-    dv2.setUint32(1, oldId, true); dv2.setUint32(5, id, true); dv2.setUint32(9, data.length, true);
-    await this.sendData(CMD.wfInit2Req, init2);
-    const r2 = await this.waitFor(CMD.wfInit2Rep);
-    if (!r2.length || r2[0] !== 1) throw new Error(`watch rejected the upload (init2: ${toHex(r2)})`);
+      // §9.5e: 13 bytes, little-endian, no marker: ctr_type(3) ‖ old_wf_id ‖ new_wf_id ‖ size
+      const init2 = new Uint8Array(13), dv2 = new DataView(init2.buffer);
+      init2[0] = 3;
+      dv2.setUint32(1, oldId, true); dv2.setUint32(5, id, true); dv2.setUint32(9, data.length, true);
+      await this.sendData(CMD.wfInit2Req, init2);
+      const r2 = await this.waitFor(CMD.wfInit2Rep);
+      if (!r2.length || r2[0] !== 1) throw new Error(`watch rejected the upload (init2: ${toHex(r2)})`);
+
+      try {
+        await new Promise<void>((resolve, reject) => {
+          let watchdog: ReturnType<typeof setTimeout>;
+          const cleanup = () => { clearTimeout(watchdog); this.handlers.delete(CMD.wfChunkReq); this.handlers.delete(CMD.wfFinishAck1); };
+          const fail = (e: Error) => { cleanup(); reject(e); };
+          const kick = () => { clearTimeout(watchdog); watchdog = setTimeout(() => fail(new Error('upload stalled')), 30000); };
+          kick();
+          this.handlers.set(CMD.wfChunkReq, async p => {
+            if (p.length < 9) return fail(new Error(`short chunk request: ${toHex(p)}`));
+            kick();
+            const dv = new DataView(p.buffer, p.byteOffset);
+            const off = dv.getUint32(0), len = dv.getUint32(4);
+            if (off + len > data.length) return fail(new Error(`chunk request out of bounds: ${off}+${len}`));
+            onProgress(p[8]);
+            this.status(`uploading “${name}”… ${p[8]}%`);
+            try { await this.sendData(CMD.wfChunkWrite, data.slice(off, off + len)); } catch (e) { fail(e as Error); }
+          });
+          this.handlers.set(CMD.wfFinishAck1, async p => {
+            cleanup();
+            try { await this.sendData(CMD.wfFinishAck2, new Uint8Array([MARKER])); } catch { /* ack is best-effort */ }
+            if (p.length && p[0] === 1) {
+              // §9.5g: только один слот под сторонний циферблат — после успешной загрузки он
+              // занят этим id, а часы это в wfInstalled в течение той же сессии не подтверждают;
+              // следующий аплоад в этой сессии должен знать, что теперь заменять именно его,
+              // а не снова пытаться "добавить в пустой слот" (oldId=0) и получить тихий отказ 0x0a
+              this.galleryWf = [id];
+              resolve();
+            } else reject(new Error(`watch did not accept the file (finish: ${toHex(p)})`));
+          });
+        });
+      } finally {
+        this.handlers.delete(CMD.wfChunkReq);
+        this.handlers.delete(CMD.wfFinishAck1);
+      }
+    };
 
     try {
-      await new Promise<void>((resolve, reject) => {
-        let watchdog: ReturnType<typeof setTimeout>;
-        const cleanup = () => { clearTimeout(watchdog); this.handlers.delete(CMD.wfChunkReq); this.handlers.delete(CMD.wfFinishAck1); };
-        const fail = (e: Error) => { cleanup(); reject(e); };
-        const kick = () => { clearTimeout(watchdog); watchdog = setTimeout(() => fail(new Error('upload stalled')), 30000); };
-        kick();
-        this.handlers.set(CMD.wfChunkReq, async p => {
-          if (p.length < 9) return fail(new Error(`short chunk request: ${toHex(p)}`));
-          kick();
-          const dv = new DataView(p.buffer, p.byteOffset);
-          const off = dv.getUint32(0), len = dv.getUint32(4);
-          if (off + len > data.length) return fail(new Error(`chunk request out of bounds: ${off}+${len}`));
-          onProgress(p[8]);
-          this.status(`uploading “${name}”… ${p[8]}%`);
-          try { await this.sendData(CMD.wfChunkWrite, data.slice(off, off + len)); } catch (e) { fail(e as Error); }
-        });
-        this.handlers.set(CMD.wfFinishAck1, async p => {
-          cleanup();
-          try { await this.sendData(CMD.wfFinishAck2, new Uint8Array([MARKER])); } catch { /* ack is best-effort */ }
-          if (p.length && p[0] === 1) {
-            // §9.5g: только один слот под сторонний циферблат — после успешной загрузки он
-            // занят этим id, а часы это в wfInstalled в течение той же сессии не подтверждают;
-            // следующий аплоад в этой сессии должен знать, что теперь заменять именно его,
-            // а не снова пытаться "добавить в пустой слот" (oldId=0) и получить тихий отказ 0x0a
-            this.galleryWf = [id];
-            resolve();
-          } else reject(new Error(`watch did not accept the file (finish: ${toHex(p)})`));
-        });
-      });
-    } finally {
-      this.handlers.delete(CMD.wfChunkReq);
-      this.handlers.delete(CMD.wfFinishAck1);
+      await attempt(oldId);
+    } catch (e) {
+      // §9.5g: finish nack 0x0a means old_wf_id doesn't name a dial the watch currently has
+      // installed — our tracked id went stale (dial removed on-watch, watch factory-reset, or
+      // a different physical unit paired). Retry once as a fresh append instead of leaving the
+      // upload permanently stuck until someone clears fmc_last_wfid by hand.
+      if (oldId === 0 || !/finish: 0a/.test((e as Error).message)) throw e;
+      dbg('stale old_wf_id, retrying as append:', (e as Error).message);
+      localStorage.removeItem('fmc_last_wfid');
+      await attempt(0);
     }
     localStorage.setItem('fmc_last_wfid', String(id));
     onProgress(100);
