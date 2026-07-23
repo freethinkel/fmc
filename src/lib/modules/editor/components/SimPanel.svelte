@@ -7,8 +7,8 @@
   import { editorModel } from '../model';
   const { editor, simPatched, overrideSet } = editorModel;
 
-  // дефолт запечённого сигнального цвета (см. cmf-format-reference.md "Accent color
-  // sentinel") — просто отображается в пикере, пока юзер не выберет свой
+  // default for the baked-in sentinel color (see cmf-format-reference.md "Accent color
+  // sentinel") — just shown in the picker until the user picks their own
   const ACCENT_DEFAULT = '#ff2c00';
 
   const fields = [
@@ -37,7 +37,7 @@
     <Label class="text-xs text-muted-foreground">Accent color</Label>
     <div class="mt-0.5 flex items-center gap-2">
       <input type="color" class="h-8 w-12 cursor-pointer rounded border" value={$editor.sim.accentColor || ACCENT_DEFAULT}
-        oninput={e => simPatched({ accentColor: e.target.value })} title="Watch accent color (RGB 255,44,0 sentinel pixels)" />
+        oninput={e => simPatched({ accentColor: e.target.value })} title="Watch accent color (recolors accent-sentinel pixels, see isAccentSentinel in lib/render.ts)" />
       {#if $editor.sim.accentColor}
         <Button size="sm" variant="ghost" class="h-8" onclick={() => simPatched({ accentColor: null })}>Reset</Button>
       {/if}

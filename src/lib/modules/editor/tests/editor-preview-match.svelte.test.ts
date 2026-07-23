@@ -13,6 +13,7 @@ import { bitmapOf } from "../model/editor.model";
 import analogUrl from "./__fixtures__/Analog__287__Simple_Dial.bin?url";
 import digitalUrl from "./__fixtures__/Digital__281__Metaball.bin?url";
 import multifunctionUrl from "./__fixtures__/Multifunction__368__Function.bin?url";
+import comboUrl from "./__fixtures__/Multifunction__366__Combo.bin?url";
 import creativeUrl from "./__fixtures__/Creative__312__Disc.bin?url";
 import defaultUrl from "./__fixtures__/Default__273__Activity_Mood.bin?url";
 import diwaliUrl from "./__fixtures__/Diwali__295__Vortex.bin?url";
@@ -74,6 +75,14 @@ const CASES = [
     url: diwaliUrl,
     time: "2026-01-09T10:09:30",
     maxDiffRatio: 0.02,
+  },
+  // reported as rendering wrong in the app — threshold set high on purpose to see the
+  // real ratio/diff overlay first, tighten once the actual bug is identified.
+  {
+    name: "Multifunction__366__Combo",
+    url: comboUrl,
+    time: "2026-01-09T10:09:30",
+    maxDiffRatio: 0,
   },
 ];
 
@@ -169,6 +178,12 @@ describe("render() output matches embedded preview", () => {
       diffCanvas
         .getContext("2d")!
         .putImageData(new ImageData(diff, r.w, r.h), 0, 0);
+
+      if (name === "Multifunction__366__Combo") {
+        console.log("DEBUG_ACTUAL " + actualCanvas.toDataURL());
+        console.log("DEBUG_EXPECTED " + expectedCanvas.toDataURL());
+        console.log("DEBUG_DIFF " + diffCanvas.toDataURL());
+      }
 
       title.textContent = `${name} — ${(ratio * 100).toFixed(2)}% diff (max ${(maxDiffRatio * 100).toFixed(0)}%)`;
       [actualCanvas, expectedCanvas, diffCanvas].forEach((c, i) =>

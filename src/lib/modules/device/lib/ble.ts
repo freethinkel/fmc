@@ -4,7 +4,7 @@
 // Chromium only (no Web Bluetooth in Firefox/Safari); requires a user gesture and
 // localhost or HTTPS. This milestone: connect, pair/authenticate, read device info.
 
-// debug: всё пишется в консоль с префиксом [ble]; window.fmcBleVerbose = true включает лог кадров
+// debug: everything is logged to console with the [ble] prefix; window.fmcBleVerbose = true enables frame logging
 const dbg = (...a: unknown[]) => console.log('[ble]', new Date().toISOString().slice(11, 23), ...a);
 const verbose = () => (window as { fmcBleVerbose?: boolean } & Window).fmcBleVerbose;
 const cmdName = (key: number) => Object.entries(CMD).find(([, v]) => v === key)?.[0] || `0x${key.toString(16)}`;
@@ -55,7 +55,7 @@ const CMD = {
   wfFinishAck1: C(0xffff, 0xa065), wfFinishAck2: C(0xffff, 0x9065),
   wfInstalled: C(0xffff, 0xa055),
 };
-// authFailed часы шлют открытым текстом (6 байт — не кратно блоку AES): ключ им не расшифровать
+// the watch sends authFailed in plaintext (6 bytes — not a multiple of the AES block): it failed to decrypt with the key
 const PLAINTEXT = new Set([CMD.authPairReq, CMD.authPairRep, CMD.wfChunkWrite, CMD.authFailed]);
 const MARKER = 0xa5;
 
@@ -105,7 +105,7 @@ class Codec {
     try {
       return new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-CBC', iv: AES_IV as BufferSource }, this.cryptoKey!, data as BufferSource));
     } catch {
-      // WebCrypto кидает OperationError с пустым message при неверном ключе (битый PKCS7)
+      // WebCrypto throws OperationError with an empty message on a wrong key (broken PKCS7)
       throw new Error('decrypt failed — wrong session key');
     }
   }
@@ -139,7 +139,7 @@ class Codec {
       if (PLAINTEXT.has(key)) {
         payload = frame.slice(11);
       } else {
-        // заголовок не шифруется — при провале расшифровки видно, какая команда пришла
+        // the header isn't encrypted — so if decryption fails you can still see which command arrived
         const dec = await this.decrypt(frame.slice(11, 11 + plen)).catch(e => {
           throw new Error(`${cmdName(key)} (${plen}B): ${(e as Error).message}`);
         });
@@ -165,9 +165,9 @@ const KEY_STORE = 'fmc_authkey';
 const loadKey = (): Uint8Array | null => { const h = localStorage.getItem(KEY_STORE); return h && h.length === 32 ? fromHex(h) : null; };
 const saveKey = (k: Uint8Array) => localStorage.setItem(KEY_STORE, toHex(k));
 
-// dev-гигиена: сбрасывает Chrome-разрешения на устройство и локальный auth-ключ.
-// ponytail: не чинит блокировку на стороне часов (bond держит firmware, не браузер) —
-// только чистит наше состояние, чтобы следующий connect() стартовал с нуля.
+// dev hygiene: resets Chrome's device permissions and the local auth key.
+// ponytail: doesn't fix the lock on the watch side (the bond is held by the firmware, not the browser) —
+// it only clears our state so the next connect() starts fresh.
 export async function forgetKnownDevices(): Promise<number> {
   localStorage.removeItem(KEY_STORE);
   if (!navigator.bluetooth?.getDevices) return 0;
@@ -198,7 +198,7 @@ export class Watch {
   async connect(): Promise<WatchInfo> {
     if (!navigator.bluetooth) throw new Error('Web Bluetooth unavailable — use Chrome or Edge');
     this.status('requesting device…');
-    // как в fmc CLI: advertisement не всегда несёт сервис, матчим и по имени, и по manufacturer id
+    // like in fmc CLI: the advertisement doesn't always carry the service, so match by name and by manufacturer id too
     const pick = async () => {
       const d = await navigator.bluetooth.requestDevice({
         filters: [
@@ -215,7 +215,7 @@ export class Watch {
     let device = await pick();
     (window as unknown as { __wf?: BluetoothDevice }).__wf = device; // ponytail: dev console hook, remove after debugging
     this.status('connecting…');
-    // gatt.connect() висит вечно, если часы уже держат соединение с кем-то ещё
+    // gatt.connect() hangs forever if the watch is already holding a connection with someone else
     const timeout = (ms: number, what: string) => new Promise<never>((_, rej) =>
       setTimeout(() => rej(new Error(`${what} timed out — the watch is probably connected to another app or browser tab; close it (phone app, fmc CLI, old editor tab) and retry`)), ms));
     const discover = async () => {
@@ -223,11 +223,11 @@ export class Watch {
       dbg('gatt.connect()…');
       const server = await device.gatt!.connect();
       dbg('gatt connected, discovering services…');
-      // полный (ненаправленный) discovery: CoreBluetooth иногда не находит сервис через
-      // адресный getPrimaryService(uuid) сразу после коннекта, хотя он есть — сравнение с
-      // fmc CLI (ble.go), которая всегда делает DiscoverServices(nil) и видит shell-сервис
-      // надёжно. Внешний Promise.race(…, timeout(15000)) в connectOrRepick подстраховывает
-      // от того самого зависания, из-за которого раньше выбрали адресный вариант.
+      // full (undirected) discovery: CoreBluetooth sometimes fails to find a service via a
+      // targeted getPrimaryService(uuid) right after connecting, even though it's there — compared to
+      // fmc CLI (ble.go), which always does DiscoverServices(nil) and sees the shell service
+      // reliably. The outer Promise.race(…, timeout(15000)) in connectOrRepick guards
+      // against the very hang that previously led to picking the targeted variant.
       const svcs = await server.getPrimaryServices();
       for (const svc of svcs) {
         try {
@@ -241,8 +241,8 @@ export class Watch {
       dbg('required chars:', Object.fromEntries(
         (['cmdRead', 'cmdWrite', 'dataRead', 'dataWrite', 'shellRead', 'shellWrite'] as const).map(k => [k, !!this.chars[UUID[k]]])));
     };
-    // Safari-полифилл разрешает connect только сразу после выбора в picker'е —
-    // после disconnect'а бросает "not offered to this origin"; тогда показываем picker снова
+    // the Safari polyfill only allows connect right after the picker selection —
+    // after a disconnect it throws "not offered to this origin"; in that case we show the picker again
     const connectOrRepick = async (what: string) => {
       try {
         await Promise.race([discover(), timeout(15000, what)]);
@@ -256,7 +256,7 @@ export class Watch {
     try {
       await connectOrRepick('connection');
       // the shell (pairing) service sometimes shows up only on a fresh connection
-      // пауза 3 с как в fmc CLI: реконнекты без паузы вешают прошивку часов
+      // 3s pause like in fmc CLI: reconnecting without a pause hangs the watch's firmware
       if (!this.chars[UUID.shellWrite] && !loadKey()) {
         this.status('pairing service hidden — reconnecting…');
         device.gatt!.disconnect();
@@ -288,13 +288,13 @@ export class Watch {
         try {
           await this.authenticate(k);
         } catch (e) {
-          // протухший ключ (часы перепарили/сбросили) — это authFailed или молчание на первый
-          // шифрованный обмен (authMac = 0x49); остальные ошибки не трогают сохранённый ключ
+          // a stale key (the watch was re-paired/reset) shows up as authFailed or silence on the first
+          // encrypted exchange (authMac = 0x49); other errors don't touch the saved key
           if (!/rejected the auth key|timeout waiting for 0x49/.test((e as Error).message)) throw e;
           dbg('stored key stale, clearing:', (e as Error).message);
           localStorage.removeItem(KEY_STORE);
-          // pairing нужен shell-сервис — если его не видно на текущем соединении, реконнектимся,
-          // как и при первом парении (§233), и переподписываемся на уведомления заново
+          // pairing needs the shell service — if it's not visible on the current connection, reconnect,
+          // same as on first pairing (§233), and re-subscribe to notifications
           if (!this.chars[UUID.shellWrite]) {
             this.status('pairing service hidden — reconnecting…');
             device.gatt!.disconnect();
@@ -307,8 +307,8 @@ export class Watch {
       } else await this.pair();
       await this.fetchInfo();
     } catch (e) {
-      // без этого неудачный pair()/authenticate() оставляет физическую GATT-связь висеть:
-      // часы думают, что заняты нами, и следующий Connect снова не увидит shell-сервис
+      // without this a failed pair()/authenticate() leaves the physical GATT link hanging:
+      // the watch thinks it's busy with us, and the next Connect won't see the shell service again
       try { device.gatt!.disconnect(); } catch { /* already gone */ }
       throw e;
     }
@@ -459,10 +459,10 @@ export class Watch {
   async authenticate(k1: Uint8Array) {
     this.status('authenticating…');
     await this.codec.setKey(k1);
-    // часы шлют authFailed, если ключ им не расшифровать — реагируем сразу, не ждём таймаута
+    // the watch sends authFailed if it can't decrypt with the key — we react immediately instead of waiting for the timeout
     const failed = new Promise<never>((_, rej) =>
       this.waiters.set(CMD.authFailed, () => rej(new Error('watch rejected the auth key'))));
-    failed.catch(() => {}); // race может не успеть подписаться — глушим unhandled rejection
+    failed.catch(() => {}); // the race might not manage to subscribe in time — suppress the unhandled rejection
     const wait = (key: number) => Promise.race([this.waitFor(key), failed]);
     try {
       await this.send(CMD.authName, cat(new Uint8Array([MARKER]), utf8('fmc')));

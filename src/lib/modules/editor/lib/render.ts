@@ -27,14 +27,36 @@ export interface Sim {
   accentColor: string | null;
 }
 
-// firmware substitutes pixels in this baked range with the device's accent-color setting —
-// see cmf-format-reference.md "Accent color sentinel". Range, not one exact triple: corpus
-// scan found (255,44,0) on hands/rings and (255,60,0)/(255,80,24) on Digits_time's digits —
-// all cluster at R=255, G 40-85, B<=25 with nothing else in the 100-file corpus nearby
-// (a wider hue-based match pulled in 90/100 files — ordinary warm-colored digit strips —
-// so this stays a tight RGB box, not a hue/saturation heuristic).
-export function isAccentSentinel(r: number, g: number, b: number): boolean {
-  return r === 255 && g >= 40 && g <= 85 && b <= 25;
+// Firmware substitutes pixels near these baked reference colors with the device's own
+// accent-color setting — see cmf-format-reference.md "Accent color sentinel". Confirmed by
+// corpus scan on hands/rings (255,44,0), Digits_time's big digits (255,60,0), its
+// weekday-highlight badge (255,80,24), and Tumbler's step ring (255,72,32) — matched by
+// proximity (ACCENT_TOLERANCE per channel), not one exact triple or a hue/saturation net (a
+// hue-based match pulled in 90/100 files, ordinary warm-colored digit strips). cf=5 stores
+// alpha separately from RGB (not premultiplied), so a shape's anti-aliased edge pixels keep
+// ~the same RGB as its interior at lower alpha — recolor those too, or the shape keeps a
+// ghost outline in the old color; no alpha floor here.
+// Color alone is NOT sufficient to exclude false positives: (255,72,32) is also a full-alpha
+// *solid design fill* on Digital__282__Radar_Sweep's ordinary `number` (hour/minute) digit
+// strips — genuinely indistinguishable from the Tumbler ring by pixel color. What actually
+// distinguishes them is role: every confirmed accent case is a `hand`, ring (0x80/0x81), or
+// `image` pick-list — never a `number`. isAccentSentinel only tests color; the caller
+// (editor.model.ts's accentEligibleResources) is what excludes `number`-tag resources by
+// walking the tree, and that's load-bearing — don't rely on color proximity alone to keep
+// Radar_Sweep excluded if you touch this list.
+const ACCENT_REFERENCES = [
+  { r: 255, g: 44, b: 0 },
+  { r: 255, g: 60, b: 0 },
+  { r: 255, g: 80, b: 24 },
+  { r: 255, g: 72, b: 32 },
+];
+const ACCENT_TOLERANCE = 6;
+
+export function isAccentSentinel(r: number, g: number, b: number, a: number): boolean {
+  // r pinned exactly — all references are r=255, and letting it float even ±10 dragged in
+  // unrelated warm colors (89/100 files); only g/b get tolerance around each reference
+  if (r !== 255 || a === 0) return false;
+  return ACCENT_REFERENCES.some(c => Math.abs(g - c.g) <= ACCENT_TOLERANCE && Math.abs(b - c.b) <= ACCENT_TOLERANCE);
 }
 
 export interface TimeParts { h: number; m: number; s: number; day: number; wd: number; mon: number }

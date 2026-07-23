@@ -23,8 +23,8 @@
 
   let canvas = $state(null);
   let publishOpen = $state(false);
-  let mobilePanel = $state(null); // 'tree' | 'props' | 'sim' — нижняя шторка на мобиле
-  let rightPanel = $state('props'); // 'props' | 'sim' — вкладки правой панели
+  let mobilePanel = $state(null); // 'tree' | 'props' | 'sim' — bottom sheet on mobile
+  let rightPanel = $state('props'); // 'props' | 'sim' — right panel tabs
   let hits = [];
   const flashing = flashFx.pending;
   const saving = saveFx.pending;
@@ -37,7 +37,7 @@
     if (e.target.value !== undefined) e.target.value = '';
   }
 
-  // Save: новый → черновик; уже открытый свой → обновление с сохранением статуса
+  // Save: new watchface → draft; already-open own watchface → update, keeping its status
   async function saveDraft() {
     try {
       await saveFx({
@@ -50,17 +50,17 @@
     }
   }
 
-  // тулбар редактора живёт в общей шапке, пока открыта эта страница
+  // the editor toolbar lives in the shared header while this page is open
   $effect(() => {
     headerSlot.snippet = toolbar;
     return () => (headerSlot.snippet = null);
   });
 
-  // выбор ноды (в дереве или на канвасе) возвращает правую панель на свойства —
-  // именно на событие select, а не на реактивное чтение $editor.sel: стор меняется
-  // на каждый simPatched (правка симулятора), и если нода осталась выбранной с
-  // прошлого раза, эффект по $editor.sel дёргался бы на каждый ввод и сбрасывал
-  // вкладку обратно на Properties.
+  // selecting a node (in the tree or on the canvas) switches the right panel to
+  // Properties — off the select event itself, not a reactive read of $editor.sel:
+  // the store changes on every simPatched (a simulator tweak), and if a node stayed
+  // selected from before, an effect keyed on $editor.sel would fire on every input
+  // and keep resetting the tab back to Properties.
   $effect(() => select.watch(node => { if (node) rightPanel = 'props'; }));
 
   // ---- rendering ----
@@ -163,7 +163,7 @@
   async function flashWatch() {
     try {
       await flashFx(buildCurrentBin());
-    } catch { /* статус уже в bleStatus */ }
+    } catch { /* status is already in bleStatus */ }
   }
 
   const hasAOD = $derived($editor.face?.screens.some(s => s.tag === TAG.aod));
@@ -240,7 +240,7 @@
       </Tabs.Root>
     </aside>
 
-    <!-- мобильные кнопки панелей: каждая открывает нижнюю шторку -->
+    <!-- mobile panel buttons: each opens the bottom sheet -->
     {#if $editor.face}
       <div class="flex gap-2 border-t p-2 md:hidden">
         <Button variant="outline" class="flex-1" onclick={() => (mobilePanel = 'tree')}>

@@ -10,14 +10,14 @@
 
 	const connecting = connectFx.pending;
 	const forgetting = forgetFx.pending;
-	// какой циферблат реально активен, протокол не сообщает — показываем последний прошитый нами
+	// which watchface is actually active, the protocol doesn't report it — we show the last one we flashed
 	const lastFlashed = Number(localStorage.getItem('fmc_last_wfid') || 0);
 </script>
 
 <svelte:head><title>Watch — FMC Watchfaces</title></svelte:head>
 
 <main class="flex flex-1 flex-col gap-4 overflow-y-auto p-4 lg:p-6">
-	<!-- ponytail: не гейтим по navigator.bluetooth при рендере — Safari-полифилл инжектится позже; реальная проверка в ble.ts при клике -->
+	<!-- ponytail: don't gate on navigator.bluetooth at render time — the Safari polyfill injects later; the real check is in ble.ts on click -->
 	{#if !$bleInfo}
 		<Card.Root class="max-w-md">
 			<Card.Header>

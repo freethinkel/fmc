@@ -1,4 +1,4 @@
-// Авторизация: effector-обёртка над pb.authStore.
+// Auth: effector wrapper around pb.authStore.
 import { createEffect, createEvent, createStore } from 'effector';
 import type { AuthRecord } from 'pocketbase';
 import { pb } from '$lib/shared/api';

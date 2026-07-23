@@ -19,11 +19,11 @@
   loadMarketFx().catch(() => {});
 
   const TABS = ['nothing', 'community'];
-  // таб живёт в URL (?tab=), чтобы не сбрасывался при перезагрузке страницы
+  // tab lives in the URL (?tab=) so it survives a page reload
   let tab = $state(TABS.includes(page.url.searchParams.get('tab')) ? page.url.searchParams.get('tab') : 'nothing');
   $effect(() => {
-    // window.location, не page.url — иначе эффект зависит от того же URL, который сам
-    // меняет через goto(), и уходит в бесконечный цикл навигации
+    // window.location, not page.url — otherwise the effect depends on the same URL it
+    // changes via goto(), and ends up in an infinite navigation loop
     const url = new URL(window.location.href);
     url.searchParams.set('tab', tab);
     goto(url, { replaceState: true, noScroll: true, keepFocus: true });
@@ -37,8 +37,8 @@
 
   const shown = $derived(
     $items
-      // "From Nothing" — весь каталог без владельца (и заводские type=nothing, и cmf),
-      // сгруппированный по категориям (см. grouped ниже)
+      // "From Nothing" — the whole catalog without an owner (both factory type=nothing
+      // and cmf), grouped by category (see grouped below)
       .filter(wf => (tab === 'community' ? !!wf.owner : !wf.owner))
       .filter(wf => wf.name.toLowerCase().includes(query.trim().toLowerCase()))
       .toSorted((a, b) => (sort === 'popular'
@@ -46,8 +46,8 @@
         : b.created.localeCompare(a.created)))
   );
 
-  // "From Nothing" — секции по категориям с горизонтальным скроллом (как на самих часах),
-  // не плоская сетка
+  // "From Nothing" — sections by category with horizontal scroll (like on the watch itself),
+  // not a flat grid
   const grouped = $derived.by(() => {
     const byCat = new Map();
     for (const wf of shown) {
@@ -58,9 +58,9 @@
     return [...byCat.entries()];
   });
 
-  // все данные уже загружены целиком (getFullList в модели) — прогрессивно раскрываем
-  // только рендер плоской сетки (community), чтобы на экран сразу не выливалось много
-  // карточек. Сбрасывается при смене вкладки/поиска/сортировки, т.к. это меняет shown.
+  // all data is already loaded in full (getFullList in the model) — we progressively
+  // reveal only the flat grid (community) render, so the screen doesn't get flooded
+  // with cards at once. Resets on tab/search/sort change since that changes shown.
   const PAGE = 60;
   let visibleCount = $state(PAGE);
   $effect(() => { tab; query; sort; visibleCount = PAGE; });
@@ -151,7 +151,7 @@
   {/snippet}
 
   {#if tab === 'nothing'}
-    <!-- секции по категориям, горизонтальный скролл внутри каждой — как на самих часах -->
+    <!-- sections by category, horizontal scroll within each — like on the watch itself -->
     <main class="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6">
       {#each grouped as [category, list] (category)}
         <section class="mb-6">

@@ -48,7 +48,7 @@
     e.target.value = '';
   }
 
-  const openNodes = new SvelteSet(); // аккордион: закрыт по умолчанию, ключ — сам узел (дерево мутабельное, ссылки стабильны)
+  const openNodes = new SvelteSet(); // accordion: closed by default, keyed by the node itself (tree is mutable, refs are stable)
   function toggleOpen(n, e) {
     e.stopPropagation();
     if (openNodes.has(n)) openNodes.delete(n); else openNodes.add(n);

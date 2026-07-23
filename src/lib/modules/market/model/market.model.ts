@@ -1,10 +1,10 @@
-// Маркетплейс: effector-сторы поверх PocketBase.
+// Marketplace: effector stores on top of PocketBase.
 import { createEffect, createEvent, createStore, sample } from 'effector';
 import type { RecordModel } from 'pocketbase';
 import { pb } from '$lib/shared/api';
 import { bleModel } from '$lib/modules/device/model';
 
-const MAX_BIN = 1048576; // лимит .bin, продублирован в схеме PB
+const MAX_BIN = 1048576; // .bin limit, duplicated in the PB schema
 
 export const loadMarketFx = createEffect(async () => {
   // ponytail: full list, not paginated — catalog + user publishes are a couple hundred
@@ -32,7 +32,7 @@ export const toggleLikeFx = createEffect(
 export const removeFx = createEffect((wf: RecordModel) => pb.collection('watchfaces').delete(wf.id));
 sample({ clock: removeFx.done, target: loadMarketFx });
 
-// циферблат, открытый в редакторе со страниц market/my — Save/Publish обновляют его, а не плодят копии
+// watchface opened in the editor from the market/my pages — Save/Publish update it in place instead of spawning copies
 export const openedWfSet = createEvent<RecordModel | null>();
 export const openedWf = createStore<RecordModel | null>(null).on(openedWfSet, (_, wf) => wf);
 
@@ -40,7 +40,7 @@ export interface SavePayload {
   name: string; description?: string; ownerId: string; bin: Uint8Array; preview: Blob; published: boolean;
 }
 
-// create или update открытой своей записи; возвращает запись, чтобы след. Save шёл в неё же
+// create or update the currently opened own record; returns the record so the next Save targets the same one
 export const saveFx = createEffect(async (p: SavePayload) => {
   if (p.bin.length > MAX_BIN)
     throw new Error(`bin is ${(p.bin.length / 1024 / 1024).toFixed(1)} MB — limit is 1 MB`);

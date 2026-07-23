@@ -43,7 +43,7 @@
 			</div>
 		{/if}
 
-		<!-- на мобиле сайдбара нет — юзер живёт в шапке -->
+		<!-- no sidebar on mobile — the user lives in the header -->
 		<div class="ms-auto md:hidden">
 			{#if $user}
 				<DropdownMenu.Root>

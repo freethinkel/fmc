@@ -7,7 +7,7 @@
 	let { children } = $props();
 </script>
 
-<!-- шапка на всю ширину, сайдбар начинается под ней; на мобиле вместо сайдбара нижний таб-бар -->
+<!-- full-width header, sidebar starts below it; on mobile a bottom tab bar replaces the sidebar -->
 <div class="[--header-height:calc(var(--spacing)*14)]">
 	<Sidebar.Provider class="flex flex-col">
 		<SiteHeader />

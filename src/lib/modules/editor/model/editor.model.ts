@@ -1,10 +1,10 @@
-// Effector-модель редактора. Дерево face остаётся мутабельным (канвас читает его
-// через rAF + getState), но каждое изменение проходит через событие и возвращает
-// новый корень стора — этого достаточно, чтобы Svelte-компоненты обновились.
+// Effector model of the editor. The `face` tree stays mutable (the canvas reads it
+// via rAF + getState), but every change goes through an event and returns a new
+// store root — that's enough for Svelte components to update.
 import { createEffect, createEvent, createStore, sample } from 'effector';
 import { parseBin, buildBin, decodePixels, encodePixels, TAG, hex, unhex,
   type Face, type FaceNode, type Resource } from '../lib/wf';
-import { defaultSim, collectIds, render, ACCENT_SENTINEL, type Sim } from '../lib/render';
+import { defaultSim, collectIds, render, isAccentSentinel, type Sim } from '../lib/render';
 
 export type { Face, FaceNode, Resource, Sim };
 
@@ -20,10 +20,10 @@ export interface EditorState {
   fileLabel: string;
 }
 
-// ---- события ----
+// ---- events ----
 export const select = createEvent<FaceNode | null>();
 export const screenTagSet = createEvent<number>();
-export const checkpoint = createEvent<number | void>(); // payload: coalesce мс (по умолчанию 600)
+export const checkpoint = createEvent<number | void>(); // payload: coalesce ms (default 600)
 export const undo = createEvent();
 export const redo = createEvent();
 export const patched = createEvent<{ node: FaceNode; patch: Partial<FaceNode> }>();
@@ -31,9 +31,9 @@ export const simPatched = createEvent<Partial<Sim>>();
 export const overrideSet = createEvent<{ id: number; value: number | string }>();
 export const errored = createEvent<string>();
 const faceLoaded = createEvent<{ face: Face; label: string; dirty?: boolean }>();
-const treeChanged = createEvent<(s: EditorState) => void>(); // мутация дерева после checkpoint
+const treeChanged = createEvent<(s: EditorState) => void>(); // tree mutation after checkpoint
 
-// ---- undo/redo вне стора (в сторе только счётчики; tree only, resources вне истории) ----
+// ---- undo/redo live outside the store (only counters in the store; tree only, resources are out of history) ----
 let undoStack: string[] = [], redoStack: string[] = [], lastCp = 0;
 const snap = (s: EditorState) => JSON.stringify(s.face!.screens);
 
@@ -88,7 +88,7 @@ export const editor = createStore<EditorState>({
   }))
   .on(errored, (s, err) => ({ ...s, err }));
 
-// ---- загрузка ----
+// ---- loading ----
 export async function bitmapOf(r: Resource): Promise<ImageBitmap> {
   const px = decodePixels(r);
   return px
@@ -103,7 +103,27 @@ export const loadBufferFx = createEffect(
     return { face, label };
   });
 
-// preview-only recolor of the RGB(255,44,0) accent sentinel (cmf-format-reference.md) —
+// which resource indices are even eligible for accent recolor: same sentinel color is reused
+// as an ordinary design color on `number` digit strips (e.g. Digital__282__Radar_Sweep bakes
+// (255,72,32) as a plain orange clock face, solid fill, full alpha — indistinguishable from a
+// real sentinel by color alone). Every *confirmed* accent case in the corpus is a hand, an
+// image pick-list, or a ring (0x80/0x81) — never a `number` — so restrict by role, not just
+// color, and a resource shared by an ineligible role never gets recolored even if some other
+// reference to it would've matched.
+const ACCENT_ELIGIBLE_TAGS = new Set<number>([TAG.hand, TAG.image, 0x80, 0x81]);
+function accentEligibleResources(face: Face): Set<number> {
+  const eligible = new Set<number>();
+  const walk = (n: FaceNode, parentTag: number | null) => {
+    if (n.tag === TAG.struct && n.images && parentTag !== null && ACCENT_ELIGIBLE_TAGS.has(parentTag)) {
+      n.images.forEach(i => eligible.add(i));
+    }
+    n.subs?.forEach(s => walk(s, n.tag));
+  };
+  face.screens.forEach(s => walk(s, null));
+  return eligible;
+}
+
+// preview-only recolor of the accent sentinel (cmf-format-reference.md, isAccentSentinel) —
 // returns undefined (leave r.bitmap as-is) if the resource has no sentinel pixels at all.
 // Never touches r.data — the exported .bin must keep the literal sentinel for the real
 // watch to substitute its own accent color.
@@ -114,7 +134,7 @@ async function accentBitmapFor(r: Resource, colorHex: string): Promise<ImageBitm
   const cr = (n >> 16) & 255, cg = (n >> 8) & 255, cb = n & 255;
   let changed = false;
   for (let i = 0; i < px.length; i += 4) {
-    if (px[i] === ACCENT_SENTINEL.r && px[i + 1] === ACCENT_SENTINEL.g && px[i + 2] === ACCENT_SENTINEL.b && px[i + 3] > 0) {
+    if (isAccentSentinel(px[i], px[i + 1], px[i + 2], px[i + 3])) {
       px[i] = cr; px[i + 1] = cg; px[i + 2] = cb;
       changed = true;
     }
@@ -127,8 +147,9 @@ async function accentBitmapFor(r: Resource, colorHex: string): Promise<ImageBitm
 // resolves last wins, regardless of call order
 let accentQueue = Promise.resolve();
 function queueAccent(face: Face, color: string | null) {
-  accentQueue = accentQueue.then(() => Promise.all(face.resources.map(async r => {
-    r.accentBitmap = color ? await accentBitmapFor(r, color) : undefined;
+  const eligible = color ? accentEligibleResources(face) : null;
+  accentQueue = accentQueue.then(() => Promise.all(face.resources.map(async (r, i) => {
+    r.accentBitmap = color && eligible!.has(i) ? await accentBitmapFor(r, color) : undefined;
   }))).then(() => {});
   return accentQueue;
 }
@@ -173,7 +194,7 @@ export const newFaceFx = createEffect(async (name: string = 'Custom') => {
 sample({ clock: [loadBufferFx.doneData, newFaceFx.doneData], target: faceLoaded });
 loadBufferFx.fail.watch(({ params, error }) => errored(`${params.label}: ${error.message}`));
 
-// ---- операции с виджетами ----
+// ---- widget operations ----
 function findParent(nodes: FaceNode[], target: FaceNode): FaceNode | null {
   for (const n of nodes) {
     if (n.subs?.includes(target)) return n;
@@ -276,7 +297,7 @@ export const replaceImageFx = createEffect(
 editor.on(replaceImageFx.done, s => ({ ...s, dirty: true }));
 replaceImageFx.fail.watch(({ error }) => errored(`image replace: ${error.message}`));
 
-// ---- экспорт ----
+// ---- export ----
 function regenPreviews(face: Face, sim: Sim) {
   for (const scr of face.screens) {
     const pv = scr.subs?.find(s => s.tag === TAG.preview)?.subs?.find(s => s.tag === TAG.pvStruct);

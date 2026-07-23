@@ -4,7 +4,7 @@
 	import { goto } from "$app/navigation";
 
 	const { user } = authModel;
-	// ponytail: уже залогинен — на страницу нечего смотреть
+	// ponytail: already logged in — nothing to see on this page
 	$effect(() => { if ($user) goto("/market"); });
 </script>
 

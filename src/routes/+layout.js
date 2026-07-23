@@ -1,4 +1,4 @@
-// beacio bootstrap: бриджит navigator.bluetooth к Safari-расширению на iOS, no-op в Chrome
+// beacio bootstrap: bridges navigator.bluetooth to the Safari extension on iOS, no-op in Chrome
 import '@beacio/core/auto';
 
 export const ssr = false;

@@ -1,10 +1,10 @@
-// Web Bluetooth: подключение и прошивка часов.
+// Web Bluetooth: watch connection and flashing.
 import { createEffect, createEvent, createStore } from 'effector';
 import { Watch, forgetKnownDevices, type WatchDials, type WatchInfo } from '../lib/ble';
 
 export type { WatchDials };
 
-let watch: Watch | null = null; // живое соединение — не сериализуется, живёт вне стора
+let watch: Watch | null = null; // live connection — not serialized, lives outside the store
 const statusChanged = createEvent<string>();
 const disconnected = createEvent();
 const dialsChanged = createEvent<WatchDials>();
@@ -27,7 +27,7 @@ export const bleInfo = createStore<WatchInfo | null>(null)
   .on(connectFx.doneData, (_, i) => i)
   .reset(connectFx, disconnected);
 
-// список установленных циферблатов из a055; свои side-loaded прошивка не репортит
+// list of installed watchfaces from a055; the firmware doesn't report our own side-loaded one
 export const dials = createStore<WatchDials | null>(null)
   .on(dialsChanged, (_, d) => d)
   .reset(disconnected);

@@ -7,9 +7,9 @@ import { defineConfig, loadEnv } from 'vite';
 export default defineConfig(({ mode }) => {
 	const env = loadEnv(mode, process.cwd(), '');
 	return {
-		// PB проксируем через тот же origin — pb.ts использует location.origin.
-		// https (basicSsl) нужен только для Safari+beacio: включается BASIC_SSL=1 npm run dev;
-		// Bluefy не доверяет самоподписанному серту, ему нужен обычный http
+		// PB is proxied through the same origin — pb.ts uses location.origin.
+		// https (basicSsl) is only needed for Safari+beacio: enable with BASIC_SSL=1 npm run dev;
+		// Bluefy doesn't trust a self-signed cert and needs plain http
 		server: {
 			proxy: {
 				'/api': { target: env.VITE_DEV_PROXY_TARGET || 'http://127.0.0.1:8090', changeOrigin: true, secure: true }
@@ -23,7 +23,7 @@ export default defineConfig(({ mode }) => {
 					runes: ({ filename }) =>
 						filename.split(/[/\\]/).includes('node_modules') ? undefined : true
 				},
-				// SPA: редактор целиком живёт на browser API (canvas, BLE)
+				// SPA: the editor lives entirely on browser APIs (canvas, BLE)
 				adapter: adapter({ fallback: 'index.html' })
 			})
 		],

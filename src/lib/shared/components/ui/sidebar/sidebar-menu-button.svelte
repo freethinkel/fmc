@@ -61,7 +61,7 @@
 		"data-slot": "sidebar-menu-button",
 		"data-sidebar": "menu-button",
 		"data-size": size,
-		// data-active: вариант Tailwind срабатывает на наличие атрибута, поэтому false нельзя рендерить
+		// data-active: the Tailwind variant triggers on the attribute's presence, so false can't be rendered
 		"data-active": isActive || undefined,
 		...restProps,
 	});
