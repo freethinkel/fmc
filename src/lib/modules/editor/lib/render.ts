@@ -524,9 +524,22 @@ function drawGroup(
   const x = origin ? origin.x : ox + fr.x;
   const y = origin ? origin.y : oy + fr.y;
   const kids = (node.subs || []).filter(s => s.tag !== TAG.frame && s.tag !== TAG.bind);
-  const isAuto = (k: FaceNode) => {
+  const isTrueAuto = (k: FaceNode) => {
     const st = k.subs?.find(s => s.tag === TAG.struct);
     return !!st && metaInfo(st).w === 0x8000;
+  };
+  // a NUMBER's rendered width is inherently dynamic (digit count varies), so it doesn't carry
+  // its own 0x8000 marker — but it still needs to pack into the same auto row as a genuine
+  // auto sibling, not sit flush at the frame origin on its own axis (Function's "80%": the "%"
+  // image is 0x8000-marked, the number beside it is meta.w=0 at the same x=0,y=0 origin).
+  // ponytail: only confirmed on this one battery-percent group — gate on a real auto sibling
+  // existing at all, so a lone origin-positioned number elsewhere keeps its prior behavior.
+  const hasTrueAutoSibling = kids.some(isTrueAuto);
+  const isAuto = (k: FaceNode) => {
+    if (isTrueAuto(k)) return true;
+    if (!hasTrueAutoSibling || k.tag !== TAG.number) return false;
+    const st = k.subs?.find(s => s.tag === TAG.struct);
+    return !!st && !st.x && !st.y;
   };
   const sizes = kids.map(k => isAuto(k) ? drawWidget(null, k, res, sim, t, 0, 0, { x: 0, y: 0 }, null, arcsById) : null);
   const shown = sizes.filter((z): z is Size => !!z);
