@@ -4,7 +4,7 @@
 import { createEffect, createEvent, createStore, sample } from 'effector';
 import { parseBin, buildBin, decodePixels, encodePixels, TAG, hex, unhex,
   type Face, type FaceNode, type Resource } from '../lib/wf';
-import { defaultSim, collectIds, render, isAccentSentinel, type Sim } from '../lib/render';
+import { defaultSim, collectIds, render, metaInfo, type Sim } from '../lib/render';
 
 export type { Face, FaceNode, Resource, Sim };
 
@@ -103,30 +103,27 @@ export const loadBufferFx = createEffect(
     return { face, label };
   });
 
-// which resource indices are even eligible for accent recolor: same sentinel color is reused
-// as an ordinary design color on `number` digit strips (e.g. Digital__282__Radar_Sweep bakes
-// (255,72,32) as a plain orange clock face, solid fill, full alpha — indistinguishable from a
-// real sentinel by color alone). Every *confirmed* accent case in the corpus is a hand, an
-// image pick-list, or a ring (0x80/0x81) — never a `number` — so restrict by role, not just
-// color, and a resource shared by an ineligible role never gets recolored even if some other
-// reference to it would've matched.
-const ACCENT_ELIGIBLE_TAGS = new Set<number>([TAG.hand, TAG.image, 0x80, 0x81]);
-function accentEligibleResources(face: Face): Set<number> {
-  const eligible = new Set<number>();
-  const walk = (n: FaceNode, parentTag: number | null) => {
-    if (n.tag === TAG.struct && n.images && parentTag !== null && ACCENT_ELIGIBLE_TAGS.has(parentTag)) {
-      n.images.forEach(i => eligible.add(i));
+// which resource indices are accent-tintable: struct.meta[7]===4 (metaInfo's `accent` field)
+// — a real per-widget capability flag, confirmed against 7 real-device test cases including
+// ones where the accent widget is baked plain white (not a color to pattern-match at all).
+// Supersedes the old pixel-color guessing entirely — see docs/cmf-protocol.md "Accent color".
+function accentFlaggedResources(face: Face): Set<number> {
+  const flagged = new Set<number>();
+  const walk = (n: FaceNode) => {
+    if (n.tag === TAG.struct && n.images && metaInfo(n).accent) {
+      n.images.forEach(i => flagged.add(i));
     }
-    n.subs?.forEach(s => walk(s, n.tag));
+    n.subs?.forEach(walk);
   };
-  face.screens.forEach(s => walk(s, null));
-  return eligible;
+  face.screens.forEach(walk);
+  return flagged;
 }
 
-// preview-only recolor of the accent sentinel (cmf-format-reference.md, isAccentSentinel) —
-// returns undefined (leave r.bitmap as-is) if the resource has no sentinel pixels at all.
-// Never touches r.data — the exported .bin must keep the literal sentinel for the real
-// watch to substitute its own accent color.
+// preview-only recolor of an accent-flagged resource: replace every non-transparent pixel's
+// RGB with the chosen color (alpha untouched) — the flag identifies the whole resource as
+// tintable regardless of its baked color, so there's no per-pixel color test here. Never
+// touches r.data — the exported .bin must keep the original bytes for the real watch to
+// substitute its own accent color.
 async function accentBitmapFor(r: Resource, colorHex: string): Promise<ImageBitmap | undefined> {
   const px = decodePixels(r);
   if (!px) return undefined; // cf=1 (JPEG) — no per-pixel recolor
@@ -134,7 +131,7 @@ async function accentBitmapFor(r: Resource, colorHex: string): Promise<ImageBitm
   const cr = (n >> 16) & 255, cg = (n >> 8) & 255, cb = n & 255;
   let changed = false;
   for (let i = 0; i < px.length; i += 4) {
-    if (isAccentSentinel(px[i], px[i + 1], px[i + 2], px[i + 3])) {
+    if (px[i + 3] > 0) {
       px[i] = cr; px[i + 1] = cg; px[i + 2] = cb;
       changed = true;
     }
@@ -147,9 +144,9 @@ async function accentBitmapFor(r: Resource, colorHex: string): Promise<ImageBitm
 // resolves last wins, regardless of call order
 let accentQueue = Promise.resolve();
 function queueAccent(face: Face, color: string | null) {
-  const eligible = color ? accentEligibleResources(face) : null;
+  const flagged = color ? accentFlaggedResources(face) : null;
   accentQueue = accentQueue.then(() => Promise.all(face.resources.map(async (r, i) => {
-    r.accentBitmap = color && eligible!.has(i) ? await accentBitmapFor(r, color) : undefined;
+    r.accentBitmap = color && flagged!.has(i) ? await accentBitmapFor(r, color) : undefined;
   }))).then(() => {});
   return accentQueue;
 }
@@ -162,6 +159,12 @@ simPatched.watch(patch => {
 faceLoaded.watch(({ face }) => {
   const { accentColor } = editor.getState().sim;
   if (accentColor) queueAccent(face, accentColor);
+});
+// PropsPanel's "tints with device accent color" checkbox flips meta[7] via `patched` — re-run
+// so a live accent preview picks up the change immediately, not just on the next color pick
+patched.watch(() => {
+  const { face, sim } = editor.getState();
+  if (face && sim.accentColor) queueAccent(face, sim.accentColor);
 });
 
 export const newFaceFx = createEffect(async (name: string = 'Custom') => {

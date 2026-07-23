@@ -37,7 +37,7 @@
     <Label class="text-xs text-muted-foreground">Accent color</Label>
     <div class="mt-0.5 flex items-center gap-2">
       <input type="color" class="h-8 w-12 cursor-pointer rounded border" value={$editor.sim.accentColor || ACCENT_DEFAULT}
-        oninput={e => simPatched({ accentColor: e.target.value })} title="Watch accent color (recolors accent-sentinel pixels, see isAccentSentinel in lib/render.ts)" />
+        oninput={e => simPatched({ accentColor: e.target.value })} title="Watch accent color (recolors widgets flagged via meta[7]===4, see metaInfo in lib/render.ts)" />
       {#if $editor.sim.accentColor}
         <Button size="sm" variant="ghost" class="h-8" onclick={() => simPatched({ accentColor: null })}>Reset</Button>
       {/if}

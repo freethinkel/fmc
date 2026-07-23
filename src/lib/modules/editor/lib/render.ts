@@ -22,41 +22,10 @@ export interface Sim {
   steps: SimValue; hr: SimValue; battery: SimValue; calories: SimValue;
   temp: SimValue; distance: SimValue; stepsGoal: SimValue; calGoal: SimValue;
   overrides: Record<number, number | string>;
-  // preview override for the accent sentinel range (see cmf-format-reference.md);
-  // null = draw the baked default. Applied async in editor.model.ts's applyAccent().
+  // preview override for accent-flagged widgets (see metaInfo's `accent` field / "Accent
+  // color" in docs/cmf-protocol.md); null = draw the baked default. Applied async in
+  // editor.model.ts's applyAccent().
   accentColor: string | null;
-}
-
-// Firmware substitutes pixels near these baked reference colors with the device's own
-// accent-color setting — see cmf-format-reference.md "Accent color sentinel". Confirmed by
-// corpus scan on hands/rings (255,44,0), Digits_time's big digits (255,60,0), its
-// weekday-highlight badge (255,80,24), and Tumbler's step ring (255,72,32) — matched by
-// proximity (ACCENT_TOLERANCE per channel), not one exact triple or a hue/saturation net (a
-// hue-based match pulled in 90/100 files, ordinary warm-colored digit strips). cf=5 stores
-// alpha separately from RGB (not premultiplied), so a shape's anti-aliased edge pixels keep
-// ~the same RGB as its interior at lower alpha — recolor those too, or the shape keeps a
-// ghost outline in the old color; no alpha floor here.
-// Color alone is NOT sufficient to exclude false positives: (255,72,32) is also a full-alpha
-// *solid design fill* on Digital__282__Radar_Sweep's ordinary `number` (hour/minute) digit
-// strips — genuinely indistinguishable from the Tumbler ring by pixel color. What actually
-// distinguishes them is role: every confirmed accent case is a `hand`, ring (0x80/0x81), or
-// `image` pick-list — never a `number`. isAccentSentinel only tests color; the caller
-// (editor.model.ts's accentEligibleResources) is what excludes `number`-tag resources by
-// walking the tree, and that's load-bearing — don't rely on color proximity alone to keep
-// Radar_Sweep excluded if you touch this list.
-const ACCENT_REFERENCES = [
-  { r: 255, g: 44, b: 0 },
-  { r: 255, g: 60, b: 0 },
-  { r: 255, g: 80, b: 24 },
-  { r: 255, g: 72, b: 32 },
-];
-const ACCENT_TOLERANCE = 6;
-
-export function isAccentSentinel(r: number, g: number, b: number, a: number): boolean {
-  // r pinned exactly — all references are r=255, and letting it float even ±10 dragged in
-  // unrelated warm colors (89/100 files); only g/b get tolerance around each reference
-  if (r !== 255 || a === 0) return false;
-  return ACCENT_REFERENCES.some(c => Math.abs(g - c.g) <= ACCENT_TOLERANCE && Math.abs(b - c.b) <= ACCENT_TOLERANCE);
 }
 
 export interface TimeParts { h: number; m: number; s: number; day: number; wd: number; mon: number }
@@ -127,10 +96,18 @@ export function idValue(id: number, sim: Sim, t: TimeParts): number {
 
 export function metaInfo(node: FaceNode) {
   const m = unhex(node.meta || '');
-  if (m.length < 14) return { w: 0, h: 0, id: 0, sub: 0, max: 0 };
+  if (m.length < 14) return { w: 0, h: 0, id: 0, sub: 0, max: 0, accent: false };
   return {
     w: m[0] | m[1] << 8, h: m[2] | m[3] << 8,
     id: m[9], sub: m[10], max: m[11] | m[12] << 8 | m[13] << 16,
+    // meta[7] (m[7], byte 11 of the struct) === 4 marks this widget's resource(s) as
+    // accent-tintable — confirmed against 7 real-device test cases (Theatre, Digits_time,
+    // Tumbler, Elaborate_2 positive; Trailing, Disc, Vortex negative), including cases where
+    // the accent widget is baked plain white (Dots' hour hand, Large_Number's digits) — this
+    // is a real per-widget capability flag, independent of baked pixel color. Supersedes the
+    // old color-proximity guessing (isAccentSentinel/ACCENT_REFERENCES) entirely — see
+    // docs/cmf-protocol.md "Accent color".
+    accent: m[7] === 4,
   };
 }
 
@@ -207,25 +184,61 @@ function sectorImage(ctx: Ctx, b: ImageBitmap, x: number, y: number, spec: ArcSp
   ctx.restore();
 }
 
+// ring stroke color for imageless progress rings: meta bytes 4-6 are an explicit RGB,
+// gated by byte 7 === 1 (byte 7 === 4 on the plain steps ring means "no explicit color").
+// Confirmed against Combo/SportPulse/ActiveTrio: the same metric id carries the same RGB
+// across all three independent files (id 0x26 -> fb471f, id 0x6c -> e3e1e6).
+function ringRGB(struct: FaceNode): [number, number, number] | null {
+  const m = unhex(struct.meta || '');
+  return m.length >= 14 && m[7] === 1 ? [m[4], m[5], m[6]] : null;
+}
+
+// byte 7 !== 1 (no baked RGB) doesn't mean "no color" — it means "follow the device's own
+// accent/theme setting", which isn't in the file at all: confirmed by Combo's plain steps
+// ring baking orange while Activity_Mood's identical-pattern ring bakes blue — two different
+// devices' accent choices, not two different renderers. Route it through sim.accentColor,
+// same as hand/image sentinel recolor, so it stays consistent with the live editor's picker.
+function hexRGB(hex: string | null): [number, number, number] | null {
+  if (!hex) return null;
+  const n = parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
 // no ring image resolved (short struct form with no image ref, or undecoded bitmap) — stroke the arc instead
-function drawProceduralArc(ctx: Ctx | null, spec: ArcSpec, x: number, y: number, frac: number, hits: Hit[] | null, node: FaceNode): Size {
-  // ponytail: 0x5b (ring) carries no radius field at all — 60 is a generic guess, not derived from the file
-  const r = spec.radius || 60;
+function drawProceduralArc(
+  ctx: Ctx | null, spec: ArcSpec, x: number, y: number, frac: number, hits: Hit[] | null, node: FaceNode,
+  w = 0, rgb: [number, number, number] | null = null,
+): Size {
+  // radius: meta.w/h (the widget's own diameter) when known, spec.radius (0x5a only)
+  // as an override, 60 as a last-resort guess for older/short structs with w=0
+  const r = spec.radius || (w ? Math.round(w / 2) : 60);
   const cx = r >= 230 ? 233 : x + r, cy = r >= 230 ? 233 : y + r;
   const a0 = spec.start * Math.PI / 180;
   const sweep = (spec.end - spec.start) * Math.PI / 180;
+  // no explicit meta color (byte 7 !== 1, e.g. the plain steps ring) — falls back to a
+  // plain orange rather than white when there's no sim.accentColor either; confirmed
+  // orange on Combo's ungrouped goal ring (Activity_Mood's identical byte pattern baked
+  // blue on its own device — genuinely undecidable from the file, see the test comment).
+  const [cr, cg, cb] = rgb ?? [255, 44, 0];
+  const lw = spec.width || 6;
+  // canvas strokes center on the path — drawing at r would bleed lw/2 past the widget's own
+  // radius (meta.w/2), making the ring visibly bigger than its bounding box. Inset so the
+  // OUTER edge lands on r instead, matching the baked preview's ring size.
+  const ringR = r - lw / 2;
   if (ctx) {
     ctx.save();
-    ctx.lineWidth = Math.min(spec.width || 6, 24);
-    ctx.lineCap = 'round';
-    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+    ctx.lineWidth = lw;
+    // butt, not round — the baked preview cuts the arc's start/end with a flat radial
+    // edge (visible on Combo's 270°-sweep goal rings), not a rounded stroke cap
+    ctx.lineCap = 'butt';
+    ctx.strokeStyle = `rgba(${cr},${cg},${cb},0.03)`;
     ctx.beginPath();
-    ctx.arc(cx, cy, r, a0, a0 + sweep, sweep < 0);
+    ctx.arc(cx, cy, ringR, a0, a0 + sweep, sweep < 0);
     ctx.stroke();
     if (frac > 0.002) {
-      ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+      ctx.strokeStyle = `rgb(${cr},${cg},${cb})`;
       ctx.beginPath();
-      ctx.arc(cx, cy, r, a0, a0 + sweep * frac, sweep < 0);
+      ctx.arc(cx, cy, ringR, a0, a0 + sweep * frac, sweep < 0);
       ctx.stroke();
     }
     ctx.restore();
@@ -379,9 +392,9 @@ function drawWidget(
     const spec = parseArcSpec(node);
     if (!spec) return null;
     const b = bmp(res, imgs[0]);
-    const { id } = metaInfo(struct);
+    const { id, w } = metaInfo(struct);
     const frac = progressFrac(id, sim, t, spec);
-    if (!b) return drawProceduralArc(ctx, spec, x, y, frac, hits, node);
+    if (!b) return drawProceduralArc(ctx, spec, x, y, frac, hits, node, w, ringRGB(struct) ?? hexRGB(sim.accentColor));
     if (ctx && frac > 0.002) sectorImage(ctx, b, x, y, spec, frac);
     if (ctx) hits?.push({ node, x, y, w: b.width, h: b.height });
     return { w: b.width, h: b.height };
@@ -393,7 +406,7 @@ function drawWidget(
     const spec = parseArcSpec(node);
     if (!spec) return null;
     const b = bmp(res, imgs[0]);
-    const { id } = metaInfo(struct);
+    const { id, w } = metaInfo(struct);
     const frac = progressFrac(id, sim, t, spec);
     if (b && b.height > 3 * b.width) { // vertical bar
       if (ctx && frac > 0.002) {
@@ -412,7 +425,7 @@ function drawWidget(
       if (ctx) hits?.push({ node, x, y, w: b.width, h: b.height });
       return { w: b.width, h: b.height };
     }
-    return drawProceduralArc(ctx, spec, x, y, frac, hits, node);
+    return drawProceduralArc(ctx, spec, x, y, frac, hits, node, w, ringRGB(struct) ?? hexRGB(sim.accentColor));
   }
 
   // 0x85: widget slot — user assigns one of several metrics to this slot in the companion app.
@@ -491,7 +504,12 @@ function drawGroup(
         drawWidget(ctx, k, res, sim, t, 0, 0, pos, hits, arcsById);
         c += (vertical ? z.h : z.w) + fr.gap;
       } else if (!isAuto(k)) {
-        drawWidget(ctx, k, res, sim, t, x, y, null, hits, arcsById);
+        // progress rings (0x80/0x81) inside a group carry already-absolute struct x/y —
+        // confirmed on Combo, where a grouped ring's x/y is byte-identical to an ungrouped
+        // sibling ring at the same screen position. Adding the frame origin on top (as the
+        // other non-auto widgets need) pushes them off-canvas.
+        const isRing = k.tag === 0x80 || k.tag === 0x81;
+        drawWidget(ctx, k, res, sim, t, isRing ? 0 : x, isRing ? 0 : y, null, hits, arcsById);
       }
     });
     hits?.push({ node, x, y, w: fr.w, h: fr.h });

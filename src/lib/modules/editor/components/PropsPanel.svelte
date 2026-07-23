@@ -45,6 +45,14 @@
   function setFmt(digits, pad) {
     set(fmtNode, { hex: hex(new Uint8Array([(digits & 0x1f) | (pad ? 0x80 : 0)])) });
   }
+  // meta[7] === 4 marks this widget's resource(s) accent-tintable on the real device — see
+  // docs/cmf-protocol.md "Accent color". Every non-transparent pixel gets swapped, regardless
+  // of its baked color, so this works on any art (white, colored, whatever).
+  function setAccent(on) {
+    const v = unhex(st.meta);
+    v[7] = on ? 4 : 0;
+    set(st, { meta: hex(v) });
+  }
   function thumbURL(r) {
     const c = document.createElement('canvas');
     c.width = r.w; c.height = r.h;
@@ -110,6 +118,12 @@
         source: <span class="text-foreground">0x{meta.id.toString(16)} — {ID_LABELS[meta.id] || '?'}</span>
         {#if meta.max}, max {meta.max}{/if}
       </p>
+    {/if}
+    {#if st?.meta}
+      <div class="flex items-center gap-2">
+        <Checkbox checked={meta?.accent} onCheckedChange={v => setAccent(v)} id="accent" />
+        <Label for="accent">tints with device accent color</Label>
+      </div>
     {/if}
     {#if st?.meta}
       <div>
