@@ -32,14 +32,16 @@ const CASES = [
     maxDiffRatio: 0.01,
   },
   // has an hour/minute/second hand trio; the exact baked second is unknowable, so hand
-  // angles drift a little even when correct. Also: one widget ("68 Bpm") is hidden behind
-  // an unmapped bind data-source id (0x79, likely a swipeable-tile selector) — a real
-  // protocol gap, not a rendering bug, tracked separately rather than papered over here.
+  // angles drift a little even when correct — the main remaining diff source now that the
+  // widget-slot tiles render correctly (0x79/0x7a bind synthesized from each slot's own
+  // activeIdx via withSlotOverrides — see render.ts; previously all 8 per-metric "skin"
+  // groups rendered simultaneously since that bind was unmapped, corrected once the real
+  // device confirmed the id 0x79+slotIndex/val-position mechanism).
   {
     name: "Multifunction__368__Function",
     url: multifunctionUrl,
     time: "2026-01-09T10:09:30",
-    maxDiffRatio: 0.04,
+    maxDiffRatio: 0.025,
   },
   // the highlighted metaball node is a JPEG frame baked by the original tool at a visibly
   // darker gray than the file's own preview snapshot (verified against the raw JPEG bytes,
