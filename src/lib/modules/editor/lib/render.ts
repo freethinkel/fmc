@@ -185,7 +185,11 @@ export function parseArcSpec(node: FaceNode): ArcSpec | null {
 
 function sectorImage(ctx: Ctx, b: ImageBitmap, x: number, y: number, spec: ArcSpec, frac: number) {
   const cx = x + b.width / 2, cy = y + b.height / 2;
-  const a0 = spec.start * Math.PI / 180;
+  // ponytail: image-backed arcs (0x5b) start at 12 o'clock, not the 3-o'clock/LVGL convention
+  // documented for procedural arcs (0x5a) near parseArcSpec — measured against Function's
+  // battery ring (id 0x24): our gap centered ~90° clockwise of the baked preview's at start=0.
+  // Only verified on this one ring; revisit if another 0x5b face disagrees.
+  const a0 = (spec.start - 90) * Math.PI / 180;
   const sweep = (spec.end - spec.start) * Math.PI / 180;
   ctx.save();
   if (frac < 0.999 || Math.abs(sweep) < 2 * Math.PI - 0.01) {

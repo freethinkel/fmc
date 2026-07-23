@@ -36,12 +36,13 @@ const CASES = [
   // widget-slot tiles render correctly (0x79/0x7a bind synthesized from each slot's own
   // activeIdx via withSlotOverrides — see render.ts; previously all 8 per-metric "skin"
   // groups rendered simultaneously since that bind was unmapped, corrected once the real
-  // device confirmed the id 0x79+slotIndex/val-position mechanism).
+  // device confirmed the id 0x79+slotIndex/val-position mechanism) and the battery ring's
+  // sectorImage gap sits at the right angle (was rotated ~90° off — see sectorImage's note).
   {
     name: "Multifunction__368__Function",
     url: multifunctionUrl,
     time: "2026-01-09T10:09:30",
-    maxDiffRatio: 0.025,
+    maxDiffRatio: 0.02,
   },
   // the highlighted metaball node is a JPEG frame baked by the original tool at a visibly
   // darker gray than the file's own preview snapshot (verified against the raw JPEG bytes,
