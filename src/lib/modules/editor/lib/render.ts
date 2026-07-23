@@ -490,6 +490,15 @@ function drawWidget(
     return { w: b.width, h: b.height };
   }
 
+  // sub===4 with a single image: a "−" sign glyph for a value that can go negative (seen only
+  // on temperature's sign digit) — no bind sibling gates it, so the device must show it purely
+  // from the value's sign. Confirmed against Function's baked preview: sim.temp=25 (positive)
+  // bakes with no minus sign at all, not a blank/space glyph swapped in.
+  {
+    const { id, sub } = metaInfo(struct);
+    if (sub === 4 && imgs.length === 1 && idValue(id, sim, t) >= 0) return null;
+  }
+
   // 0x30 and others: a single image or a pick by value (7 days / 12 months / 2 AM-PM)
   let idx = 0;
   if (imgs.length > 1) {
@@ -551,16 +560,27 @@ function drawGroup(
   const vertical = autoStructs.length > 1
     && spread(autoStructs.map(s => s.y || 0)) > spread(autoStructs.map(s => s.x || 0));
 
+  // a nested Group child (e.g. the icon+digits+degree auto-row inside Function's temperature
+  // tile) has no TAG.struct of its own — its position is its OWN frame's x/y instead. Read
+  // either uniformly so a Group child can be measured/centered the same way a struct-bearing
+  // one is below.
+  const localOrigin = (k: FaceNode): { x: number; y: number } | null => {
+    const st = k.subs?.find(s => s.tag === TAG.struct);
+    if (st) return { x: st.x || 0, y: st.y || 0 };
+    if (k.tag === TAG.group) { const kfr = parseFrame(k); return kfr ? { x: kfr.x, y: kfr.y } : null; }
+    return null;
+  };
+
   // boxed non-auto children (see below) need their own direction reading — pulling in
   // unrelated abs siblings (e.g. a lone icon at a different y) to decide `vertical` would
   // also skew the auto/shown centering above, which already worked. With only one boxed
   // sibling there's nothing to read a spread from, so fall back to the group's own axis.
-  const boxedStructs = kids
+  const boxedOrigins = kids
     .filter(k => k.tag !== 0x80 && k.tag !== 0x81 && !isAuto(k))
-    .map(k => k.subs?.find(s => s.tag === TAG.struct))
-    .filter((s): s is FaceNode => !!s);
-  const boxedVertical = boxedStructs.length > 1
-    ? spread(boxedStructs.map(s => s.y || 0)) > spread(boxedStructs.map(s => s.x || 0))
+    .map(localOrigin)
+    .filter((p): p is { x: number; y: number } => !!p);
+  const boxedVertical = boxedOrigins.length > 1
+    ? spread(boxedOrigins.map(p => p.y)) > spread(boxedOrigins.map(p => p.x))
     : vertical;
 
   const total = shown.reduce((s, z) => s + (vertical ? z.h : z.w), 0) + fr.gap * Math.max(0, shown.length - 1);
@@ -597,20 +617,27 @@ function drawGroup(
         // size, so measure the real drawn size for centering rather than trust meta.w.
         // ponytail: only Combo/Function confirm this reading — revisit if a face turns up
         // where a non-auto child sits at cross-axis 0 on purpose without wanting centering.
-        const kst = !isRing ? k.subs?.find(s => s.tag === TAG.struct) : null;
-        const boxed = kst && (boxedVertical ? !kst.x : !kst.y);
+        // Applies to nested Group children too (e.g. the temperature tile's icon+digits+degree
+        // row sitting beside a standalone degree-symbol sibling) via localOrigin's frame.x/y.
+        const origin2 = !isRing ? localOrigin(k) : null;
+        const boxed = origin2 && (boxedVertical ? !origin2.x : !origin2.y);
         const measured = boxed ? drawWidget(null, k, res, sim, t, 0, 0, { x: 0, y: 0 }, null, arcsById) : null;
         const pos = measured
           ? (boxedVertical
-              ? { x: x + crossOffset(fr.align, fr.w, measured.w), y: y + (kst!.y || 0) }
-              : { x: x + (kst!.x || 0), y: y + crossOffset(fr.align, fr.h, measured.h) })
+              ? { x: x + crossOffset(fr.align, fr.w, measured.w), y: y + origin2!.y }
+              : { x: x + origin2!.x, y: y + crossOffset(fr.align, fr.h, measured.h) })
           : null;
         drawWidget(ctx, k, res, sim, t, isRing ? 0 : x, isRing ? 0 : y, pos, hits, arcsById);
       }
     });
     hits?.push({ node, x, y, w: fr.w, h: fr.h });
   }
-  return { w: fr.w, h: fr.h };
+  // along the packing axis, an auto-sized frame (fr.w/h===0) reports its declared 0 here
+  // unless we report the clamped mainAvail instead — otherwise a parent measuring this group
+  // as one of ITS OWN boxed children (see drawGroup's own boxed-child branch above) would
+  // center it as if it had no content at all (Function's temperature tile: the icon+digits+
+  // degree row measured as width 0, over-centering it within the outer 128px tile).
+  return { w: vertical ? fr.w : mainAvail, h: vertical ? mainAvail : fr.h };
 }
 
 // render: returns hitboxes (in draw order; topmost is last)
