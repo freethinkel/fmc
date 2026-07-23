@@ -541,7 +541,7 @@ function drawGroup(
   const boxedStructs = kids
     .filter(k => k.tag !== 0x80 && k.tag !== 0x81 && !isAuto(k))
     .map(k => k.subs?.find(s => s.tag === TAG.struct))
-    .filter((s): s is FaceNode => !!s && metaInfo(s).w > 0);
+    .filter((s): s is FaceNode => !!s);
   const boxedVertical = boxedStructs.length > 1
     ? spread(boxedStructs.map(s => s.y || 0)) > spread(boxedStructs.map(s => s.x || 0))
     : vertical;
@@ -569,17 +569,19 @@ function drawGroup(
         // sibling ring at the same screen position. Adding the frame origin on top (as the
         // other non-auto widgets need) pushes them off-canvas.
         const isRing = k.tag === 0x80 || k.tag === 0x81;
-        // non-auto but still boxed: Combo's weekday/day siblings aren't 0x8000 auto-layout
-        // (no row/column packing), yet meta still declares a real w/h — an opt-in signal
-        // that this child wants cross-axis centering per frame.align, while the main axis
-        // keeps the struct's own x/y. The declared meta box (a fixed reserved slot, e.g.
-        // wide enough for the longest weekday name) isn't the widget's actual pixel size —
-        // centering the box itself left the rendered content (a narrower image/number)
-        // flush against the box's own left edge, so measure the real drawn size instead.
-        // ponytail: only one corpus example (Combo) confirms this reading — revisit if a
-        // face turns up where a non-zero meta.w on a non-auto child means something else.
+        // non-auto but still boxed: plenty of these siblings aren't 0x8000 auto-layout (no
+        // row/column packing) yet are meant to be cross-axis centered, not flush against the
+        // frame edge — Combo's weekday/day (meta.w>0, a declared-but-unused box size) and
+        // Function's calorie/battery/heart-rate/temperature tiles (meta.w===0, no box at all)
+        // both need it. The common signal in every corpus example so far: the struct's own
+        // cross-axis coordinate is 0, i.e. "not positioned, center me" — a real deliberate
+        // offset (verified: Progress_Day dot circle, Glare_2 stacked kcal block) is non-zero
+        // and is left alone. Either way the box/declared size isn't the widget's actual pixel
+        // size, so measure the real drawn size for centering rather than trust meta.w.
+        // ponytail: only Combo/Function confirm this reading — revisit if a face turns up
+        // where a non-auto child sits at cross-axis 0 on purpose without wanting centering.
         const kst = !isRing ? k.subs?.find(s => s.tag === TAG.struct) : null;
-        const boxed = kst && metaInfo(kst).w > 0;
+        const boxed = kst && (boxedVertical ? !kst.x : !kst.y);
         const measured = boxed ? drawWidget(null, k, res, sim, t, 0, 0, { x: 0, y: 0 }, null, arcsById) : null;
         const pos = measured
           ? (boxedVertical
