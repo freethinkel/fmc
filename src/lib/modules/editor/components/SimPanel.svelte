@@ -14,7 +14,7 @@
   const fields = [
     ['steps', 'steps'], ['hr', 'heart rate'], ['battery', 'battery'],
     ['calories', 'kcal'], ['temp', 'temp °'], ['distance', 'distance, m'],
-    ['stepsGoal', 'steps goal'], ['calGoal', 'kcal goal'],
+    ['stepsGoal', 'steps goal'], ['calGoal', 'kcal goal'], ['stands', 'stand hrs'],
   ];
 
   function localISO(t) {
@@ -32,6 +32,10 @@
   {/if}
   <div class="flex items-center gap-2">
     <Switch checked={$editor.sim.is24h} onCheckedChange={v => simPatched({ is24h: v })} id="h24" /><Label for="h24">24-hour format</Label>
+  </div>
+  <div class="flex items-center gap-2">
+    <Switch checked={$editor.sim.showSlotPlaceholders} onCheckedChange={v => simPatched({ showSlotPlaceholders: v })} id="slotph" />
+    <Label for="slotph">widget-slot placeholders</Label>
   </div>
   <div>
     <Label class="text-xs text-muted-foreground">Accent color</Label>

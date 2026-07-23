@@ -3,15 +3,20 @@
 import { TAG, unhex, type Face, type FaceNode, type Resource } from './wf';
 
 // Known data sources (meta byte 9). "?" = guess, not confirmed.
+// 0x1c/0x24/0x48/0x76/0x8b — labels corrected against Function's widget-slot menu (companion-app
+// icons: flame/calories, standing figure/stands, lightning/battery, road/distance, cloud-sun/aqi).
+// idValue() below matches for 0x24 (battery) and 0x48 (stands); 0x8b still returns steps (its
+// pre-existing bucket) and 0x1c/0x76 aren't cased at all (default 0) — no face in the corpus
+// binds a live widget to them directly, so only their widget-slot menu label was confirmed.
 export const ID_LABELS: Record<number, string> = {
   0x01: 'hour', 0x04: 'minute?', 0x07: 'hour (24h)',
   0x08: 'hour tens', 0x09: 'hour ones', 0x0a: 'hour (hand)', 0x0b: 'minute',
   0x0c: 'min tens', 0x0d: 'min ones', 0x0e: 'minute (hand)', 0x0f: 'second',
   0x12: 'second', 0x13: 'AM/PM', 0x16: 'month', 0x17: 'day of month', 0x18: 'weekday',
-  0x19: 'steps', 0x1a: 'heart rate', 0x1e: 'calories', 0x22: 'distance km int', 0x23: 'distance mi int',
-  0x24: 'steps (slot)', 0x26: 'steps (slot)', 0x30: 'battery', 0x36: 'temperature 2?', 0x48: 'calories', 0x49: 'steps (slot)',
+  0x19: 'steps', 0x1a: 'heart rate', 0x1c: 'calories', 0x1e: 'calories', 0x22: 'distance km int', 0x23: 'distance mi int',
+  0x24: 'battery', 0x26: 'steps (slot)', 0x30: 'battery', 0x36: 'temperature 2?', 0x48: 'stands', 0x49: 'steps (slot)',
   0x5f: 'temperature', 0x6a: 'metric (slot)?', 0x6c: 'metric (slot)?', 0x71: 'second?', 0x72: 'second (hand)',
-  0x73: '24h/metric flag', 0x74: 'distance km frac', 0x75: 'distance mi frac', 0x8b: 'metric (slot)?',
+  0x73: '24h/metric flag', 0x74: 'distance km frac', 0x75: 'distance mi frac', 0x76: 'distance', 0x8b: 'aqi',
 };
 
 type SimValue = number | '';
@@ -21,11 +26,16 @@ export interface Sim {
   is24h: boolean;
   steps: SimValue; hr: SimValue; battery: SimValue; calories: SimValue;
   temp: SimValue; distance: SimValue; stepsGoal: SimValue; calGoal: SimValue;
+  stands: SimValue; // hours stood (0x48) — see ID_LABELS/idValue note, corrected from "calories"
   overrides: Record<number, number | string>;
   // preview override for accent-flagged widgets (see metaInfo's `accent` field / "Accent
   // color" in docs/cmf-protocol.md); null = draw the baked default. Applied async in
   // editor.model.ts's applyAccent().
   accentColor: string | null;
+  // widget-slot (0x85) imgs[0] is an on-watch "tap to configure" placeholder — the real
+  // device only draws it in its own edit mode, never during normal time-telling, so the
+  // live sim skips it by default. This is an editor-only preview toggle, not real data.
+  showSlotPlaceholders: boolean;
 }
 
 export interface TimeParts { h: number; m: number; s: number; day: number; wd: number; mon: number }
@@ -42,9 +52,10 @@ export function defaultSim(): Sim {
     time: Date.now(),
     is24h: true,
     steps: 6789, hr: 72, battery: 80, calories: 321, distance: 4520, temp: 25,
-    stepsGoal: 10000, calGoal: 500,
+    stepsGoal: 10000, calGoal: 500, stands: 5,
     overrides: {}, // id -> number, manual override of any source
     accentColor: null,
+    showSlotPlaceholders: false,
   };
 }
 
@@ -80,10 +91,14 @@ export function idValue(id: number, sim: Sim, t: TimeParts): number {
     case 0x18: return t.wd; // ponytail: 0=Monday — not confirmed, tweak via override
     case 0x19: return Number(sim.steps);
     case 0x1a: return Number(sim.hr);
-    case 0x1e: case 0x48: return Number(sim.calories);
+    // 0x48/0x24 corrected against Function's widget-slot menu icons (standing figure/lightning
+    // bolt, not calories/steps) — 0x48 is stand hours, 0x24 is battery.
+    case 0x1e: return Number(sim.calories);
     case 0x22: return Math.floor(Number(sim.distance) / 1000);
     case 0x23: return Math.floor(Number(sim.distance) / 1609.34);
-    case 0x24: case 0x26: case 0x49: return Number(sim.steps);
+    case 0x24: return Number(sim.battery);
+    case 0x26: case 0x49: return Number(sim.steps);
+    case 0x48: return Number(sim.stands);
     case 0x6a: case 0x6c: case 0x8b: return Number(sim.steps); // unlabelled complication-slot metrics
     case 0x30: return Number(sim.battery);
     case 0x36: case 0x5f: return Number(sim.temp);
@@ -306,6 +321,26 @@ function collectArcsById(nodes: FaceNode[]): Map<number, FaceNode> {
   return out;
 }
 
+// widget-slot (0x85) tiles: each slot's sibling "skin" Groups (per-metric alternates sharing one
+// frame position, e.g. Function's temperature/steps/heart-rate tiles) are gated by a bind
+// condition on a synthetic id — confirmed on the real device: 0x79 + slotIndex (0x5f's own
+// byte 0), compared for equality against the metric's position in that slot's own list (0x5f's
+// activeIdx). Neither side is a real sim data source, so synthesize it as an override before
+// drawing — the existing visible()/parseBind machinery does the rest, unchanged.
+function withSlotOverrides(nodes: FaceNode[], sim: Sim): Sim {
+  const extra: Record<number, number> = {};
+  const walk = (n: FaceNode) => {
+    if (n.tag === 0x85) {
+      const sf = n.subs?.find(s => s.tag === 0x5f);
+      const v = sf ? unhex(sf.hex || '') : null;
+      if (v && v.length >= 3) extra[0x79 + v[0]] = v[2]; // v[0]=slotIndex, v[2]=activeIdx
+    }
+    n.subs?.forEach(walk);
+  };
+  nodes.forEach(walk);
+  return Object.keys(extra).length ? { ...sim, overrides: { ...extra, ...sim.overrides } } : sim;
+}
+
 function numberString(node: FaceNode, sim: Sim, t: TimeParts, arcsById: Map<number, FaceNode>): string {
   const struct = node.subs?.find(s => s.tag === TAG.struct);
   const fmt = node.subs?.find(s => s.tag === TAG.fmt);
@@ -429,16 +464,23 @@ function drawWidget(
   }
 
   // 0x85: widget slot — user assigns one of several metrics to this slot in the companion app.
-  // sibling 0x5f: [slotIndex][count][activeIdx][count × metric id][zero padding]. count === imgs.length-1,
-  // the trailing image is the "nothing assigned" icon. Show images[activeIdx], not a value-driven pick —
-  // struct.meta.id is always 0 for this tag across the corpus, so the generic branch below always drew images[0].
-  // slotIndex is just this node's 0-based position among sibling 0x85 nodes (verified, zero exceptions in
-  // the corpus) — presumably how the companion app numbers slots in its settings UI; unused for rendering.
+  // sibling 0x5f: [slotIndex][count][activeIdx][count × metric id][zero padding]. slotIndex is
+  // this node's 0-based position among sibling 0x85 nodes (verified, zero exceptions in the
+  // corpus) — presumably how the companion app numbers slots in its settings UI; unused for
+  // rendering. struct.meta.id is always 0 for this tag across the corpus — it carries no live
+  // value of its own.
+  // imgs[1..count] are the per-metric icons shown in the companion app's OWN picker menu —
+  // confirmed against the real device, they never appear on the watch face itself, in any
+  // slot state; a sibling Group elsewhere in the tree is the real on-watch visual for the
+  // selected metric, gated by a bind on id 0x79+slotIndex (see withSlotOverrides above — this
+  // node's activeIdx picks which sibling Group shows, not which image this node draws).
+  // imgs[0] is the "tap to configure" placeholder shown for every slot on-watch only in the
+  // widget-edit screen, never during normal time-telling — so this node draws nothing unless
+  // the sim's showSlotPlaceholders preview toggle is on, in which case it's always imgs[0],
+  // regardless of activeIdx.
   if (node.tag === 0x85) {
-    const sf = node.subs?.find(s => s.tag === 0x5f);
-    const v = sf ? unhex(sf.hex || '') : null;
-    const activeIdx = v && v.length >= 3 ? v[2] : imgs.length - 1;
-    const b = bmp(res, imgs[activeIdx] ?? imgs[imgs.length - 1]);
+    if (!sim.showSlotPlaceholders) return null;
+    const b = bmp(res, imgs[0]);
     if (!b) return null;
     if (ctx) { ctx.drawImage(b, x, y); hits?.push({ node, x, y, w: b.width, h: b.height }); }
     return { w: b.width, h: b.height };
@@ -492,8 +534,26 @@ function drawGroup(
   const vertical = autoStructs.length > 1
     && spread(autoStructs.map(s => s.y || 0)) > spread(autoStructs.map(s => s.x || 0));
 
+  // boxed non-auto children (see below) need their own direction reading — pulling in
+  // unrelated abs siblings (e.g. a lone icon at a different y) to decide `vertical` would
+  // also skew the auto/shown centering above, which already worked. With only one boxed
+  // sibling there's nothing to read a spread from, so fall back to the group's own axis.
+  const boxedStructs = kids
+    .filter(k => k.tag !== 0x80 && k.tag !== 0x81 && !isAuto(k))
+    .map(k => k.subs?.find(s => s.tag === TAG.struct))
+    .filter((s): s is FaceNode => !!s && metaInfo(s).w > 0);
+  const boxedVertical = boxedStructs.length > 1
+    ? spread(boxedStructs.map(s => s.y || 0)) > spread(boxedStructs.map(s => s.x || 0))
+    : vertical;
+
   const total = shown.reduce((s, z) => s + (vertical ? z.h : z.w), 0) + fr.gap * Math.max(0, shown.length - 1);
-  let c = (vertical ? y : x) + ((vertical ? fr.h : fr.w) - total) / 2;
+  // frame.w/h === 0 on the packing axis means "auto-size to content" (seen on Function's
+  // icon+digits+degree temperature row: frame w=0, gap=10, 4 auto children) — centering
+  // against a literal 0 shoved the whole packed row left by half its own width. Clamp the
+  // available length to at least `total` so an auto-sized frame just starts flush at the
+  // frame origin instead of drifting negative.
+  const mainAvail = Math.max(vertical ? fr.h : fr.w, total);
+  let c = (vertical ? y : x) + (mainAvail - total) / 2;
   if (ctx) {
     kids.forEach((k, i) => {
       const z = sizes[i];
@@ -509,7 +569,24 @@ function drawGroup(
         // sibling ring at the same screen position. Adding the frame origin on top (as the
         // other non-auto widgets need) pushes them off-canvas.
         const isRing = k.tag === 0x80 || k.tag === 0x81;
-        drawWidget(ctx, k, res, sim, t, isRing ? 0 : x, isRing ? 0 : y, null, hits, arcsById);
+        // non-auto but still boxed: Combo's weekday/day siblings aren't 0x8000 auto-layout
+        // (no row/column packing), yet meta still declares a real w/h — an opt-in signal
+        // that this child wants cross-axis centering per frame.align, while the main axis
+        // keeps the struct's own x/y. The declared meta box (a fixed reserved slot, e.g.
+        // wide enough for the longest weekday name) isn't the widget's actual pixel size —
+        // centering the box itself left the rendered content (a narrower image/number)
+        // flush against the box's own left edge, so measure the real drawn size instead.
+        // ponytail: only one corpus example (Combo) confirms this reading — revisit if a
+        // face turns up where a non-zero meta.w on a non-auto child means something else.
+        const kst = !isRing ? k.subs?.find(s => s.tag === TAG.struct) : null;
+        const boxed = kst && metaInfo(kst).w > 0;
+        const measured = boxed ? drawWidget(null, k, res, sim, t, 0, 0, { x: 0, y: 0 }, null, arcsById) : null;
+        const pos = measured
+          ? (boxedVertical
+              ? { x: x + crossOffset(fr.align, fr.w, measured.w), y: y + (kst!.y || 0) }
+              : { x: x + (kst!.x || 0), y: y + crossOffset(fr.align, fr.h, measured.h) })
+          : null;
+        drawWidget(ctx, k, res, sim, t, isRing ? 0 : x, isRing ? 0 : y, pos, hits, arcsById);
       }
     });
     hits?.push({ node, x, y, w: fr.w, h: fr.h });
@@ -525,7 +602,8 @@ export function render(ctx: Ctx, face: Face, screenTag: number, sim: Sim): Hit[]
   const scr = face.screens.find(s => s.tag === screenTag) || face.screens[0];
   const top = scr?.subs || [];
   const arcsById = collectArcsById(top);
-  for (const w of top) drawWidget(ctx, w, face.resources, sim, t, 0, 0, null, hits, arcsById);
+  const effSim = withSlotOverrides(top, sim);
+  for (const w of top) drawWidget(ctx, w, face.resources, effSim, t, 0, 0, null, hits, arcsById);
   return hits;
 }
 

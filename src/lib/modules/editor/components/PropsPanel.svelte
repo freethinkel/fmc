@@ -2,6 +2,7 @@
   import { Input } from '$lib/shared/components/ui/input';
   import { Label } from '$lib/shared/components/ui/label';
   import { Checkbox } from '$lib/shared/components/ui/checkbox';
+  import * as Select from '$lib/shared/components/ui/select';
   import { Download } from '@lucide/svelte';
   import { cn } from '$lib/shared/helpers';
   import { TAG, unhex, hex } from '../lib/wf';
@@ -30,7 +31,8 @@
 
   function setFrame(patch) {
     const f = $editor.sel.subs.find(s => s.tag === TAG.frame);
-    const v = unhex(f.hex);
+    let v = unhex(f.hex);
+    if (v.length < 10) { const b = new Uint8Array(10); b.set(v); v = b; } // frame.hex may omit the align byte
     const cur = { ...frame, ...patch };
     v[0] = cur.x; v[1] = cur.x >> 8; v[2] = cur.y; v[3] = cur.y >> 8;
     v[4] = cur.w; v[5] = cur.w >> 8; v[6] = cur.h; v[7] = cur.h >> 8;
@@ -151,17 +153,17 @@
     {#if slotInfo}
       <div>
         <Label class="text-xs text-muted-foreground">widget slot — active metric</Label>
-        <div class="mt-1 flex flex-wrap gap-1">
-          {#each slotInfo.ids as id, i (i)}
-            <button type="button"
-              class={cn(
-                'h-8 rounded-lg border px-2 text-xs',
-                slotInfo.activeIdx === i ? 'bg-accent text-accent-foreground' : 'text-muted-foreground',
-              )}
-              onclick={() => setSlotActive(i)}
-            >0x{id.toString(16)} — {ID_LABELS[id] || '?'}</button>
-          {/each}
-        </div>
+        <Select.Root type="single" value={String(slotInfo.activeIdx)}
+          onValueChange={v => setSlotActive(+v)}>
+          <Select.Trigger class="mt-1 h-8 w-full text-xs">
+            {ID_LABELS[slotInfo.ids[slotInfo.activeIdx]] || `0x${slotInfo.ids[slotInfo.activeIdx]?.toString(16)}`}
+          </Select.Trigger>
+          <Select.Content>
+            {#each slotInfo.ids as id, i (i)}
+              <Select.Item value={String(i)} label={`0x${id.toString(16)} — ${ID_LABELS[id] || '?'}`} />
+            {/each}
+          </Select.Content>
+        </Select.Root>
       </div>
     {/if}
     {#if st?.images}
