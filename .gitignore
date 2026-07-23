@@ -12,6 +12,9 @@ node_modules
 .DS_Store
 Thumbs.db
 
+# Local notes
+CLAUDE.local.md
+
 # Env
 .env
 .env.*

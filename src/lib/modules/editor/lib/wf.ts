@@ -8,6 +8,9 @@ export interface Resource {
   h: number;
   data: Uint8Array;
   bitmap?: ImageBitmap;
+  // preview-only recolor of the accent sentinel (see cmf-format-reference.md) — never
+  // read by buildBin/encodePixels, must not leak into exported resource.data
+  accentBitmap?: ImageBitmap;
 }
 
 export interface FaceNode {

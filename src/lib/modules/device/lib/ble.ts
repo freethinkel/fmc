@@ -369,12 +369,14 @@ export class Watch {
 
     const id = crypto.getRandomValues(new Uint32Array(1))[0];
     // §9.5g: old_wf_id must name the installed custom dial; 0 (append) needs a free slot and
-    // works only once. This firmware's wfInstalled/gallery report does NOT reliably reflect
-    // side-loaded dials (confirmed empirically: stays [] right after a successful side-load) —
-    // so our own last-successful-upload id is the trustworthy source, the watch's live gallery
-    // is the fallback for a browser that never uploaded here before.
-    let oldId = Number(localStorage.getItem('fmc_last_wfid') || 0);
-    if (!oldId && this.galleryWf.length) oldId = this.galleryWf[this.galleryWf.length - 1];
+    // works only once — useless once anything is installed, which on this firmware is always
+    // (builtin dials ship from factory). No local cache: it can drift from watch reality
+    // (factory reset, different browser, manual removal on-watch) with no way to detect it's
+    // stale. wfInstalled never lists the side-loaded dial under gallery (downloaded) — on a
+    // fresh reconnect it shows up unnamed under builtin instead — so that's the best-effort
+    // replace target; append is a last resort only when the watch reports nothing at all.
+    const oldId = this.galleryWf.length ? this.galleryWf[this.galleryWf.length - 1]
+      : this.builtinWf.length ? this.builtinWf[this.builtinWf.length - 1] : 0;
 
     const attempt = async (oldId: number) => {
       dbg('upload ids:', { newId: id, oldId, gallery: this.galleryWf });
@@ -412,10 +414,7 @@ export class Watch {
             cleanup();
             try { await this.sendData(CMD.wfFinishAck2, new Uint8Array([MARKER])); } catch { /* ack is best-effort */ }
             if (p.length && p[0] === 1) {
-              // §9.5g: только один слот под сторонний циферблат — после успешной загрузки он
-              // занят этим id, а часы это в wfInstalled в течение той же сессии не подтверждают;
-              // следующий аплоад в этой сессии должен знать, что теперь заменять именно его,
-              // а не снова пытаться "добавить в пустой слот" (oldId=0) и получить тихий отказ 0x0a
+              // §9.5g: only one slot for a side-loaded dial — this session now knows it's ours
               this.galleryWf = [id];
               resolve();
             } else reject(new Error(`watch did not accept the file (finish: ${toHex(p)})`));
@@ -427,19 +426,7 @@ export class Watch {
       }
     };
 
-    try {
-      await attempt(oldId);
-    } catch (e) {
-      // §9.5g: finish nack 0x0a means old_wf_id doesn't name a dial the watch currently has
-      // installed — our tracked id went stale (dial removed on-watch, watch factory-reset, or
-      // a different physical unit paired). Retry once as a fresh append instead of leaving the
-      // upload permanently stuck until someone clears fmc_last_wfid by hand.
-      if (oldId === 0 || !/finish: 0a/.test((e as Error).message)) throw e;
-      dbg('stale old_wf_id, retrying as append:', (e as Error).message);
-      localStorage.removeItem('fmc_last_wfid');
-      await attempt(0);
-    }
-    localStorage.setItem('fmc_last_wfid', String(id));
+    await attempt(oldId);
     onProgress(100);
     this.status('connected');
   }

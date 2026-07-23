@@ -2,16 +2,20 @@
 import { createEffect, createEvent, createStore, sample } from 'effector';
 import type { RecordModel } from 'pocketbase';
 import { pb } from '$lib/shared/api';
+import { bleModel } from '$lib/modules/device/model';
 
 const MAX_BIN = 1048576; // лимит .bin, продублирован в схеме PB
 
 export const loadMarketFx = createEffect(async () => {
-  const [wf, lk] = await Promise.all([
-    // ponytail: one page of 50 + full likes list; paginate when the list outgrows it
-    pb.collection('watchfaces').getList(1, 50, { sort: '-created', expand: 'owner', filter: 'published = true' }),
+  // ponytail: full list, not paginated — catalog + user publishes are a couple hundred
+  // records, cheap to fetch whole. getList(1, 50, ...) silently hid everything past the
+  // 50 newest (e.g. Creative__312__Disc, ranked #67 by -created) — switch to real
+  // pagination if this grows into the thousands.
+  const [items, lk] = await Promise.all([
+    pb.collection('watchfaces').getFullList({ sort: '-created', expand: 'owner', filter: 'published = true' }),
     pb.collection('likes').getFullList(),
   ]);
-  return { items: wf.items, likes: lk };
+  return { items, likes: lk };
 });
 
 export const loadMyFx = createEffect((userId: string) =>
@@ -55,6 +59,11 @@ sample({ clock: saveFx.doneData, target: openedWfSet });
 
 export const togglePublishFx = createEffect((wf: RecordModel) =>
   pb.collection('watchfaces').update(wf.id, { published: !wf.published }));
+
+// downloads counter also bumps on a successful flash to the watch — no auth check
+export const bumpDownloadsFx = createEffect((wfId: string) =>
+  pb.send(`/api/wf/${wfId}/bump-downloads`, { method: 'POST' }));
+sample({ clock: bleModel.flashFx.done, source: openedWf, filter: Boolean, fn: wf => wf.id, target: bumpDownloadsFx });
 
 export const items = createStore<RecordModel[]>([]).on(loadMarketFx.doneData, (_, d) => d.items);
 export const myItems = createStore<RecordModel[]>([])

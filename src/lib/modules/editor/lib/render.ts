@@ -22,6 +22,19 @@ export interface Sim {
   steps: SimValue; hr: SimValue; battery: SimValue; calories: SimValue;
   temp: SimValue; distance: SimValue; stepsGoal: SimValue; calGoal: SimValue;
   overrides: Record<number, number | string>;
+  // preview override for the accent sentinel range (see cmf-format-reference.md);
+  // null = draw the baked default. Applied async in editor.model.ts's applyAccent().
+  accentColor: string | null;
+}
+
+// firmware substitutes pixels in this baked range with the device's accent-color setting —
+// see cmf-format-reference.md "Accent color sentinel". Range, not one exact triple: corpus
+// scan found (255,44,0) on hands/rings and (255,60,0)/(255,80,24) on Digits_time's digits —
+// all cluster at R=255, G 40-85, B<=25 with nothing else in the 100-file corpus nearby
+// (a wider hue-based match pulled in 90/100 files — ordinary warm-colored digit strips —
+// so this stays a tight RGB box, not a hue/saturation heuristic).
+export function isAccentSentinel(r: number, g: number, b: number): boolean {
+  return r === 255 && g >= 40 && g <= 85 && b <= 25;
 }
 
 export interface TimeParts { h: number; m: number; s: number; day: number; wd: number; mon: number }
@@ -40,6 +53,7 @@ export function defaultSim(): Sim {
     steps: 6789, hr: 72, battery: 80, calories: 321, distance: 4520, temp: 25,
     stepsGoal: 10000, calGoal: 500,
     overrides: {}, // id -> number, manual override of any source
+    accentColor: null,
   };
 }
 
@@ -234,7 +248,8 @@ function crossOffset(align: number, avail: number, size: number): number {
   return (avail - size) / 2;
 }
 
-const bmp = (res: Resource[], i: number) => res[i]?.bitmap;
+// accentBitmap (if set — see editor.model.ts's applyAccent) takes priority over the baked bitmap
+const bmp = (res: Resource[], i: number) => res[i]?.accentBitmap ?? res[i]?.bitmap;
 
 // goal-relative ids (steps/calories "slot" aliases) read as a raw count everywhere, EXCEPT
 // when a NUMBER shares the screen with a progress ring bound to the same id — there it must

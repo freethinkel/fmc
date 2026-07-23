@@ -11,7 +11,8 @@
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"test": "node test.mjs",
-		"test:components": "vitest run"
+		"test:components": "vitest run",
+		"test:components:watch": "vitest --browser.headless=false --browser.ui --open"
 	},
 	"devDependencies": {
 		"@internationalized/date": "^3.12.2",

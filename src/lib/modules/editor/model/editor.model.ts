@@ -4,7 +4,7 @@
 import { createEffect, createEvent, createStore, sample } from 'effector';
 import { parseBin, buildBin, decodePixels, encodePixels, TAG, hex, unhex,
   type Face, type FaceNode, type Resource } from '../lib/wf';
-import { defaultSim, collectIds, render, type Sim } from '../lib/render';
+import { defaultSim, collectIds, render, ACCENT_SENTINEL, type Sim } from '../lib/render';
 
 export type { Face, FaceNode, Resource, Sim };
 
@@ -102,6 +102,46 @@ export const loadBufferFx = createEffect(
     for (const r of face.resources) r.bitmap = await bitmapOf(r);
     return { face, label };
   });
+
+// preview-only recolor of the RGB(255,44,0) accent sentinel (cmf-format-reference.md) —
+// returns undefined (leave r.bitmap as-is) if the resource has no sentinel pixels at all.
+// Never touches r.data — the exported .bin must keep the literal sentinel for the real
+// watch to substitute its own accent color.
+async function accentBitmapFor(r: Resource, colorHex: string): Promise<ImageBitmap | undefined> {
+  const px = decodePixels(r);
+  if (!px) return undefined; // cf=1 (JPEG) — no per-pixel recolor
+  const n = parseInt(colorHex.slice(1), 16);
+  const cr = (n >> 16) & 255, cg = (n >> 8) & 255, cb = n & 255;
+  let changed = false;
+  for (let i = 0; i < px.length; i += 4) {
+    if (px[i] === ACCENT_SENTINEL.r && px[i + 1] === ACCENT_SENTINEL.g && px[i + 2] === ACCENT_SENTINEL.b && px[i + 3] > 0) {
+      px[i] = cr; px[i + 1] = cg; px[i + 2] = cb;
+      changed = true;
+    }
+  }
+  return changed ? createImageBitmap(new ImageData(px, r.w, r.h)) : undefined;
+}
+
+// serialized — faceLoaded (reapplying the current color to a freshly parsed face) and a
+// simPatched({accentColor}) can fire back-to-back; without a queue whichever promise
+// resolves last wins, regardless of call order
+let accentQueue = Promise.resolve();
+function queueAccent(face: Face, color: string | null) {
+  accentQueue = accentQueue.then(() => Promise.all(face.resources.map(async r => {
+    r.accentBitmap = color ? await accentBitmapFor(r, color) : undefined;
+  }))).then(() => {});
+  return accentQueue;
+}
+
+simPatched.watch(patch => {
+  if (!('accentColor' in patch)) return;
+  const { face } = editor.getState();
+  if (face) queueAccent(face, patch.accentColor ?? null);
+});
+faceLoaded.watch(({ face }) => {
+  const { accentColor } = editor.getState().sim;
+  if (accentColor) queueAccent(face, accentColor);
+});
 
 export const newFaceFx = createEffect(async (name: string = 'Custom') => {
   const black = (w: number, h: number): Resource => {

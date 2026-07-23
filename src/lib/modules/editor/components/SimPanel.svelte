@@ -2,9 +2,14 @@
   import { Input } from '$lib/shared/components/ui/input';
   import { Label } from '$lib/shared/components/ui/label';
   import { Switch } from '$lib/shared/components/ui/switch';
+  import { Button } from '$lib/shared/components/ui/button';
   import { ID_LABELS } from '../lib/render';
   import { editorModel } from '../model';
   const { editor, simPatched, overrideSet } = editorModel;
+
+  // дефолт запечённого сигнального цвета (см. cmf-format-reference.md "Accent color
+  // sentinel") — просто отображается в пикере, пока юзер не выберет свой
+  const ACCENT_DEFAULT = '#ff2c00';
 
   const fields = [
     ['steps', 'steps'], ['hr', 'heart rate'], ['battery', 'battery'],
@@ -27,6 +32,16 @@
   {/if}
   <div class="flex items-center gap-2">
     <Switch checked={$editor.sim.is24h} onCheckedChange={v => simPatched({ is24h: v })} id="h24" /><Label for="h24">24-hour format</Label>
+  </div>
+  <div>
+    <Label class="text-xs text-muted-foreground">Accent color</Label>
+    <div class="mt-0.5 flex items-center gap-2">
+      <input type="color" class="h-8 w-12 cursor-pointer rounded border" value={$editor.sim.accentColor || ACCENT_DEFAULT}
+        oninput={e => simPatched({ accentColor: e.target.value })} title="Watch accent color (RGB 255,44,0 sentinel pixels)" />
+      {#if $editor.sim.accentColor}
+        <Button size="sm" variant="ghost" class="h-8" onclick={() => simPatched({ accentColor: null })}>Reset</Button>
+      {/if}
+    </div>
   </div>
   <div class="grid grid-cols-2 gap-x-3 gap-y-2">
     {#each fields as [key, label]}
