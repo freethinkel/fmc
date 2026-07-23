@@ -17,6 +17,7 @@ import comboUrl from "./__fixtures__/Multifunction__366__Combo.bin?url";
 import creativeUrl from "./__fixtures__/Creative__312__Disc.bin?url";
 import defaultUrl from "./__fixtures__/Default__273__Activity_Mood.bin?url";
 import diwaliUrl from "./__fixtures__/Diwali__295__Vortex.bin?url";
+import elaborate2Url from "./__fixtures__/Multifunction__304__Elaborate_2.bin?url";
 
 // Frozen per-file demo time — the real clock would make hands/digits differ every run.
 // Thresholds are per-file, not one shared bound: the baked preview is a real device
@@ -71,13 +72,15 @@ const CASES = [
   // "no baked RGB" fallback color is genuinely undecidable from the file alone — this file's
   // real device baked it blue, Combo's baked the same byte pattern orange (device accent
   // setting, not something the .bin carries) — defaultSim().accentColor is null in this
-  // test, so it falls to a fixed default that won't match either. Threshold set from the
-  // measured worst case (21.88% as of this writing), not fully explained.
+  // test, so it falls to a fixed default that won't match either. Threshold dropped from
+  // 22% to 17% once drawProceduralArc's start angle got the same -90° (12-o'clock-relative)
+  // fix as Combo below — this file's own procedural goal-ring was rotated the same way.
   {
     name: "Default__273__Activity_Mood",
     url: defaultUrl,
     time: "2026-01-09T10:09:30",
-    maxDiffRatio: 0.22,
+    sim: { steps: 5000, accentColor: "#4155F6" },
+    maxDiffRatio: 0.17,
   },
   // clean match.
   {
@@ -89,13 +92,52 @@ const CASES = [
   // 3 concentric goal-rings, no image ref — exercises the procedural-arc radius/color/offset
   // path (was badly broken: wrong radius, wrong position, wrong colors, wrong stroke inset —
   // see render.ts's drawProceduralArc/ringRGB and drawGroup's ring-offset special case).
+  // Also had its start angle 90° off from the real device: drawProceduralArc measured its
+  // sweep from 3 o'clock (spec.start as a raw canvas angle) while sectorImage's image-backed
+  // arcs already correctly measure from 12 o'clock (spec.start-90, see its own note) — the two
+  // arc kinds should agree, and visibly must here since Combo nests 3 procedural rings that
+  // need the same gap position to read as concentric. All 3 rings share one center; each ring's
+  // own x/y is genuinely absolute (confirmed against a matching ungrouped sibling ring at the
+  // same screen position), unlike Elaborate_2's ring (see drawGroup's ringPos) — left alone.
   // Remaining gap is the ring's fill fraction, which depends on live steps/goal that the
   // baked preview captured at an unknowable real value (same caveat as the cases above).
   {
     name: "Multifunction__366__Combo",
     url: comboUrl,
     time: "2026-01-09T10:09:30",
-    maxDiffRatio: 0.065,
+	sim: { steps: 10000 },
+    maxDiffRatio: 0.02,
+  },
+  // sim time matches the baked preview's actual capture date/second (found by inspection —
+  // "July 09", not this file's other cases' "January 09"), so date/weekday-highlight line up
+  // exactly; sim.calories likewise set to the baked preview's own displayed count (156, read
+  // straight off the file's embedded preview image) via the per-case `sim` override below —
+  // the widget-slot ring/number combo here reads id 0x1e (calories), same mechanism used for
+  // steps/hr/battery/etc. on any other case. Three real bugs found along the way:
+  // - the calorie/steps widget-slot ring's struct x/y was (0, 276) — a grouped ring's x/y had
+  //   only ever been seen fully absolute before (Combo/Function), so drawGroup treated 0 as a
+  //   real coordinate and drew the ring flush against the canvas's left edge instead of
+  //   centered in its 160x160 frame slot (see drawGroup's ringPos: a 0 on either axis now
+  //   means "center me", same convention already used for non-ring boxed children).
+  // - temperature's sign glyph (see drawWidget's sub===4 check) turned out to have 2 more
+  //   copies here with sub===3 instead of 4, always drawn regardless of sign — generalized
+  //   the hide-if-non-negative check to cover both.
+  // - the battery tile's "80%" NUMBER+"%" pair (same packed-row mechanism as Function's) has
+  //   the NUMBER at a real y=46 instead of Function's y=0, which the old x===0&&y===0 hug
+  //   check missed entirely — it fell back to being centered across the whole 160px-tall
+  //   frame shared with the unrelated "Battery" label below, landing "%" and "80" on separate
+  //   rows. isAuto now only requires x===0; the row's cross-axis position prefers the hugged
+  //   NUMBER's own y (see drawGroup's rowCross) over generic frame-centering when it's nonzero.
+  // Remaining diff is the goal ring's own fill fraction (bound to id 0x26, steps-slot, not
+  // calories — a steps-driven ring paired with a calorie number by this file's own design) and
+  // the goal-ring accent color, both the same unknowable-baked-live-value caveat as Combo/
+  // Default above; defaultSim's steps/stepsGoal are asserted, not matched to this device.
+  {
+    name: "Multifunction__304__Elaborate_2",
+    url: elaborate2Url,
+    time: "2025-07-09T10:12:30",
+    sim: { calories: 156 },
+    maxDiffRatio: 0.02,
   },
 ];
 
@@ -129,7 +171,7 @@ function imageData(
 }
 
 describe("render() output matches embedded preview", () => {
-  for (const { name, url, time, maxDiffRatio } of CASES) {
+  for (const { name, url, time, sim: simOverrides, maxDiffRatio } of CASES) {
     test(name, async () => {
       const buf = await fetch(url).then((r) => r.arrayBuffer());
       const face = parseBin(buf);
@@ -150,6 +192,7 @@ describe("render() output matches embedded preview", () => {
         ...defaultSim(),
         live: false,
         time: new Date(time).getTime(),
+        ...simOverrides, // per-case steps/calories/temp/... to match a specific baked value
       };
       drawFace(canvas.getContext("2d")!, face, TAG.main, sim);
 

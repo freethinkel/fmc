@@ -232,7 +232,11 @@ function drawProceduralArc(
   // as an override, 60 as a last-resort guess for older/short structs with w=0
   const r = spec.radius || (w ? Math.round(w / 2) : 60);
   const cx = r >= 230 ? 233 : x + r, cy = r >= 230 ? 233 : y + r;
-  const a0 = spec.start * Math.PI / 180;
+  // same 12-o'clock-relative start as sectorImage's image-backed arcs (see its own note) —
+  // confirmed on Combo's 3 nested procedural goal rings, whose gaps must all land in the same
+  // spot (upper-left) to look concentric; without the -90 they instead opened to the upper
+  // right and drifted out of alignment with each other ring to ring.
+  const a0 = (spec.start - 90) * Math.PI / 180;
   const sweep = (spec.end - spec.start) * Math.PI / 180;
   // no explicit meta color (byte 7 !== 1, e.g. the plain steps ring) — falls back to a
   // plain orange rather than white when there's no sim.accentColor either; confirmed
@@ -490,13 +494,16 @@ function drawWidget(
     return { w: b.width, h: b.height };
   }
 
-  // sub===4 with a single image: a "−" sign glyph for a value that can go negative (seen only
-  // on temperature's sign digit) — no bind sibling gates it, so the device must show it purely
-  // from the value's sign. Confirmed against Function's baked preview: sim.temp=25 (positive)
-  // bakes with no minus sign at all, not a blank/space glyph swapped in.
+  // sub===4 (and, seen only on Elaborate_2, a duplicated sub===3) with a single image: a "−"
+  // sign glyph for a value that can go negative — no bind sibling gates it, so the device must
+  // show it purely from the value's sign. Confirmed against Function's baked preview (sub===4
+  // only there) and Elaborate_2's (sub===4 plus two sub===3 copies of the same glyph): sim.temp
+  // =25 (positive) bakes with no minus sign at all on either file, not a blank glyph swapped in.
+  // ponytail: sub===3's own meaning is still unconfirmed (no other corpus face uses it on a
+  // single-image widget) — treated the same as sub===4 since that's what both real bakes show.
   {
     const { id, sub } = metaInfo(struct);
-    if (sub === 4 && imgs.length === 1 && idValue(id, sim, t) >= 0) return null;
+    if ((sub === 4 || sub === 3) && imgs.length === 1 && idValue(id, sim, t) >= 0) return null;
   }
 
   // 0x30 and others: a single image or a pick by value (7 days / 12 months / 2 AM-PM)
@@ -544,21 +551,41 @@ function drawGroup(
   // ponytail: only confirmed on this one battery-percent group — gate on a real auto sibling
   // existing at all, so a lone origin-positioned number elsewhere keeps its prior behavior.
   const hasTrueAutoSibling = kids.some(isTrueAuto);
+  // y isn't required — Elaborate_2's own battery tile pairs a NUMBER at a real y=46 with a
+  // meta.w=0x8000 "%" glyph left at y=0 (an unused placeholder there, apparently: Function's
+  // confirmed case has both at the same nonzero y instead), so matching y isn't reliable
+  // either. Only x needs to read 0; the row's cross-axis position is resolved via
+  // numberRowStruct below rather than trusted from the auto sibling's own y.
   const isAuto = (k: FaceNode) => {
     if (isTrueAuto(k)) return true;
     if (!hasTrueAutoSibling || k.tag !== TAG.number) return false;
     const st = k.subs?.find(s => s.tag === TAG.struct);
-    return !!st && !st.x && !st.y;
+    return !!st && !st.x;
   };
   const sizes = kids.map(k => isAuto(k) ? drawWidget(null, k, res, sim, t, 0, 0, { x: 0, y: 0 }, null, arcsById) : null);
   const shown = sizes.filter((z): z is Size => !!z);
 
+  // only genuinely 0x8000-flagged structs feed direction inference — a hugged NUMBER's own
+  // y (see isAuto above) may be real placement data (Elaborate_2) or may not even be read by
+  // the firmware at all; either way it isn't a reliable row-direction signal by itself, and
+  // mixing it in previously misread Elaborate_2's horizontal "80%" pairing as a vertical stack
+  // (NUMBER y=46 vs "%" y=0 spread > 0).
   const autoStructs = kids
-    .map((k, i) => sizes[i] ? k.subs?.find(s => s.tag === TAG.struct) : null)
+    .map((k, i) => (sizes[i] && isTrueAuto(k)) ? k.subs?.find(s => s.tag === TAG.struct) : null)
     .filter((s): s is FaceNode => !!s);
   const spread = (vals: number[]) => vals.length ? Math.max(...vals) - Math.min(...vals) : 0;
   const vertical = autoStructs.length > 1
     && spread(autoStructs.map(s => s.y || 0)) > spread(autoStructs.map(s => s.x || 0));
+
+  // a hugged NUMBER's own y, when nonzero, is real placement data (see isAuto) that beats
+  // generic frame-centering for the whole packed row — confirmed needed on Elaborate_2's
+  // battery tile, where the packed row must land at y=46 inside a 160-tall frame shared with
+  // an unrelated "Battery" label at y=82, not centered across the full 160px height. Function's
+  // own confirmed case has this NUMBER at y=0, so it's naturally skipped (falsy) and keeps its
+  // prior (already-correct) frame-centered behavior untouched.
+  const numberRowStruct = kids.find((k, i) => !!sizes[i] && !isTrueAuto(k) && k.tag === TAG.number)
+    ?.subs?.find(s => s.tag === TAG.struct);
+  const rowCross = !vertical && numberRowStruct?.y ? y + numberRowStruct.y : null;
 
   // a nested Group child (e.g. the icon+digits+degree auto-row inside Function's temperature
   // tile) has no TAG.struct of its own — its position is its OWN frame's x/y instead. Read
@@ -575,8 +602,19 @@ function drawGroup(
   // unrelated abs siblings (e.g. a lone icon at a different y) to decide `vertical` would
   // also skew the auto/shown centering above, which already worked. With only one boxed
   // sibling there's nothing to read a spread from, so fall back to the group's own axis.
+  // Deliberately keyed off the stricter x===0&&y===0 NUMBER-hug reading (isAuto above is
+  // looser), not because a hugged NUMBER is still "boxed" — it isn't, rowCross positions it —
+  // but because this group's OTHER boxed sibling (Elaborate_2's "Battery" label) still needs
+  // the exact same boxedVertical it always got: with the NUMBER's own (x=0,y=46) folded back
+  // in here, the spread against the label's (x=0,y=82) reads correctly as a vertical pair,
+  // where dropping to a single leftover sibling would fall back to `vertical` and misread it.
   const boxedOrigins = kids
-    .filter(k => k.tag !== 0x80 && k.tag !== 0x81 && !isAuto(k))
+    .filter(k => {
+      if (k.tag === 0x80 || k.tag === 0x81 || isTrueAuto(k)) return false;
+      if (!hasTrueAutoSibling || k.tag !== TAG.number) return true;
+      const st = k.subs?.find(s => s.tag === TAG.struct);
+      return !(st && !st.x && !st.y);
+    })
     .map(localOrigin)
     .filter((p): p is { x: number; y: number } => !!p);
   const boxedVertical = boxedOrigins.length > 1
@@ -607,7 +645,7 @@ function drawGroup(
       if (z) {
         const pos = vertical
           ? { x: x + crossOffset(fr.align, fr.w, z.w), y: c }
-          : { x: c, y: y + crossOffset(fr.align, fr.h, z.h) };
+          : { x: c, y: rowCross ?? y + crossOffset(fr.align, fr.h, z.h) };
         drawWidget(ctx, k, res, sim, t, 0, 0, pos, hits, arcsById);
         c += (vertical ? z.h : z.w) + gapAfter(shownPos);
         shownPos++;
@@ -617,6 +655,20 @@ function drawGroup(
         // sibling ring at the same screen position. Adding the frame origin on top (as the
         // other non-auto widgets need) pushes them off-canvas.
         const isRing = k.tag === 0x80 || k.tag === 0x81;
+        // ...except when one axis reads a literal 0 — same "unset, center me" signal as the
+        // boxed non-ring case below, just never seen on a ring until Elaborate_2's calorie/
+        // steps widget-slot ring (frame 160x160, ring image also 160x160 meant to exactly
+        // fill it): a raw x=0 left it flush against the canvas's left edge instead of
+        // centered. Combo/Function's rings all carry real nonzero x AND y (the Combo evidence
+        // above), so this only fires on the axis that's actually 0.
+        const ringStruct = isRing ? k.subs?.find(s => s.tag === TAG.struct) : null;
+        const ringMeta = ringStruct ? metaInfo(ringStruct) : null;
+        const ringPos = ringMeta && (!ringStruct!.x || !ringStruct!.y)
+          ? {
+              x: ringStruct!.x || x + (fr.w - ringMeta.w) / 2,
+              y: ringStruct!.y || y + (fr.h - ringMeta.h) / 2,
+            }
+          : null;
         // non-auto but still boxed: plenty of these siblings aren't 0x8000 auto-layout (no
         // row/column packing) yet are meant to be cross-axis centered, not flush against the
         // frame edge — Combo's weekday/day (meta.w>0, a declared-but-unused box size) and
@@ -633,11 +685,11 @@ function drawGroup(
         const origin2 = !isRing ? localOrigin(k) : null;
         const boxed = origin2 && (boxedVertical ? !origin2.x : !origin2.y);
         const measured = boxed ? drawWidget(null, k, res, sim, t, 0, 0, { x: 0, y: 0 }, null, arcsById) : null;
-        const pos = measured
+        const pos = ringPos ?? (measured
           ? (boxedVertical
               ? { x: x + crossOffset(fr.align, fr.w, measured.w), y: y + origin2!.y }
               : { x: x + origin2!.x, y: y + crossOffset(fr.align, fr.h, measured.h) })
-          : null;
+          : null);
         drawWidget(ctx, k, res, sim, t, isRing ? 0 : x, isRing ? 0 : y, pos, hits, arcsById);
       }
     });
