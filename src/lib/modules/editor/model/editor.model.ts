@@ -266,7 +266,7 @@ export const addWidgetFx = createEffect(
       const px = r.w >> 1, py = Math.round(r.h * 0.9);
       node = {
         tag: 0x70, subs: [
-          { tag: 1, x: 233 - px, y: 233 - py, meta: metaWith(0x0a, 60), refType: 0x61, images: imgs, _kind: 'minute' },
+          { tag: 1, x: 233 - px, y: 233 - py, meta: metaWith(0x0e, 60), refType: 0x61, images: imgs, _kind: 'minute' },
           { tag: 5, flag: 1, pivotX: px, pivotY: py },
         ],
       };

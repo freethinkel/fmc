@@ -29,7 +29,7 @@ const CASES = [
     name: "Analog__287__Simple_Dial",
     url: analogUrl,
     time: "2026-01-09T10:09:30",
-    maxDiffRatio: 0.02,
+    maxDiffRatio: 0.01,
   },
   // has an hour/minute/second hand trio; the exact baked second is unknowable, so hand
   // angles drift a little even when correct. Also: one widget ("68 Bpm") is hidden behind
@@ -39,7 +39,7 @@ const CASES = [
     name: "Multifunction__368__Function",
     url: multifunctionUrl,
     time: "2026-01-09T10:09:30",
-    maxDiffRatio: 0.05,
+    maxDiffRatio: 0.04,
   },
   // the highlighted metaball node is a JPEG frame baked by the original tool at a visibly
   // darker gray than the file's own preview snapshot (verified against the raw JPEG bytes,
@@ -48,14 +48,14 @@ const CASES = [
     name: "Digital__281__Metaball",
     url: digitalUrl,
     time: "2026-01-09T10:12:30",
-    maxDiffRatio: 0.18,
+    maxDiffRatio: 0.17,
   },
   // clean match: disc dial with no live tiles/hands beyond the second hand.
   {
     name: "Creative__312__Disc",
     url: creativeUrl,
-    time: "2026-01-09T10:09:30",
-    maxDiffRatio: 0.02,
+    time: "2026-01-09T10:09:35",
+    maxDiffRatio: 0.01,
   },
   // has 4 swipeable activity tiles gated by the same unmapped bind data-source id (0x79)
   // as the Multifunction case above (renderer defaults to tile 0, real device state unknown).
@@ -67,7 +67,7 @@ const CASES = [
   // real device baked it blue, Combo's baked the same byte pattern orange (device accent
   // setting, not something the .bin carries) — defaultSim().accentColor is null in this
   // test, so it falls to a fixed default that won't match either. Threshold set from the
-  // measured worst case (21.78% as of this writing), not fully explained.
+  // measured worst case (21.88% as of this writing), not fully explained.
   {
     name: "Default__273__Activity_Mood",
     url: defaultUrl,
@@ -78,8 +78,8 @@ const CASES = [
   {
     name: "Diwali__295__Vortex",
     url: diwaliUrl,
-    time: "2026-01-09T10:09:30",
-    maxDiffRatio: 0.02,
+    time: "2026-01-09T10:10:30",
+    maxDiffRatio: 0.01,
   },
   // 3 concentric goal-rings, no image ref — exercises the procedural-arc radius/color/offset
   // path (was badly broken: wrong radius, wrong position, wrong colors, wrong stroke inset —
@@ -90,7 +90,7 @@ const CASES = [
     name: "Multifunction__366__Combo",
     url: comboUrl,
     time: "2026-01-09T10:09:30",
-    maxDiffRatio: 0.07,
+    maxDiffRatio: 0.065,
   },
 ];
 

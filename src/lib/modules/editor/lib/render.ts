@@ -5,8 +5,8 @@ import { TAG, unhex, type Face, type FaceNode, type Resource } from './wf';
 // Known data sources (meta byte 9). "?" = guess, not confirmed.
 export const ID_LABELS: Record<number, string> = {
   0x01: 'hour', 0x04: 'minute?', 0x07: 'hour (24h)',
-  0x08: 'hour tens', 0x09: 'hour ones', 0x0a: 'minute (hand)', 0x0b: 'minute',
-  0x0c: 'min tens', 0x0d: 'min ones', 0x0e: 'hour (hand)', 0x0f: 'second',
+  0x08: 'hour tens', 0x09: 'hour ones', 0x0a: 'hour (hand)', 0x0b: 'minute',
+  0x0c: 'min tens', 0x0d: 'min ones', 0x0e: 'minute (hand)', 0x0f: 'second',
   0x12: 'second', 0x13: 'AM/PM', 0x16: 'month', 0x17: 'day of month', 0x18: 'weekday',
   0x19: 'steps', 0x1a: 'heart rate', 0x1e: 'calories', 0x22: 'distance km int', 0x23: 'distance mi int',
   0x24: 'steps (slot)', 0x26: 'steps (slot)', 0x30: 'battery', 0x36: 'temperature 2?', 0x48: 'calories', 0x49: 'steps (slot)',
@@ -68,11 +68,11 @@ export function idValue(id: number, sim: Sim, t: TimeParts): number {
     case 0x07: return t.h;
     case 0x08: return Math.floor(dh / 10);
     case 0x09: return dh % 10;
-    case 0x0a: return t.m + t.s / 60;
+    case 0x0a: return (t.h % 12) * 5 + t.m / 12;
     case 0x0b: return t.m;
     case 0x0c: return Math.floor(t.m / 10);
     case 0x0d: return t.m % 10;
-    case 0x0e: return (t.h % 12) * 5 + t.m / 12;
+    case 0x0e: return t.m + t.s / 60;
     case 0x0f: case 0x12: case 0x71: case 0x72: return t.s;
     case 0x13: return t.h < 12 ? 0 : 1;
     case 0x16: return t.mon;
