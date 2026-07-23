@@ -583,7 +583,16 @@ function drawGroup(
     ? spread(boxedOrigins.map(p => p.y)) > spread(boxedOrigins.map(p => p.x))
     : vertical;
 
-  const total = shown.reduce((s, z) => s + (vertical ? z.h : z.w), 0) + fr.gap * Math.max(0, shown.length - 1);
+  // a NUMBER packed next to a real auto sibling hugs it with no gap, unlike two true 0x8000
+  // icons — confirmed on Function's battery tile: the baked "80%" has no space between digits
+  // and the % sign, while our render used the group's own fr.gap there same as between icons.
+  const shownIdx = kids.map((k, i) => sizes[i] ? i : -1).filter(i => i >= 0);
+  const gapAfter = (posInShown: number) => {
+    const a = shownIdx[posInShown], b = shownIdx[posInShown + 1];
+    if (b === undefined) return 0;
+    return (kids[a].tag === TAG.number || kids[b].tag === TAG.number) ? 0 : fr.gap;
+  };
+  const total = shown.reduce((s, z, p) => s + (vertical ? z.h : z.w) + gapAfter(p), 0);
   // frame.w/h === 0 on the packing axis means "auto-size to content" (seen on Function's
   // icon+digits+degree temperature row: frame w=0, gap=10, 4 auto children) — centering
   // against a literal 0 shoved the whole packed row left by half its own width. Clamp the
@@ -592,6 +601,7 @@ function drawGroup(
   const mainAvail = Math.max(vertical ? fr.h : fr.w, total);
   let c = (vertical ? y : x) + (mainAvail - total) / 2;
   if (ctx) {
+    let shownPos = 0;
     kids.forEach((k, i) => {
       const z = sizes[i];
       if (z) {
@@ -599,7 +609,8 @@ function drawGroup(
           ? { x: x + crossOffset(fr.align, fr.w, z.w), y: c }
           : { x: c, y: y + crossOffset(fr.align, fr.h, z.h) };
         drawWidget(ctx, k, res, sim, t, 0, 0, pos, hits, arcsById);
-        c += (vertical ? z.h : z.w) + fr.gap;
+        c += (vertical ? z.h : z.w) + gapAfter(shownPos);
+        shownPos++;
       } else if (!isAuto(k)) {
         // progress rings (0x80/0x81) inside a group carry already-absolute struct x/y —
         // confirmed on Combo, where a grouped ring's x/y is byte-identical to an ungrouped
