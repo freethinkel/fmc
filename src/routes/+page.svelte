@@ -1,107 +1,98 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
+  import { Button } from "$lib/shared/components/button";
+  import { Badge } from "$lib/shared/components/badge";
 
   const now = new Date();
   const s = now.getSeconds();
   const m = now.getMinutes() * 60 + s;
   const h = (now.getHours() % 12) * 3600 + m;
+
+  const FEATURES = [
+    {
+      n: "01",
+      t: "Editor in the browser",
+      d: "Drag & drop, undo/redo, live preview with hands and simulated data.",
+    },
+    {
+      n: "02",
+      t: "Marketplace",
+      d: "Publish watchfaces, collect likes and downloads, remix others as a base.",
+    },
+    {
+      n: "03",
+      t: "Flash over BLE",
+      d: "Push the .bin to the watch right from the tab — no wires, no toolchains.",
+    },
+  ];
+
+  const HANDS = [
+    { kind: "hour", len: 26, w: 4, dur: 43200, off: h },
+    { kind: "minute", len: 36, w: 3, dur: 3600, off: m },
+    { kind: "second", len: 42, w: 1, dur: 60, off: s },
+  ];
 </script>
 
 <svelte:head><title>FMC Watchfaces — watchface editor for CMF Watch Pro 2</title></svelte:head>
 
-<div class="min-h-screen overflow-hidden bg-[#0a0a0a] text-zinc-200">
+<div class="page">
   <!-- dot grid -->
-  <div
-    class="pointer-events-none fixed inset-0 opacity-40"
-    style="background-image: radial-gradient(circle, #27272a 1px, transparent 1px); background-size: 28px 28px;"
-  ></div>
+  <div class="dot-grid" aria-hidden="true"></div>
   <!-- orange glow -->
-  <div
-    class="pointer-events-none fixed -right-40 top-1/4 size-[600px] rounded-full bg-cmf/10 blur-[120px]"
-  ></div>
+  <div class="glow" aria-hidden="true"></div>
 
-  <header class="relative z-10 flex items-center justify-between px-6 py-5 md:px-12">
-    <span class="font-display text-sm font-bold tracking-widest"
-      >FMC<span class="text-cmf">·</span>WF</span
-    >
-    <nav class="flex gap-6 font-mono text-xs text-zinc-400">
-      <a href="/market" class="transition-colors hover:text-cmf">marketplace</a>
-      <a href="/editor" class="transition-colors hover:text-cmf">editor</a>
+  <header>
+    <span class="logo">FMC<span class="accent">·</span>WF</span>
+    <nav>
+      <a href="/market">marketplace</a>
+      <a href="/editor">editor</a>
     </nav>
   </header>
 
-  <main
-    class="relative z-10 mx-auto grid max-w-6xl items-center gap-16 px-6 pb-24 pt-12 md:grid-cols-[1.2fr_1fr] md:px-12 md:pt-24"
-  >
-    <section>
-      <p class="mb-6 font-mono text-xs uppercase tracking-[0.3em] text-cmf">
-        CMF Watch Pro 2 · .bin · Web Bluetooth
-      </p>
-      <h1 class="font-display text-4xl font-black leading-[1.05] text-white md:text-6xl">
-        Your own<br />watchface.<br /><span class="text-cmf">In one evening.</span>
-      </h1>
-      <p class="mt-6 max-w-md text-sm leading-relaxed text-zinc-400">
+  <main class="hero">
+    <section class="pitch">
+      <Badge>CMF Watch Pro 2 · .bin · Web Bluetooth</Badge>
+      <h1>Your own<br />watchface.<br /><span class="accent">In one evening.</span></h1>
+      <p class="lede">
         Open any .bin, drag widgets around, watch the live preview — then flash it to the watch
         straight from the browser. Or publish it to the marketplace and collect likes.
       </p>
-      <div class="mt-10 flex flex-wrap gap-4">
-        <button
-          onclick={() => goto("/editor")}
-          class="bg-cmf px-7 py-3 font-mono text-sm font-medium text-black transition-transform hover:-translate-y-0.5"
-        >
-          Open the editor →
-        </button>
-        <button
-          onclick={() => goto("/market")}
-          class="border border-zinc-700 px-7 py-3 font-mono text-sm text-zinc-300 transition-colors hover:border-cmf hover:text-cmf"
-        >
-          Marketplace
-        </button>
+      <div class="cta-row">
+        <Button kind="primary" onClick={() => goto("/editor")}>Open the editor →</Button>
+        <Button kind="secondary" onClick={() => goto("/market")}>Marketplace</Button>
       </div>
     </section>
 
     <!-- CSS watch -->
-    <section class="flex justify-center">
-      <div
-        class="relative aspect-square w-72 rounded-full border border-zinc-800 bg-black shadow-[0_0_0_10px_#18181b,0_0_80px_rgba(255,92,0,0.15)] md:w-80"
-      >
-        <!-- minute ticks -->
-        <div
-          class="absolute inset-2 rounded-full"
-          style="background: repeating-conic-gradient(#3f3f46 0deg 0.6deg, transparent 0.6deg 30deg); mask: radial-gradient(circle closest-side, transparent 87%, black 88%);"
-        ></div>
-        <div class="absolute inset-0 grid place-items-center">
-          <span class="mt-24 font-mono text-[10px] tracking-[0.4em] text-zinc-600">FMC·WF</span>
-        </div>
-        {#each [{ len: 26, w: 4, dur: 43200, off: h, cls: "bg-zinc-300" }, { len: 36, w: 3, dur: 3600, off: m, cls: "bg-zinc-400" }, { len: 42, w: 1, dur: 60, off: s, cls: "bg-cmf" }] as hand}
+    <section class="watch-wrap">
+      <div class="watch">
+        <div class="ticks"></div>
+        <div class="center-label"><span>FMC·WF</span></div>
+        {#each HANDS as hand}
           <div
-            class="absolute left-1/2 top-1/2 origin-bottom rounded-full {hand.cls}"
-            style="width: {hand.w}px; height: {hand.len}%; translate: -50% -100%; animation: spin {hand.dur}s linear infinite; animation-delay: -{hand.off}s;"
+            class="hand hand__{hand.kind}"
+            style="width: {hand.w}px; height: {hand.len}%; animation-duration: {hand.dur}s; animation-delay: -{hand.off}s;"
           ></div>
         {/each}
-        <div
-          class="absolute left-1/2 top-1/2 size-3 -translate-1/2 rounded-full border-2 border-cmf bg-black"
-        ></div>
+        <div class="hub"></div>
       </div>
     </section>
   </main>
 
-  <section class="relative z-10 border-t border-zinc-900">
-    <div class="mx-auto grid max-w-6xl gap-px bg-zinc-900 px-0 md:grid-cols-3">
-      {#each [{ n: "01", t: "Editor in the browser", d: "Drag & drop, undo/redo, live preview with hands and simulated data." }, { n: "02", t: "Marketplace", d: "Publish watchfaces, collect likes and downloads, remix others as a base." }, { n: "03", t: "Flash over BLE", d: "Push the .bin to the watch right from the tab — no wires, no toolchains." }] as f}
-        <article class="group bg-[#0a0a0a] p-8 transition-colors hover:bg-[#0f0f0f]">
-          <p class="font-mono text-xs text-cmf">{f.n}</p>
-          <h3 class="mt-3 font-display text-sm font-bold text-white">{f.t}</h3>
-          <p class="mt-3 text-xs leading-relaxed text-zinc-500">{f.d}</p>
+  <section class="features">
+    <div class="grid">
+      {#each FEATURES as f}
+        <article>
+          <p class="num">{f.n}</p>
+          <h3>{f.t}</h3>
+          <p class="desc">{f.d}</p>
         </article>
       {/each}
     </div>
   </section>
 
-  <footer class="relative z-10 border-t border-zinc-900 px-6 py-6 md:px-12">
-    <p class="font-mono text-[10px] tracking-widest text-zinc-600">
-      FMC WATCHFACES — unofficial tooling for CMF Watch Pro 2
-    </p>
+  <footer>
+    <p>FMC WATCHFACES — unofficial tooling for CMF Watch Pro 2</p>
   </footer>
 </div>
 
@@ -111,5 +102,270 @@
     to {
       rotate: 360deg;
     }
+  }
+
+  .page {
+    position: relative;
+    min-height: 100dvh;
+    overflow-x: hidden;
+    background: var(--color-background);
+    color: var(--color-text);
+    font-family: var(--font-family);
+  }
+
+  .dot-grid {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background-image: radial-gradient(
+      circle,
+      oklch(from var(--color-text) l c h / 15%) 1px,
+      transparent 1px
+    );
+    background-size: 28px 28px;
+  }
+
+  .glow {
+    position: fixed;
+    top: 25%;
+    right: -160px;
+    width: 600px;
+    height: 600px;
+    border-radius: 50%;
+    pointer-events: none;
+    background: oklch(from var(--color-accent) l c h / 10%);
+    filter: blur(120px);
+  }
+
+  header {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 24px;
+  }
+  @media (min-width: 768px) {
+    header {
+      padding: 20px 48px;
+    }
+  }
+
+  .logo {
+    font-family: var(--font-display);
+    font-size: 0.875rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+  }
+
+  .accent {
+    color: var(--color-accent);
+  }
+
+  nav {
+    display: flex;
+    gap: 24px;
+    font-size: 0.75rem;
+    color: oklch(from var(--color-text) l c h / 55%);
+  }
+  nav a {
+    color: inherit;
+    text-decoration: none;
+    transition: color 0.15s ease;
+  }
+  nav a:hover {
+    color: var(--color-accent);
+  }
+
+  .hero {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    align-items: center;
+    gap: 48px;
+    max-width: 1152px;
+    margin: 0 auto;
+    padding: 48px 24px 96px;
+  }
+  @media (min-width: 768px) {
+    .hero {
+      grid-template-columns: 1.2fr 1fr;
+      gap: 64px;
+      padding: 96px 48px 96px;
+    }
+  }
+
+  .pitch h1 {
+    margin: 24px 0 0;
+    font-family: var(--font-display);
+    font-size: 2.25rem;
+    font-weight: 900;
+    line-height: 1.05;
+  }
+  @media (min-width: 768px) {
+    .pitch h1 {
+      font-size: 3.75rem;
+    }
+  }
+
+  .lede {
+    max-width: 448px;
+    margin: 24px 0 0;
+    font-size: 0.875rem;
+    line-height: 1.6;
+    color: oklch(from var(--color-text) l c h / 55%);
+  }
+
+  .cta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-top: 40px;
+  }
+
+  .watch-wrap {
+    display: flex;
+    justify-content: center;
+  }
+
+  .watch {
+    position: relative;
+    aspect-ratio: 1 / 1;
+    width: 288px;
+    border-radius: 50%;
+    border: 1px solid oklch(from var(--color-text) l c h / 12%);
+    background: var(--color-background);
+    box-shadow:
+      0 0 0 10px oklch(from var(--color-text) l c h / 6%),
+      0 0 80px oklch(from var(--color-accent) l c h / 15%);
+  }
+  @media (min-width: 768px) {
+    .watch {
+      width: 320px;
+    }
+  }
+
+  .ticks {
+    position: absolute;
+    inset: 8px;
+    border-radius: 50%;
+    background: repeating-conic-gradient(
+      oklch(from var(--color-text) l c h / 30%) 0deg 0.6deg,
+      transparent 0.6deg 30deg
+    );
+    mask: radial-gradient(circle closest-side, transparent 87%, black 88%);
+  }
+
+  .center-label {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+  }
+  .center-label span {
+    margin-top: 96px;
+    font-size: 10px;
+    letter-spacing: 0.3em;
+    color: oklch(from var(--color-text) l c h / 40%);
+  }
+
+  .hand {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform-origin: bottom;
+    translate: -50% -100%;
+    border-radius: 999px;
+    animation-name: spin;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+  }
+  .hand__hour {
+    background: oklch(from var(--color-text) l c h / 80%);
+  }
+  .hand__minute {
+    background: oklch(from var(--color-text) l c h / 65%);
+  }
+  .hand__second {
+    background: var(--color-accent);
+  }
+
+  .hub {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 12px;
+    height: 12px;
+    translate: -50% -50%;
+    border-radius: 50%;
+    border: 2px solid var(--color-accent);
+    background: var(--color-background);
+  }
+
+  .features {
+    position: relative;
+    z-index: 1;
+    border-top: 1px solid oklch(from var(--color-text) l c h / 10%);
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1px;
+    max-width: 1152px;
+    margin: 0 auto;
+    background: oklch(from var(--color-text) l c h / 10%);
+  }
+  @media (min-width: 768px) {
+    .grid {
+      grid-template-columns: repeat(3, 1fr);
+    }
+  }
+
+  article {
+    padding: 32px;
+    background: var(--color-background);
+    transition: background-color 0.15s ease;
+  }
+  article:hover {
+    background: oklch(from var(--color-text) l c h / 4%);
+  }
+
+  .num {
+    margin: 0;
+    font-size: 0.75rem;
+    color: var(--color-accent);
+  }
+
+  article h3 {
+    margin: 12px 0 0;
+    font-family: var(--font-display);
+    font-size: 0.875rem;
+    font-weight: 700;
+  }
+
+  article .desc {
+    margin: 12px 0 0;
+    font-size: 0.75rem;
+    line-height: 1.6;
+    color: oklch(from var(--color-text) l c h / 55%);
+  }
+
+  footer {
+    position: relative;
+    z-index: 1;
+    border-top: 1px solid oklch(from var(--color-text) l c h / 10%);
+    padding: 24px;
+  }
+  @media (min-width: 768px) {
+    footer {
+      padding: 24px 48px;
+    }
+  }
+  footer p {
+    margin: 0;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    color: oklch(from var(--color-text) l c h / 40%);
   }
 </style>
