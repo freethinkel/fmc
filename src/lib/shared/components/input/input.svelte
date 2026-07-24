@@ -7,6 +7,7 @@
     required?: boolean;
     name?: string;
     autocomplete?: string;
+    minlength?: number;
     onInput?: (value: string) => void;
   }
   let {
@@ -17,6 +18,7 @@
     required,
     name,
     autocomplete,
+    minlength,
     onInput,
   }: Props = $props();
 </script>
@@ -27,6 +29,7 @@
   {disabled}
   {required}
   {name}
+  {minlength}
   autocomplete={autocomplete as any}
   bind:value
   oninput={() => onInput?.(value)}

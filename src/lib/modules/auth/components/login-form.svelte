@@ -4,7 +4,7 @@
   import { Input } from "$lib/shared/components/input";
   import { authModel } from "../model";
 
-  const { loginRequested, $loginPending: busy, $loginErr: err } = authModel;
+  const { loginRequested, oauthRequested, $loginPending: busy, $loginErr: err } = authModel;
 
   let email = $state("");
   let password = $state("");
@@ -16,6 +16,10 @@
     loginRequested({ email, password });
   }}
 >
+  <Button type="button" kind="secondary" disabled={$busy} onClick={() => oauthRequested("google")}>
+    Login with Google
+  </Button>
+  <div class="divider"><span>Or continue with</span></div>
   <Field label="Email">
     <Input
       type="email"
@@ -26,7 +30,13 @@
     />
   </Field>
   <Field label="Password">
-    <Input type="password" required autocomplete="current-password" bind:value={password} />
+    <Input
+      type="password"
+      required
+      minlength={8}
+      autocomplete="current-password"
+      bind:value={password}
+    />
   </Field>
   {#if $err}
     <p class="error">{$err}</p>
@@ -40,6 +50,24 @@
     display: flex;
     flex-direction: column;
     gap: 12px;
+  }
+  .divider {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    &::before,
+    &::after {
+      content: "";
+      flex: 1;
+      height: 1px;
+      background: oklch(from var(--color-text) l c h / 12%);
+    }
+
+    span {
+      font-size: 0.75rem;
+      color: oklch(from var(--color-text) l c h / 55%);
+    }
   }
   .error {
     margin: 0;

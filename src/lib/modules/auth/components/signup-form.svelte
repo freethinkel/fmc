@@ -37,11 +37,23 @@
       bind:value={email}
     />
   </Field>
-  <Field label="Password">
-    <Input type="password" required autocomplete="new-password" bind:value={password} />
+  <Field label="Password" hint="Must be at least 8 characters long.">
+    <Input
+      type="password"
+      required
+      minlength={8}
+      autocomplete="new-password"
+      bind:value={password}
+    />
   </Field>
   <Field label="Confirm Password">
-    <Input type="password" required autocomplete="new-password" bind:value={confirm} />
+    <Input
+      type="password"
+      required
+      minlength={8}
+      autocomplete="new-password"
+      bind:value={confirm}
+    />
   </Field>
   {#if err}
     <p class="error">{err}</p>
