@@ -1,0 +1,13 @@
+/* Minimal global base — replaces what Tailwind preflight / app.css @layer base used to do. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--color-background);
+  color: var(--color-text);
+  font-family: var(--font-family);
+}
