@@ -1,18 +1,14 @@
 <script lang="ts">
-  import { Input } from "$lib/shared/components/ui/input";
-  import { Label } from "$lib/shared/components/ui/label";
-  import { Checkbox } from "$lib/shared/components/ui/checkbox";
-  import * as Select from "$lib/shared/components/ui/select";
-  import {
-    Download,
-    AlignStartVertical,
-    AlignCenterVertical,
-    AlignEndVertical,
-    AlignStartHorizontal,
-    AlignCenterHorizontal,
-    AlignEndHorizontal,
-  } from "@lucide/svelte";
-  import { cn } from "$lib/shared/helpers";
+  import { Input } from "$lib/shared/components/input";
+  import { Select } from "$lib/shared/components/select";
+  import { Checkbox } from "$lib/shared/components/checkbox";
+  import Download from "@lucide/svelte/icons/download";
+  import AlignStartVertical from "@lucide/svelte/icons/align-start-vertical";
+  import AlignCenterVertical from "@lucide/svelte/icons/align-center-vertical";
+  import AlignEndVertical from "@lucide/svelte/icons/align-end-vertical";
+  import AlignStartHorizontal from "@lucide/svelte/icons/align-start-horizontal";
+  import AlignCenterHorizontal from "@lucide/svelte/icons/align-center-horizontal";
+  import AlignEndHorizontal from "@lucide/svelte/icons/align-end-horizontal";
   import type { Component } from "svelte";
   import type { LucideProps } from "@lucide/svelte";
   import { TAG, unhex, hex, type FaceNode, type Resource } from "../lib/wf";
@@ -82,8 +78,14 @@
     if (!v || v.length < 3) return null;
     return { activeIdx: v[2], ids: [...v.subarray(3, 3 + v[1])] };
   });
+  const slotOptions = $derived(
+    slotInfo?.ids.map((id, i) => ({
+      value: String(i),
+      label: `0x${id.toString(16)} — ${ID_LABELS[id] || "?"}`,
+    })) ?? [],
+  );
 
-  const num = (e: Event) => Number((e.target as HTMLInputElement).value) || 0;
+  const num = (s: string) => Number(s) || 0;
   const set = (node: FaceNode, patch: Partial<FaceNode>) => {
     checkpoint();
     patched({ node, patch });
@@ -206,230 +208,176 @@
 </script>
 
 {#if $editor.sel}
-  <div class="space-y-3 text-sm">
+  <div class="panel">
     {#if (st && st.x != null) || frame}
-      <div class="flex items-center gap-3">
+      <div class="row">
         {#each [alignH, alignV] as group}
-          <div class="flex gap-1">
+          <div class="btn-group">
             {#each group as [dir, Icon, title] (dir)}
-              <button
-                type="button"
-                {title}
-                class="hover:bg-accent hover:text-accent-foreground text-muted-foreground flex h-8 w-8 items-center justify-center rounded-lg border"
-                onclick={() => alignSelected(dir)}><Icon class="size-4" /></button
-              >
+              <button type="button" {title} class="icon-btn" onclick={() => alignSelected(dir)}>
+                <Icon size={16} />
+              </button>
             {/each}
           </div>
         {/each}
       </div>
     {/if}
     {#if st && sv.x != null && !frame}
-      <div class="flex items-center gap-2">
-        <Label class="w-8">x</Label><Input
-          class="h-8"
-          type="number"
-          value={sv.x}
-          oninput={(e) => set(st, { x: num(e) })}
-        />
-        <Label class="w-8">y</Label><Input
-          class="h-8"
-          type="number"
-          value={sv.y}
-          oninput={(e) => set(st, { y: num(e) })}
-        />
+      <div class="row">
+        <span class="field-label w-sm">x</span>
+        <Input type="number" value={String(sv.x)} onInput={(v) => set(st, { x: num(v) })} />
+        <span class="field-label w-sm">y</span>
+        <Input type="number" value={String(sv.y)} onInput={(v) => set(st, { y: num(v) })} />
       </div>
     {/if}
     {#if frame}
-      <div class="flex items-center gap-2">
-        <Label class="w-8">x</Label><Input
-          class="h-8"
-          type="number"
-          value={frame.x}
-          oninput={(e) => setFrame({ x: num(e) })}
-        />
-        <Label class="w-8">y</Label><Input
-          class="h-8"
-          type="number"
-          value={frame.y}
-          oninput={(e) => setFrame({ y: num(e) })}
-        />
+      <div class="row">
+        <span class="field-label w-sm">x</span>
+        <Input type="number" value={String(frame.x)} onInput={(v) => setFrame({ x: num(v) })} />
+        <span class="field-label w-sm">y</span>
+        <Input type="number" value={String(frame.y)} onInput={(v) => setFrame({ y: num(v) })} />
       </div>
-      <div class="flex items-center gap-2">
-        <Label class="w-8">w</Label><Input
-          class="h-8"
-          type="number"
-          value={frame.w}
-          oninput={(e) => setFrame({ w: num(e) })}
-        />
-        <Label class="w-8">h</Label><Input
-          class="h-8"
-          type="number"
-          value={frame.h}
-          oninput={(e) => setFrame({ h: num(e) })}
-        />
+      <div class="row">
+        <span class="field-label w-sm">w</span>
+        <Input type="number" value={String(frame.w)} onInput={(v) => setFrame({ w: num(v) })} />
+        <span class="field-label w-sm">h</span>
+        <Input type="number" value={String(frame.h)} onInput={(v) => setFrame({ h: num(v) })} />
       </div>
-      <div class="flex items-center gap-2">
-        <Label class="w-8">gap</Label><Input
-          class="h-8"
-          type="number"
-          value={frame.gap}
-          oninput={(e) => setFrame({ gap: num(e) })}
-        />
+      <div class="row">
+        <span class="field-label w-sm">gap</span>
+        <Input type="number" value={String(frame.gap)} onInput={(v) => setFrame({ gap: num(v) })} />
       </div>
-      <div class="flex items-center gap-2">
-        <Label class="w-14">align</Label>
-        <div class="flex gap-1">
+      <div class="row">
+        <span class="field-label w-md">align</span>
+        <div class="btn-group">
           {#each frameAlignBtns as [v, Icon, title] (v)}
             <button
               type="button"
               {title}
-              class={cn(
-                "flex h-8 w-8 items-center justify-center rounded-lg border",
-                frame.align === v
-                  ? "bg-accent text-accent-foreground"
-                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
-              )}
-              onclick={() => setFrame({ align: v })}><Icon class="size-4" /></button
+              class="icon-btn"
+              class:active={frame.align === v}
+              onclick={() => setFrame({ align: v })}
             >
+              <Icon size={16} />
+            </button>
           {/each}
         </div>
       </div>
-      <p class="text-xs text-muted-foreground">
+      <p class="hint-xs">
         align — cross-axis alignment of auto children (editor-only, real watches always center)
       </p>
     {/if}
     {#if pivot}
-      <div class="flex items-center gap-2">
-        <Label class="w-14">pivot x</Label><Input
-          class="h-8"
+      <div class="row">
+        <span class="field-label w-md">pivot x</span>
+        <Input
           type="number"
-          value={sv.pivotX}
-          oninput={(e) => set(pivot, { pivotX: num(e) })}
+          value={String(sv.pivotX)}
+          onInput={(v) => set(pivot, { pivotX: num(v) })}
         />
-        <Label class="w-8">y</Label><Input
-          class="h-8"
+        <span class="field-label w-sm">y</span>
+        <Input
           type="number"
-          value={sv.pivotY}
-          oninput={(e) => set(pivot, { pivotY: num(e) })}
+          value={String(sv.pivotY)}
+          onInput={(v) => set(pivot, { pivotY: num(v) })}
         />
       </div>
-      <p class="text-xs text-muted-foreground">screen center = 233,233 (x+pivotX, y+pivotY)</p>
+      <p class="hint-xs">screen center = 233,233 (x+pivotX, y+pivotY)</p>
     {/if}
     {#if meta?.id}
-      <p class="text-muted-foreground">
-        source: <span class="text-foreground"
-          >0x{meta.id.toString(16)} — {ID_LABELS[meta.id] || "?"}</span
+      <p class="hint">
+        source: <span class="text-emph">0x{meta.id.toString(16)} — {ID_LABELS[meta.id] || "?"}</span
         >
         {#if meta.max}, max {meta.max}{/if}
       </p>
     {/if}
     {#if st?.meta}
-      <div class="flex items-center gap-2">
-        <Checkbox checked={meta?.accent} onCheckedChange={(v) => setAccent(v)} id="accent" />
-        <Label for="accent">tints with device accent color</Label>
+      <div class="check-row">
+        <Checkbox checked={!!meta?.accent} onChange={(v) => setAccent(v)} />
+        <button type="button" class="check-label" onclick={() => setAccent(!meta?.accent)}
+          >tints with device accent color</button
+        >
       </div>
     {/if}
     {#if isSecondHand}
-      <div class="flex items-center gap-2">
+      <div class="check-row">
         <Checkbox
           checked={meta?.id === 0x0f || meta?.id === 0x12}
-          onCheckedChange={(v) => setSecondId(v ? 0x12 : 0x72)}
-          id="smooth"
+          onChange={(v) => setSecondId(v ? 0x12 : 0x72)}
         />
-        <Label for="smooth">smooth sweep (unchecked — ticks once per second)</Label>
+        <button
+          type="button"
+          class="check-label"
+          onclick={() => setSecondId(meta?.id === 0x0f || meta?.id === 0x12 ? 0x72 : 0x12)}
+        >
+          smooth sweep (unchecked — ticks once per second)
+        </button>
       </div>
     {/if}
     {#if isBrokenRing}
-      <button
-        type="button"
-        class="text-muted-foreground hover:text-foreground rounded-lg border px-2 py-1 text-xs"
-        onclick={() => setSecondId(0x0f)}
-      >
+      <button type="button" class="text-btn" onclick={() => setSecondId(0x0f)}>
         broken second source (0x{meta?.id.toString(16)}) — restore ticking 0x0f
       </button>
     {/if}
     {#if st?.meta}
       <div>
-        <Label class="text-xs text-muted-foreground">meta (hex)</Label>
+        <span class="muted-label">meta (hex)</span>
         <Input
-          class="mt-1 h-8 font-mono text-xs"
           value={sv.metaHex}
-          oninput={(e) => {
-            if (/^[0-9a-f]{28}$/i.test(e.currentTarget.value))
-              set(st, { meta: e.currentTarget.value });
+          onInput={(v) => {
+            if (/^[0-9a-f]{28}$/i.test(v)) set(st, { meta: v });
           }}
         />
       </div>
     {/if}
     {#if fmtNode}
-      <div class="flex items-center gap-2">
-        <Label>digits</Label>
-        <Input
-          class="h-8 w-16"
-          type="number"
-          min="0"
-          max="31"
-          value={fmtByte & 0x1f}
-          oninput={(e) => setFmt(num(e), fmtByte & 0x80)}
-        />
-        <Checkbox
-          checked={!!(fmtByte & 0x80)}
-          onCheckedChange={(v) => setFmt(fmtByte & 0x1f, v)}
-          id="pad"
-        />
-        <Label for="pad">leading zeros</Label>
+      <div class="row">
+        <span class="field-label">digits</span>
+        <span class="w-num">
+          <Input
+            type="number"
+            min={0}
+            max={31}
+            value={String(fmtByte & 0x1f)}
+            onInput={(v) => setFmt(num(v), fmtByte & 0x80)}
+          />
+        </span>
+        <Checkbox checked={!!(fmtByte & 0x80)} onChange={(v) => setFmt(fmtByte & 0x1f, v)} />
+        <button
+          type="button"
+          class="check-label"
+          onclick={() => setFmt(fmtByte & 0x1f, !(fmtByte & 0x80))}>leading zeros</button
+        >
       </div>
     {/if}
     {#if bindNode}
       <div>
-        <Label class="text-xs text-muted-foreground">condition (hex)</Label>
+        <span class="muted-label">condition (hex)</span>
         <Input
-          class="mt-1 h-8 font-mono text-xs"
           value={sv.bindHex}
-          oninput={(e) => {
-            if (/^([0-9a-f]{2})*$/i.test(e.currentTarget.value))
-              set(bindNode, { hex: e.currentTarget.value });
+          onInput={(v) => {
+            if (/^([0-9a-f]{2})*$/i.test(v)) set(bindNode, { hex: v });
           }}
         />
       </div>
     {/if}
     {#if slotInfo}
       <div>
-        <Label class="text-xs text-muted-foreground">widget slot — active metric</Label>
-        <Select.Root
-          type="single"
+        <span class="muted-label">widget slot — active metric</span>
+        <Select
           value={String(slotInfo.activeIdx)}
-          onValueChange={(v) => setSlotActive(+v)}
-        >
-          <Select.Trigger class="mt-1 h-8 w-full text-xs">
-            {ID_LABELS[slotInfo.ids[slotInfo.activeIdx]] ||
-              `0x${slotInfo.ids[slotInfo.activeIdx]?.toString(16)}`}
-          </Select.Trigger>
-          <Select.Content>
-            {#each slotInfo.ids as id, i (i)}
-              <Select.Item
-                value={String(i)}
-                label={`0x${id.toString(16)} — ${ID_LABELS[id] || "?"}`}
-              />
-            {/each}
-          </Select.Content>
-        </Select.Root>
+          options={slotOptions}
+          onChange={(v) => setSlotActive(+v)}
+        />
       </div>
     {/if}
     {#if sv.images}
-      <div class="flex flex-wrap gap-2">
+      <div class="images">
         {#each sv.images as ri}
           {@const r = $editor.face!.resources[ri]}
-          <div class="group relative">
-            <label
-              title="res{ri} · {r.w}×{r.h} · cf{r.cf} — click to replace"
-              class="cursor-pointer"
-            >
-              <img
-                src={thumbURL(r)}
-                alt="res{ri}"
-                class="max-h-14 max-w-14 rounded border border-border bg-[repeating-conic-gradient(#333_0_25%,#222_0_50%)] bg-[length:12px_12px]"
-              />
+          <div class="thumb-wrap">
+            <label title="res{ri} · {r.w}×{r.h} · cf{r.cf} — click to replace" class="thumb">
+              <img src={thumbURL(r)} alt="res{ri}" />
               <input
                 type="file"
                 accept="image/*"
@@ -441,12 +389,8 @@
                 }}
               />
             </label>
-            <button
-              title="Download PNG"
-              onclick={() => downloadRes(ri)}
-              class="bg-background/80 text-foreground absolute end-0.5 top-0.5 rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
-            >
-              <Download class="size-3.5" />
+            <button title="Download PNG" onclick={() => downloadRes(ri)} class="dl-btn">
+              <Download size={14} />
             </button>
           </div>
         {/each}
@@ -454,5 +398,155 @@
     {/if}
   </div>
 {:else}
-  <p class="text-sm text-muted-foreground">Nothing selected.</p>
+  <p class="hint">Nothing selected.</p>
 {/if}
+
+<style>
+  .panel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    font-size: 0.875rem;
+  }
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .field-label {
+    flex-shrink: 0;
+    font-weight: 500;
+  }
+  .field-label.w-sm {
+    width: 20px;
+  }
+  .field-label.w-md {
+    width: 56px;
+  }
+  .muted-label {
+    display: block;
+    margin-bottom: 4px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: oklch(from var(--color-text) l c h / 55%);
+  }
+  .hint {
+    margin: 0;
+    font-size: 0.875rem;
+    color: oklch(from var(--color-text) l c h / 55%);
+  }
+  .hint-xs {
+    margin: 0;
+    font-size: 0.75rem;
+    color: oklch(from var(--color-text) l c h / 55%);
+  }
+  .text-emph {
+    color: var(--color-text);
+  }
+  .w-num {
+    display: inline-block;
+    width: 64px;
+    flex-shrink: 0;
+  }
+  .btn-group {
+    display: flex;
+    gap: 4px;
+  }
+  .icon-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border: 1px solid oklch(from var(--color-text) l c h / 12%);
+    border-radius: var(--border-radius);
+    background: transparent;
+    color: oklch(from var(--color-text) l c h / 55%);
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+
+    &:hover {
+      background: oklch(from var(--color-text) l c h / 6%);
+      color: var(--color-text);
+    }
+    &.active {
+      background: oklch(from var(--color-accent) l c h / 12%);
+      color: var(--color-accent);
+    }
+  }
+  .text-btn {
+    border: 1px solid oklch(from var(--color-text) l c h / 12%);
+    border-radius: var(--border-radius);
+    background: transparent;
+    padding: 4px 8px;
+    font: inherit;
+    font-size: 0.75rem;
+    color: oklch(from var(--color-text) l c h / 55%);
+    cursor: pointer;
+    text-align: start;
+
+    &:hover {
+      color: var(--color-text);
+    }
+  }
+  .check-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .check-label {
+    border: none;
+    background: transparent;
+    padding: 0;
+    margin: 0;
+    font: inherit;
+    color: inherit;
+    text-align: start;
+    cursor: pointer;
+  }
+  .images {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .thumb-wrap {
+    position: relative;
+  }
+  .thumb {
+    display: block;
+    cursor: pointer;
+    border-radius: 6px;
+    overflow: hidden;
+    background: repeating-conic-gradient(
+        oklch(from var(--color-text) l c h / 15%) 0 25%,
+        oklch(from var(--color-text) l c h / 8%) 0 50%
+      )
+      0 0 / 12px 12px;
+
+    img {
+      display: block;
+      max-width: 56px;
+      max-height: 56px;
+    }
+  }
+  .dl-btn {
+    position: absolute;
+    top: 2px;
+    inset-inline-end: 2px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px;
+    border: none;
+    border-radius: 4px;
+    background: oklch(from var(--color-background) l c h / 80%);
+    color: var(--color-text);
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+  }
+  .thumb-wrap:hover .dl-btn,
+  .dl-btn:focus-visible {
+    opacity: 1;
+  }
+</style>

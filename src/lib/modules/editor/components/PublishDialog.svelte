@@ -1,9 +1,9 @@
 <script lang="ts">
-  import * as Dialog from "$lib/shared/components/ui/dialog";
-  import { Button } from "$lib/shared/components/ui/button";
-  import { Input } from "$lib/shared/components/ui/input";
-  import { Label } from "$lib/shared/components/ui/label";
-  import { Textarea } from "$lib/shared/components/ui/textarea";
+  import { Dialog } from "$lib/shared/components/dialog";
+  import { Button } from "$lib/shared/components/button";
+  import { Field } from "$lib/shared/components/field";
+  import { Input } from "$lib/shared/components/input";
+  import { Textarea } from "$lib/shared/components/textarea";
   import { authModel } from "$lib/modules/auth/model";
   import { marketModel } from "$lib/modules/market/model";
   import { editorModel } from "../model";
@@ -37,31 +37,39 @@
   }
 </script>
 
-<Dialog.Root
-  open={$open}
-  onOpenChange={(o: boolean) => {
-    if (!o) publishDialogClosed();
-  }}
->
-  <Dialog.Content class="max-w-sm">
-    <Dialog.Header>
-      <Dialog.Title>Publish to marketplace</Dialog.Title>
-      <Dialog.Description>The watchface will be visible to everyone.</Dialog.Description>
-    </Dialog.Header>
-    <div class="flex flex-col gap-3">
-      <div class="flex flex-col gap-1.5">
-        <Label for="pub-name">Name</Label>
-        <Input id="pub-name" bind:value={name} maxlength={100} />
-      </div>
-      <div class="flex flex-col gap-1.5">
-        <Label for="pub-desc">Description</Label>
-        <Textarea id="pub-desc" bind:value={description} rows={3} maxlength={1000} />
-      </div>
-    </div>
-    <Dialog.Footer>
-      <Button disabled={$busy || !name.trim()} onclick={publish}>
-        {$busy ? "Uploading…" : "Publish"}
-      </Button>
-    </Dialog.Footer>
-  </Dialog.Content>
-</Dialog.Root>
+<Dialog open={$open} title="Publish to marketplace" onClose={() => publishDialogClosed()}>
+  <p class="desc">The watchface will be visible to everyone.</p>
+  <div class="fields">
+    <Field label="Name">
+      <Input bind:value={name} maxlength={100} />
+    </Field>
+    <Field label="Description">
+      <Textarea bind:value={description} rows={3} maxlength={1000} />
+    </Field>
+  </div>
+  <div class="footer">
+    <Button kind="ghost" onClick={() => publishDialogClosed()}>Cancel</Button>
+    <Button kind="primary" disabled={$busy || !name.trim()} onClick={publish}>
+      {$busy ? "Uploading…" : "Publish"}
+    </Button>
+  </div>
+</Dialog>
+
+<style>
+  .desc {
+    margin: 0 0 12px;
+    font-size: 0.875rem;
+    color: oklch(from var(--color-text) l c h / 55%);
+  }
+  .fields {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 16px;
+  }
+</style>

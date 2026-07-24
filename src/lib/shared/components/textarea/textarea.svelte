@@ -4,11 +4,12 @@
     placeholder?: string;
     rows?: number;
     disabled?: boolean;
+    maxlength?: number;
   }
-  let { value = $bindable(""), placeholder, rows = 3, disabled }: Props = $props();
+  let { value = $bindable(""), placeholder, rows = 3, disabled, maxlength }: Props = $props();
 </script>
 
-<textarea {placeholder} {rows} {disabled} bind:value></textarea>
+<textarea {placeholder} {rows} {disabled} {maxlength} bind:value></textarea>
 
 <style>
   textarea {

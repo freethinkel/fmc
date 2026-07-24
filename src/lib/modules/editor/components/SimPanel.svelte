@@ -1,8 +1,7 @@
 <script lang="ts">
-  import { Input } from "$lib/shared/components/ui/input";
-  import { Label } from "$lib/shared/components/ui/label";
-  import { Switch } from "$lib/shared/components/ui/switch";
-  import { Button } from "$lib/shared/components/ui/button";
+  import { Input } from "$lib/shared/components/input";
+  import { Switch } from "$lib/shared/components/switch";
+  import { Button } from "$lib/shared/components/button";
   import { ID_LABELS } from "../lib/render";
   import { editorModel } from "../model";
   const { $editor: editor, simPatched, overrideSet } = editorModel;
@@ -39,93 +38,176 @@
   }
 </script>
 
-<div class="space-y-3 text-sm">
-  <div class="flex items-center gap-2">
-    <Switch
-      checked={$editor.sim.live}
-      onCheckedChange={(v: boolean) => simPatched({ live: v })}
-      id="live"
-    /><Label for="live">live time</Label>
+<div class="panel">
+  <div class="switch-row">
+    <Switch checked={$editor.sim.live} onChange={(v) => simPatched({ live: v })} />
+    <button
+      type="button"
+      class="check-label"
+      onclick={() => simPatched({ live: !$editor.sim.live })}>live time</button
+    >
   </div>
   {#if !$editor.sim.live}
     <Input
-      class="h-8"
       type="datetime-local"
-      step="1"
+      step={1}
       value={localISO($editor.sim.time)}
-      oninput={(e) => simPatched({ time: new Date(e.currentTarget.value).getTime() })}
+      onInput={(v) => simPatched({ time: new Date(v).getTime() })}
     />
   {/if}
-  <div class="flex items-center gap-2">
-    <Switch
-      checked={$editor.sim.is24h}
-      onCheckedChange={(v: boolean) => simPatched({ is24h: v })}
-      id="h24"
-    /><Label for="h24">24-hour format</Label>
+  <div class="switch-row">
+    <Switch checked={$editor.sim.is24h} onChange={(v) => simPatched({ is24h: v })} />
+    <button
+      type="button"
+      class="check-label"
+      onclick={() => simPatched({ is24h: !$editor.sim.is24h })}>24-hour format</button
+    >
   </div>
-  <div class="flex items-center gap-2">
+  <div class="switch-row">
     <Switch
       checked={$editor.sim.showSlotPlaceholders}
-      onCheckedChange={(v: boolean) => simPatched({ showSlotPlaceholders: v })}
-      id="slotph"
+      onChange={(v) => simPatched({ showSlotPlaceholders: v })}
     />
-    <Label for="slotph">widget-slot placeholders</Label>
+    <button
+      type="button"
+      class="check-label"
+      onclick={() => simPatched({ showSlotPlaceholders: !$editor.sim.showSlotPlaceholders })}
+      >widget-slot placeholders</button
+    >
   </div>
   <div>
-    <Label class="text-xs text-muted-foreground">Accent color</Label>
-    <div class="mt-0.5 flex items-center gap-2">
+    <span class="muted-label">Accent color</span>
+    <div class="accent-row">
       <input
         type="color"
-        class="h-8 w-12 cursor-pointer rounded border"
+        class="swatch"
         value={$editor.sim.accentColor || ACCENT_DEFAULT}
         oninput={(e) => simPatched({ accentColor: e.currentTarget.value })}
         title="Watch accent color (recolors widgets flagged via meta[7]===4, see metaInfo in lib/render.ts)"
       />
       {#if $editor.sim.accentColor}
-        <Button
-          size="sm"
-          variant="ghost"
-          class="h-8"
-          onclick={() => simPatched({ accentColor: null })}>Reset</Button
+        <Button kind="ghost" size="sm" onClick={() => simPatched({ accentColor: null })}
+          >Reset</Button
         >
       {/if}
     </div>
   </div>
-  <div class="grid grid-cols-2 gap-x-3 gap-y-2">
+  <div class="fields-grid">
     {#each fields as [key, label]}
       <div>
-        <Label class="text-xs text-muted-foreground">{label}</Label>
+        <span class="muted-label">{label}</span>
         <Input
-          class="mt-0.5 h-8"
           type="number"
-          value={$editor.sim[key]}
-          oninput={(e) =>
-            simPatched({ [key]: e.currentTarget.value === "" ? "" : +e.currentTarget.value })}
+          value={String($editor.sim[key])}
+          onInput={(v) => simPatched({ [key]: v === "" ? "" : +v })}
         />
       </div>
     {/each}
   </div>
 
   {#if $editor.ids.length}
-    <h3 class="pt-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-      Data sources
-    </h3>
-    <div class="space-y-1.5">
+    <h3 class="section-heading">Data sources</h3>
+    <div class="ids-list">
       {#each $editor.ids as { id, max }}
-        <div class="flex items-center gap-2">
-          <Label class="w-36 truncate font-mono text-xs"
-            >0x{id.toString(16)} {ID_LABELS[id] || "?"}</Label
-          >
-          <Input
-            class="h-7 w-24"
-            type="number"
-            placeholder="auto"
-            value={$editor.sim.overrides[id] ?? ""}
-            oninput={(e) => overrideSet({ id, value: e.currentTarget.value })}
-          />
-          {#if max}<span class="text-xs text-muted-foreground">/{max}</span>{/if}
+        <div class="id-row">
+          <span class="id-label">0x{id.toString(16)} {ID_LABELS[id] || "?"}</span>
+          <span class="id-input">
+            <Input
+              type="number"
+              placeholder="auto"
+              value={String($editor.sim.overrides[id] ?? "")}
+              onInput={(v) => overrideSet({ id, value: v })}
+            />
+          </span>
+          {#if max}<span class="max-hint">/{max}</span>{/if}
         </div>
       {/each}
     </div>
   {/if}
 </div>
+
+<style>
+  .panel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    font-size: 0.875rem;
+  }
+  .switch-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .check-label {
+    border: none;
+    background: transparent;
+    padding: 0;
+    margin: 0;
+    font: inherit;
+    color: inherit;
+    text-align: start;
+    cursor: pointer;
+  }
+  .muted-label {
+    display: block;
+    margin-bottom: 4px;
+    font-size: 0.75rem;
+    color: oklch(from var(--color-text) l c h / 55%);
+  }
+  .accent-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .swatch {
+    width: 48px;
+    height: 32px;
+    padding: 2px;
+    border: 1px solid oklch(from var(--color-text) l c h / 12%);
+    border-radius: var(--border-radius);
+    cursor: pointer;
+    background: transparent;
+  }
+  .fields-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px 12px;
+  }
+  .section-heading {
+    margin: 4px 0 0;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: oklch(from var(--color-text) l c h / 55%);
+  }
+  .ids-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .id-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .id-label {
+    width: 144px;
+    flex-shrink: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: oklch(from var(--color-text) l c h / 55%);
+  }
+  .id-input {
+    display: inline-block;
+    width: 96px;
+    flex-shrink: 0;
+  }
+  .max-hint {
+    font-size: 0.75rem;
+    color: oklch(from var(--color-text) l c h / 55%);
+  }
+</style>

@@ -1,27 +1,25 @@
 <script lang="ts">
   import { SvelteSet } from "svelte/reactivity";
-  import { Button } from "$lib/shared/components/ui/button";
-  import {
-    ImagePlus,
-    Hash,
-    Clock3,
-    Trash2,
-    Monitor,
-    Moon,
-    Type,
-    Eye,
-    Image,
-    Folder,
-    Braces,
-    GitBranch,
-    Crosshair,
-    Film,
-    Circle,
-    LoaderCircle,
-    SquareDashed,
-    Box,
-    ChevronRight,
-  } from "@lucide/svelte";
+  import { Button } from "$lib/shared/components/button";
+  import ImagePlus from "@lucide/svelte/icons/image-plus";
+  import Hash from "@lucide/svelte/icons/hash";
+  import Clock3 from "@lucide/svelte/icons/clock-3";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
+  import Monitor from "@lucide/svelte/icons/monitor";
+  import Moon from "@lucide/svelte/icons/moon";
+  import Type from "@lucide/svelte/icons/type";
+  import Eye from "@lucide/svelte/icons/eye";
+  import Image from "@lucide/svelte/icons/image";
+  import Folder from "@lucide/svelte/icons/folder";
+  import Braces from "@lucide/svelte/icons/braces";
+  import GitBranch from "@lucide/svelte/icons/git-branch";
+  import Crosshair from "@lucide/svelte/icons/crosshair";
+  import Film from "@lucide/svelte/icons/film";
+  import Circle from "@lucide/svelte/icons/circle";
+  import LoaderCircle from "@lucide/svelte/icons/loader-circle";
+  import SquareDashed from "@lucide/svelte/icons/square-dashed";
+  import Box from "@lucide/svelte/icons/box";
+  import ChevronRight from "@lucide/svelte/icons/chevron-right";
   import { TAG, unhex, type FaceNode } from "../lib/wf";
   import { metaInfo, ID_LABELS } from "../lib/render";
   import { editorModel } from "../model";
@@ -108,55 +106,65 @@
   }
 </script>
 
-<div class="flex h-full flex-col">
-  <div class="flex items-center gap-1 border-b p-2">
-    <Button variant="outline" size="sm" title="Add image widget" disabled={!$editor.face}>
-      <label class="flex cursor-pointer items-center gap-1"
-        ><ImagePlus class="size-4" />
-        <input type="file" accept="image/*" hidden onchange={(e) => onAdd("image", e)} /></label
-      >
-    </Button>
-    <Button
-      variant="outline"
-      size="sm"
-      title="Add number widget — select 10 digit images (0…9)"
-      disabled={!$editor.face}
-    >
-      <label class="flex cursor-pointer items-center gap-1"
-        ><Hash class="size-4" />
-        <input
-          type="file"
-          accept="image/*"
-          multiple
-          hidden
-          onchange={(e) => onAdd("number", e)}
-        /></label
-      >
-    </Button>
-    <Button variant="outline" size="sm" title="Add hand widget" disabled={!$editor.face}>
-      <label class="flex cursor-pointer items-center gap-1"
-        ><Clock3 class="size-4" />
-        <input type="file" accept="image/*" hidden onchange={(e) => onAdd("hand", e)} /></label
-      >
-    </Button>
-    <div class="grow"></div>
-    <Button
-      variant="ghost"
-      size="sm"
-      title="Delete selected widget"
-      disabled={!$editor.sel}
-      onclick={deleteWidget}
-    >
-      <Trash2 class="size-4 text-destructive" />
-    </Button>
+<div class="tree-panel">
+  <div class="toolbar">
+    <span class="tool-slot" title="Add image widget">
+      <Button kind="secondary" size="sm" disabled={!$editor.face}>
+        <label class="file-label">
+          <ImagePlus size={16} />
+          <input
+            type="file"
+            accept="image/*"
+            hidden
+            disabled={!$editor.face}
+            onchange={(e) => onAdd("image", e)}
+          />
+        </label>
+      </Button>
+    </span>
+    <span class="tool-slot" title="Add number widget — select 10 digit images (0…9)">
+      <Button kind="secondary" size="sm" disabled={!$editor.face}>
+        <label class="file-label">
+          <Hash size={16} />
+          <input
+            type="file"
+            accept="image/*"
+            multiple
+            hidden
+            disabled={!$editor.face}
+            onchange={(e) => onAdd("number", e)}
+          />
+        </label>
+      </Button>
+    </span>
+    <span class="tool-slot" title="Add hand widget">
+      <Button kind="secondary" size="sm" disabled={!$editor.face}>
+        <label class="file-label">
+          <Clock3 size={16} />
+          <input
+            type="file"
+            accept="image/*"
+            hidden
+            disabled={!$editor.face}
+            onchange={(e) => onAdd("hand", e)}
+          />
+        </label>
+      </Button>
+    </span>
+    <div class="spacer"></div>
+    <span class="tool-slot" title="Delete selected widget">
+      <Button kind="ghost" size="sm" disabled={!$editor.sel} onClick={deleteWidget}>
+        <Trash2 size={16} color="var(--color-error)" />
+      </Button>
+    </span>
   </div>
-  <div class="grow overflow-y-auto py-1 text-sm">
+  <div class="list">
     {#if $editor.face}
       {#each $editor.face.screens.filter((s) => s.tag === $editor.screenTag) as scr}
         {@render treeNode(scr, 0)}
       {/each}
     {:else}
-      <p class="p-3 text-muted-foreground">Drop a .bin here or grab one from the marketplace.</p>
+      <p class="empty">Drop a .bin here or grab one from the marketplace.</p>
     {/if}
   </div>
 </div>
@@ -165,24 +173,23 @@
   {@const Icon = tagIcons[n.tag as keyof typeof tagIcons] || Box}
   {@const kids = depth < 4 ? (n.subs || []).filter((c) => c.subs || c.tag === TAG.struct) : []}
   <button
-    class="flex w-full items-center gap-1.5 px-2 py-0.5 text-left hover:bg-accent {$editor.sel === n
-      ? 'bg-primary/15 text-primary'
-      : ''}"
-    style="padding-left:{10 + depth * 14}px"
+    type="button"
+    class="node-row"
+    class:selected={$editor.sel === n}
+    style="padding-inline-start: {8 + depth * 12}px"
     onclick={() => select(n)}
   >
     {#if kids.length}
       <ChevronRight
-        class="size-3 shrink-0 text-muted-foreground transition-transform {openNodes.has(n)
-          ? 'rotate-90'
-          : ''}"
-        onclick={(e) => toggleOpen(n, e)}
+        size={12}
+        class={openNodes.has(n) ? "chevron open" : "chevron"}
+        onclick={(e: MouseEvent) => toggleOpen(n, e)}
       />
     {:else}
-      <span class="size-3 shrink-0"></span>
+      <span class="chevron-spacer"></span>
     {/if}
-    <Icon class="size-3.5 shrink-0 {$editor.sel === n ? '' : 'text-muted-foreground'}" />
-    <span class="truncate">{nodeLabel(n)}</span>
+    <Icon size={14} class="node-icon" />
+    <span class="label">{nodeLabel(n)}</span>
   </button>
   {#if kids.length && openNodes.has(n)}
     {#each kids as c}
@@ -190,3 +197,86 @@
     {/each}
   {/if}
 {/snippet}
+
+<style>
+  .tree-panel {
+    display: flex;
+    height: 100%;
+    flex-direction: column;
+  }
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 8px;
+    border-bottom: 1px solid oklch(from var(--color-text) l c h / 10%);
+  }
+  .tool-slot {
+    display: inline-flex;
+  }
+  .file-label {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+  }
+  .spacer {
+    flex: 1;
+  }
+  .list {
+    flex: 1;
+    overflow-y: auto;
+    padding-block: 4px;
+    font-size: 0.875rem;
+  }
+  .empty {
+    margin: 0;
+    padding: 12px;
+    color: oklch(from var(--color-text) l c h / 55%);
+  }
+  .node-row {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    gap: 6px;
+    border: none;
+    background: transparent;
+    padding-block: 2px;
+    padding-inline-end: 8px;
+    font: inherit;
+    color: var(--color-text);
+    text-align: start;
+    cursor: pointer;
+
+    &:hover {
+      background: oklch(from var(--color-text) l c h / 6%);
+    }
+    &.selected {
+      background: oklch(from var(--color-accent) l c h / 12%);
+      color: var(--color-accent);
+    }
+    &:not(.selected) :global(.node-icon) {
+      color: oklch(from var(--color-text) l c h / 55%);
+    }
+  }
+  .label {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .chevron-spacer {
+    flex-shrink: 0;
+    width: 12px;
+    height: 12px;
+  }
+  :global(.chevron) {
+    flex-shrink: 0;
+    color: oklch(from var(--color-text) l c h / 55%);
+    transition: transform 0.15s ease;
+  }
+  :global(.chevron.open) {
+    transform: rotate(90deg);
+  }
+  :global(.node-icon) {
+    flex-shrink: 0;
+  }
+</style>

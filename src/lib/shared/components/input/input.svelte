@@ -8,6 +8,10 @@
     name?: string;
     autocomplete?: string;
     minlength?: number;
+    maxlength?: number;
+    min?: number | string;
+    max?: number | string;
+    step?: number | string;
     onInput?: (value: string) => void;
   }
   let {
@@ -19,6 +23,10 @@
     name,
     autocomplete,
     minlength,
+    maxlength,
+    min,
+    max,
+    step,
     onInput,
   }: Props = $props();
 </script>
@@ -30,6 +38,10 @@
   {required}
   {name}
   {minlength}
+  {maxlength}
+  {min}
+  {max}
+  {step}
   autocomplete={autocomplete as any}
   bind:value
   oninput={() => onInput?.(value)}
