@@ -1,7 +1,13 @@
 <script lang="ts">
-  import { Button } from "$lib/shared/components/ui/button";
-  import { Badge } from "$lib/shared/components/ui/badge/index.js";
-  import { Heart, Download, Trash2, Pencil, Globe, GlobeLock } from "@lucide/svelte";
+  import { Badge } from "$lib/shared/components/badge";
+  import { Button } from "$lib/shared/components/button";
+  import { Card } from "$lib/shared/components/card";
+  import Heart from "@lucide/svelte/icons/heart";
+  import Download from "@lucide/svelte/icons/download";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
+  import Pencil from "@lucide/svelte/icons/pencil";
+  import Globe from "@lucide/svelte/icons/globe";
+  import GlobeLock from "@lucide/svelte/icons/globe-lock";
   import { fileUrl } from "$lib/shared/api";
   import type { RecordModel } from "pocketbase";
   import { goto } from "$app/navigation";
@@ -34,56 +40,141 @@
 
 <svelte:head><title>My watchfaces — FMC Watchfaces</title></svelte:head>
 
-{#if $marketErr}<p class="px-4 pt-3 text-sm text-destructive lg:px-6">{$marketErr}</p>{/if}
+<div class="page">
+  {#if $marketErr}<p class="error">{$marketErr}</p>{/if}
 
-<main
-  class="grid flex-1 auto-rows-min grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-3 overflow-y-auto p-3 sm:grid-cols-[repeat(auto-fill,minmax(220px,1fr))] sm:gap-4 sm:p-4 lg:p-6"
->
-  {#each $myItems as wf (wf.id)}
-    <div class="flex flex-col gap-2 rounded-xl border p-3 transition-shadow hover:shadow-md">
-      <button
-        class="aspect-square cursor-pointer overflow-hidden rounded-full bg-black"
-        onclick={() => editRequested(wf)}
-        title="Open in editor"
-      >
-        <img src={fileUrl(wf, "preview")} alt={wf.name} class="h-full w-full object-cover" />
-      </button>
-      <div class="flex items-center justify-between gap-2">
-        <span class="truncate text-sm font-medium">{wf.name}</span>
-        <Badge variant={wf.published ? "default" : "secondary"}>
-          {wf.published ? "Published" : "Draft"}
-        </Badge>
-      </div>
-      <div class="mt-auto flex items-center gap-1">
-        {#if wf.published}
-          <span class="text-muted-foreground flex items-center gap-1 text-xs">
-            <Heart class="size-3.5" />
-            {likeCount(wf.id)}
-            <Download class="ms-1.5 size-3.5" />
-            {wf.downloads || 0}
-          </span>
-        {/if}
-        <div class="ms-auto flex items-center">
-          <Button size="sm" variant="ghost" onclick={() => editRequested(wf)} title="Edit">
-            <Pencil class="size-4" />
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            onclick={() => publishToggleRequested(wf)}
-            title={wf.published ? "Unpublish" : "Publish"}
-          >
-            {#if wf.published}<GlobeLock class="size-4" />{:else}<Globe class="size-4" />{/if}
-          </Button>
-          <Button size="sm" variant="ghost" onclick={() => remove(wf)} title="Delete">
-            <Trash2 class="text-destructive size-4" />
-          </Button>
+  <main class="grid">
+    {#each $myItems as wf (wf.id)}
+      <Card>
+        <div class="content">
+          <button class="preview" onclick={() => editRequested(wf)} title="Open in editor">
+            <img src={fileUrl(wf, "preview")} alt={wf.name} loading="lazy" />
+          </button>
+          <div class="title-row">
+            <span class="name">{wf.name}</span>
+            <Badge>{wf.published ? "Published" : "Draft"}</Badge>
+          </div>
+          <div class="actions">
+            {#if wf.published}
+              <span class="stats">
+                <Heart size={14} />
+                {likeCount(wf.id)}
+                <Download size={14} />
+                {wf.downloads || 0}
+              </span>
+            {/if}
+            <div class="buttons">
+              <span class="action-slot" title="Edit">
+                <Button kind="ghost" size="sm" onClick={() => editRequested(wf)}>
+                  <Pencil size={16} />
+                </Button>
+              </span>
+              <span class="action-slot" title={wf.published ? "Unpublish" : "Publish"}>
+                <Button kind="ghost" size="sm" onClick={() => publishToggleRequested(wf)}>
+                  {#if wf.published}<GlobeLock size={16} />{:else}<Globe size={16} />{/if}
+                </Button>
+              </span>
+              <span class="action-slot" title="Delete">
+                <Button kind="ghost" size="sm" onClick={() => remove(wf)}>
+                  <Trash2 size={16} color="var(--color-error)" />
+                </Button>
+              </span>
+            </div>
+          </div>
         </div>
-      </div>
-    </div>
-  {:else}
-    <p class="col-span-full py-16 text-center text-sm text-muted-foreground">
-      Nothing here yet — create a watchface in the editor and hit Save.
-    </p>
-  {/each}
-</main>
+      </Card>
+    {:else}
+      <p class="empty">Nothing here yet — create a watchface in the editor and hit Save.</p>
+    {/each}
+  </main>
+</div>
+
+<style>
+  .page {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+  .error {
+    margin: 0;
+    padding: 12px 16px 0;
+    font-size: 0.875rem;
+    color: var(--color-error);
+  }
+  main {
+    flex: 1;
+    overflow-y: auto;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 16px;
+    padding: 16px;
+  }
+  .content {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    height: 100%;
+  }
+  .preview {
+    display: block;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    padding: 0;
+    border: none;
+    overflow: hidden;
+    cursor: pointer;
+    border-radius: var(--border-radius);
+    background: oklch(0 0 0);
+
+    img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+  }
+  .title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.875rem;
+    font-weight: 500;
+  }
+  .actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: auto;
+  }
+  .stats {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.75rem;
+    color: oklch(from var(--color-text) l c h / 55%);
+  }
+  .buttons {
+    display: inline-flex;
+    align-items: center;
+    margin-inline-start: auto;
+  }
+  .action-slot {
+    display: inline-flex;
+  }
+  .empty {
+    grid-column: 1 / -1;
+    padding: 64px 0;
+    text-align: center;
+    font-size: 0.875rem;
+    color: oklch(from var(--color-text) l c h / 55%);
+  }
+</style>

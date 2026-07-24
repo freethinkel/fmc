@@ -1,7 +1,10 @@
 <script lang="ts">
-  import { Button } from "$lib/shared/components/ui/button";
-  import { Badge } from "$lib/shared/components/ui/badge/index.js";
-  import { Heart, Download, Trash2 } from "@lucide/svelte";
+  import { Badge } from "$lib/shared/components/badge";
+  import { Button } from "$lib/shared/components/button";
+  import { Card } from "$lib/shared/components/card";
+  import Heart from "@lucide/svelte/icons/heart";
+  import Download from "@lucide/svelte/icons/download";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
   import { fileUrl, downloadUrl } from "$lib/shared/api";
 
   let {
@@ -16,51 +19,129 @@
   } = $props();
 </script>
 
-<div class="flex flex-col gap-2 rounded-xl border p-3 transition-shadow hover:shadow-md">
-  <button
-    onclick={onOpen}
-    class="aspect-square cursor-pointer overflow-hidden rounded-full bg-black"
-    title="Open in editor"
-  >
-    <img
-      src={fileUrl(wf, "preview")}
-      alt={wf.name}
-      class="h-full w-full object-cover"
-      loading="lazy"
-    />
-  </button>
-  <div class="flex items-baseline justify-between gap-2">
-    <span class="truncate text-sm font-medium">{wf.name}</span>
-    {#if wf.type}<Badge variant="outline" class="shrink-0 text-[10px] uppercase">{wf.type}</Badge
-      >{/if}
-  </div>
-  {#if wf.owner}
-    <span class="text-xs text-muted-foreground">by {wf.expand?.owner?.name || "—"}</span>
-  {/if}
-  {#if wf.description}
-    <p class="line-clamp-2 text-xs text-muted-foreground">
-      {wf.description}
-    </p>
-  {/if}
-  <div class="mt-auto flex items-center gap-1">
-    <Button
-      size="sm"
-      variant="ghost"
-      disabled={!canLike}
-      onclick={onLike}
-      title={canLike ? "Like" : "Sign in to like"}
-    >
-      <Heart class={["size-4", liked && "fill-red-500 text-red-500"]} />
-      <span class="text-xs">{likeCount}</span>
-    </Button>
-    <Button size="sm" variant="ghost" href={downloadUrl(wf)} title="Download .bin">
-      <Download class="size-4" />
-      <span class="text-xs">{wf.downloads || 0}</span>
-    </Button>
-    {#if canRemove}
-      <Button size="sm" variant="ghost" class="ml-auto" onclick={onRemove} title="Delete">
-        <Trash2 class="size-4 text-destructive" />
-      </Button>
+<Card>
+  <div class="content">
+    <button class="preview" onclick={onOpen} title="Open in editor">
+      <img src={fileUrl(wf, "preview")} alt={wf.name} loading="lazy" />
+    </button>
+    <div class="title-row">
+      <span class="name">{wf.name}</span>
+      {#if wf.type}<Badge>{wf.type}</Badge>{/if}
+    </div>
+    {#if wf.owner}
+      <span class="author">by {wf.expand?.owner?.name || "—"}</span>
     {/if}
+    {#if wf.description}
+      <p class="desc">{wf.description}</p>
+    {/if}
+    <div class="actions">
+      <span class="action-slot" title={canLike ? "Like" : "Sign in to like"}>
+        <Button kind="ghost" size="sm" disabled={!canLike} onClick={onLike}>
+          <Heart
+            size={16}
+            color={liked ? "var(--color-error)" : undefined}
+            fill={liked ? "var(--color-error)" : "none"}
+          />
+          <span class="count">{likeCount}</span>
+        </Button>
+      </span>
+      <a class="link-action" href={downloadUrl(wf)} title="Download .bin">
+        <Download size={16} />
+        <span class="count">{wf.downloads || 0}</span>
+      </a>
+      {#if canRemove}
+        <span class="action-slot remove-slot" title="Delete">
+          <Button kind="ghost" size="sm" onClick={onRemove}>
+            <Trash2 size={16} color="var(--color-error)" />
+          </Button>
+        </span>
+      {/if}
+    </div>
   </div>
-</div>
+</Card>
+
+<style>
+  .content {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    height: 100%;
+  }
+  .preview {
+    display: block;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    padding: 0;
+    border: none;
+    overflow: hidden;
+    cursor: pointer;
+    border-radius: var(--border-radius);
+    background: oklch(0 0 0);
+
+    img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+  }
+  .title-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.875rem;
+    font-weight: 500;
+  }
+  .author {
+    font-size: 0.75rem;
+    color: oklch(from var(--color-text) l c h / 55%);
+  }
+  .desc {
+    margin: 0;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    font-size: 0.75rem;
+    color: oklch(from var(--color-text) l c h / 55%);
+  }
+  .actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: auto;
+  }
+  .action-slot {
+    display: inline-flex;
+  }
+  .remove-slot {
+    margin-inline-start: auto;
+  }
+  .count {
+    font-size: 0.75rem;
+  }
+  .link-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 30px;
+    padding: 0 10px;
+    border-radius: var(--border-radius);
+    color: var(--color-text);
+    text-decoration: none;
+    font-size: 0.85rem;
+    transition: background-color 0.15s ease;
+
+    &:hover {
+      background-color: oklch(from var(--color-text) l c h / 20%);
+    }
+  }
+</style>

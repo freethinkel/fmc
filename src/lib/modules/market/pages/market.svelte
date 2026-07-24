@@ -1,8 +1,9 @@
 <script lang="ts">
-  import { Input } from "$lib/shared/components/ui/input";
-  import * as Tabs from "$lib/shared/components/ui/tabs";
-  import * as Select from "$lib/shared/components/ui/select";
-  import { Search } from "@lucide/svelte";
+  import { Input } from "$lib/shared/components/input";
+  import { Tabs } from "$lib/shared/components/tabs";
+  import { Select } from "$lib/shared/components/select";
+  import { Skeleton } from "$lib/shared/components/skeleton";
+  import Search from "@lucide/svelte/icons/search";
   import type { RecordModel } from "pocketbase";
   import { authModel } from "$lib/modules/auth/model";
   import { marketModel } from "../model";
@@ -13,6 +14,7 @@
     $items: items,
     $likes: likes,
     $marketErr: marketErr,
+    $marketLoading: marketLoading,
     marketLoadRequested,
     likeToggleRequested,
     removeRequested,
@@ -24,7 +26,11 @@
 
   marketLoadRequested();
 
-  const TABS = ["nothing", "community"];
+  const TAB_ITEMS = [
+    { value: "nothing", label: "From Nothing" },
+    { value: "community", label: "Community" },
+  ];
+  const TABS = TAB_ITEMS.map((t) => t.value);
 
   const tabParam = page.url.searchParams.get("tab") ?? "";
   let tab = $state<string | undefined>(TABS.includes(tabParam) ? tabParam : "nothing");
@@ -38,6 +44,10 @@
 
   let query = $state("");
   let sort = $state("new"); // new | popular
+  const SORT_OPTIONS = [
+    { value: "new", label: "Newest" },
+    { value: "popular", label: "Popular" },
+  ];
 
   const likeCount = (id: string) => $likes.filter((l) => l.watchface === id).length;
   const myLike = (id: string) => $likes.find((l) => l.watchface === id && l.user === $user?.id);
@@ -99,42 +109,39 @@
   }
 </script>
 
-{#if $marketErr}<p class="px-4 pt-3 text-sm text-destructive lg:px-6">
-    {$marketErr}
-  </p>{/if}
+<div class="page">
+  {#if $marketErr}<p class="error">{$marketErr}</p>{/if}
 
-<div class="flex min-h-0 flex-1 flex-col">
-  <div class="flex flex-wrap items-center gap-2 border-b p-3 sm:px-4 lg:px-6">
-    <Tabs.Root bind:value={tab}>
-      <Tabs.List class="h-8">
-        <Tabs.Trigger value="nothing" class="text-xs">From Nothing</Tabs.Trigger>
-        <Tabs.Trigger value="community" class="text-xs">Community</Tabs.Trigger>
-      </Tabs.List>
-    </Tabs.Root>
-    <div class="relative ms-auto w-40 sm:w-56">
-      <Search class="text-muted-foreground absolute start-2.5 top-1/2 size-3.5 -translate-y-1/2" />
-      <Input bind:value={query} placeholder="Search…" class="h-8 ps-8 text-sm" />
+  <div class="toolbar">
+    <Tabs items={TAB_ITEMS} value={tab ?? "nothing"} onChange={(v) => (tab = v)} />
+    <div class="search">
+      <Search size={14} />
+      <Input bind:value={query} placeholder="Search…" />
     </div>
-    <Select.Root type="single" bind:value={sort}>
-      <Select.Trigger class="h-8 w-28 text-xs"
-        >{sort === "new" ? "Newest" : "Popular"}</Select.Trigger
-      >
-      <Select.Content>
-        <Select.Item value="new" label="Newest" />
-        <Select.Item value="popular" label="Popular" />
-      </Select.Content>
-    </Select.Root>
+    <div class="sort">
+      <Select bind:value={sort} options={SORT_OPTIONS} />
+    </div>
   </div>
 
-  {#if tab === "nothing"}
+  {#if $marketLoading}
+    <main class="grid">
+      {#each Array(8) as _, i (i)}
+        <div class="skeleton-card">
+          <Skeleton height="140px" />
+          <Skeleton height="14px" width="70%" />
+          <Skeleton height="12px" width="40%" />
+        </div>
+      {/each}
+    </main>
+  {:else if tab === "nothing"}
     <!-- sections by category, horizontal scroll within each — like on the watch itself -->
-    <main class="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6">
+    <main class="sections">
       {#each grouped as [category, list] (category)}
-        <section class="mb-6">
-          <h2 class="mb-2 text-sm font-semibold">{category || "Other"}</h2>
-          <div class="flex gap-3 overflow-x-auto pb-2 sm:gap-4">
+        <section>
+          <h2>{category || "Other"}</h2>
+          <div class="h-scroll">
             {#each list as wf (wf.id)}
-              <div class="w-40 shrink-0 sm:w-48">
+              <div class="h-item">
                 <WatchfaceCard
                   {wf}
                   likeCount={likeCount(wf.id)}
@@ -150,13 +157,11 @@
           </div>
         </section>
       {:else}
-        <p class="py-16 text-center text-sm text-muted-foreground">Nothing found.</p>
+        <p class="empty">Nothing found.</p>
       {/each}
     </main>
   {:else}
-    <main
-      class="grid flex-1 auto-rows-min grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-3 overflow-y-auto p-3 sm:grid-cols-[repeat(auto-fill,minmax(220px,1fr))] sm:gap-4 sm:p-4 lg:p-6"
-    >
+    <main class="grid">
       {#each visible as wf (wf.id)}
         <WatchfaceCard
           {wf}
@@ -169,13 +174,102 @@
           onRemove={() => remove(wf)}
         />
       {:else}
-        <p class="col-span-full py-16 text-center text-sm text-muted-foreground">
-          No community watchfaces yet — publish yours from the editor.
-        </p>
+        <p class="empty full">No community watchfaces yet — publish yours from the editor.</p>
       {/each}
       {#if visibleCount < shown.length}
-        <div class="col-span-full h-1" use:loadMore></div>
+        <div class="sentinel" use:loadMore></div>
       {/if}
     </main>
   {/if}
 </div>
+
+<style>
+  .page {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+  .error {
+    margin: 0;
+    padding: 12px 16px 0;
+    font-size: 0.875rem;
+    color: var(--color-error);
+  }
+  .toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    border-bottom: 1px solid oklch(from var(--color-text) l c h / 10%);
+  }
+  .search {
+    position: relative;
+    width: 220px;
+    margin-inline-start: auto;
+
+    :global(svg) {
+      position: absolute;
+      top: 50%;
+      left: 10px;
+      transform: translateY(-50%);
+      color: oklch(from var(--color-text) l c h / 55%);
+      pointer-events: none;
+    }
+    :global(input) {
+      padding-inline-start: 34px;
+    }
+  }
+  .sort {
+    width: 130px;
+  }
+  main {
+    flex: 1;
+    overflow-y: auto;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 16px;
+    padding: 16px;
+  }
+  .skeleton-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .sections {
+    padding: 16px;
+  }
+  section {
+    margin-bottom: 24px;
+  }
+  h2 {
+    margin: 0 0 8px;
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+  .h-scroll {
+    display: flex;
+    gap: 12px;
+    overflow-x: auto;
+    padding-bottom: 8px;
+  }
+  .h-item {
+    flex-shrink: 0;
+    width: 160px;
+  }
+  .empty {
+    padding: 64px 0;
+    text-align: center;
+    font-size: 0.875rem;
+    color: oklch(from var(--color-text) l c h / 55%);
+  }
+  .empty.full {
+    grid-column: 1 / -1;
+  }
+  .sentinel {
+    grid-column: 1 / -1;
+    height: 1px;
+  }
+</style>
