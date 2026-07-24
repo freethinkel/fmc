@@ -168,43 +168,71 @@ patched.watch(() => {
 });
 
 // Figma-style alignment: nudge the selected node so its RENDERED bounding box lands on the
-// screen edge/center. Delta-based off the render hits, so it works uniformly for groups
-// (frame x/y), widgets (struct x/y) and grouped children whose drawn position differs from
-// their raw x/y. ponytail: clamped to >=0 — a group child at the x=0 "center me" convention
-// can't be pushed further left than the format can express.
+// container's edge/center. The container is the parent group's frame when the node is a
+// group child (Figma aligns relative to the parent), the screen otherwise. Delta-based off
+// the render hits, so it works uniformly for groups (frame x/y), widgets (struct x/y) and
+// grouped children whose drawn position differs from their raw x/y. ponytail: clamped to
+// >=0 — a group child at the x=0 "center me" convention can't be pushed further left than
+// the format can express, and AUTO (0x8000) children ignore x/y entirely.
 export type AlignDir = 'left' | 'hcenter' | 'right' | 'top' | 'vcenter' | 'bottom';
 export function alignSelected(dir: AlignDir) {
   const s = editor.getState();
   if (!s.face || !s.sel) return;
+  const sel = s.sel;
   const c = document.createElement('canvas');
   c.width = c.height = 466;
-  const hits = render(c.getContext('2d')!, s.face, s.screenTag, s.sim);
-  const h = hits.findLast(h => h.node === s.sel);
-  if (!h) return;
-  let dx = dir === 'left' ? -h.x : dir === 'hcenter' ? Math.round((466 - h.w) / 2 - h.x)
-    : dir === 'right' ? 466 - h.w - h.x : 0;
-  let dy = dir === 'top' ? -h.y : dir === 'vcenter' ? Math.round((466 - h.h) / 2 - h.y)
-    : dir === 'bottom' ? 466 - h.h - h.y : 0;
-  // a hand's bbox rotates with the live angle — centering means "pivot on screen center",
-  // not "AABB centered" (which would drift with the current second)
-  const pivot = s.sel.subs?.find(n => n.tag === TAG.pivot);
-  const pst = pivot && s.sel.subs?.find(n => n.tag === TAG.struct);
-  if (pivot && pst) {
-    if (dir === 'hcenter') dx = 233 - pivot.pivotX! - pst.x!;
-    if (dir === 'vcenter') dy = 233 - pivot.pivotY! - pst.y!;
-  }
+  let parent: FaceNode | null = null;
+  const walk = (n: FaceNode) => {
+    if (n.tag === TAG.group && n.subs?.includes(sel)) parent = n;
+    n.subs?.forEach(walk);
+  };
+  for (const scr of s.face.screens) walk(scr);
+
+  const pass = (): boolean => {
+    const hits = render(c.getContext('2d')!, s.face!, s.screenTag, s.sim);
+    const h = hits.findLast(h => h.node === sel);
+    if (!h) return false;
+    let cont = { x: 0, y: 0, w: 466, h: 466 };
+    if (parent) {
+      const ph = hits.findLast(x => x.node === parent);
+      // auto-sized frames report w/h 0 — fall back to the screen for those
+      if (ph) cont = { x: ph.x, y: ph.y, w: ph.w || 466, h: ph.h || 466 };
+    }
+    let dx = dir === 'left' ? cont.x - h.x
+      : dir === 'hcenter' ? Math.round(cont.x + (cont.w - h.w) / 2 - h.x)
+      : dir === 'right' ? cont.x + cont.w - h.w - h.x : 0;
+    let dy = dir === 'top' ? cont.y - h.y
+      : dir === 'vcenter' ? Math.round(cont.y + (cont.h - h.h) / 2 - h.y)
+      : dir === 'bottom' ? cont.y + cont.h - h.h - h.y : 0;
+    // a hand's bbox rotates with the live angle — centering means "pivot on container
+    // center", not "AABB centered" (which would drift with the current second)
+    const pivot = sel.subs?.find(n => n.tag === TAG.pivot);
+    const pst = pivot && sel.subs?.find(n => n.tag === TAG.struct);
+    if (pivot && pst) {
+      if (dir === 'hcenter') dx = Math.round(cont.x + cont.w / 2) - pivot.pivotX! - pst.x!;
+      if (dir === 'vcenter') dy = Math.round(cont.y + cont.h / 2) - pivot.pivotY! - pst.y!;
+    }
+    if (!dx && !dy) return false;
+    if (sel.tag === TAG.group) {
+      const f = sel.subs!.find(n => n.tag === TAG.frame)!;
+      const v = unhex(f.hex!);
+      const fx = Math.max(0, (v[0] | v[1] << 8) + dx), fy = Math.max(0, (v[2] | v[3] << 8) + dy);
+      v[0] = fx; v[1] = fx >> 8; v[2] = fy; v[3] = fy >> 8;
+      patched({ node: f, patch: { hex: hex(v) } });
+    } else {
+      const st = sel.subs?.find(n => n.tag === TAG.struct);
+      if (!st || st.x == null) return false;
+      patched({ node: st, patch: { x: Math.max(0, st.x + dx), y: Math.max(0, (st.y || 0) + dy) } });
+    }
+    return true;
+  };
+
   checkpoint(0);
-  if (s.sel.tag === TAG.group) {
-    const f = s.sel.subs!.find(n => n.tag === TAG.frame)!;
-    const v = unhex(f.hex!);
-    const fx = Math.max(0, (v[0] | v[1] << 8) + dx), fy = Math.max(0, (v[2] | v[3] << 8) + dy);
-    v[0] = fx; v[1] = fx >> 8; v[2] = fy; v[3] = fy >> 8;
-    patched({ node: f, patch: { hex: hex(v) } });
-  } else {
-    const st = s.sel.subs?.find(n => n.tag === TAG.struct);
-    if (!st || st.x == null) return;
-    patched({ node: st, patch: { x: Math.max(0, st.x + dx), y: Math.max(0, (st.y || 0) + dy) } });
-  }
+  // two passes: patching can change a coordinate's meaning mid-flight (a packed NUMBER's
+  // y=0 draws frame-centered, but any nonzero y is literal — see drawGroup's rowCross), so
+  // the first delta may land off-target; a second measure-and-nudge against the re-render
+  // converges exactly for literal coordinates.
+  if (pass()) pass();
 }
 
 export const newFaceFx = createEffect(async (name: string = 'Custom') => {
