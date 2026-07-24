@@ -50,18 +50,18 @@ scoped CSS, минимальный набор токенов, oklch-произв
 
 Пишем:
 
-| Компонент | База |
-|---|---|
-| button | `<button>`, варианты через `--color` |
-| input, textarea | нативные, токен-стили |
-| field | label + input + error для форм |
-| badge, card, skeleton | простая разметка + CSS |
-| avatar | `<img>` + фолбэк-инициалы |
-| switch, checkbox | скрытый нативный `<input>` + стилизованная обёртка (паттерн friendzone switch) |
-| select | стилизованный нативный `<select>` |
-| tabs | кнопки + state, без ARIA-машинерии |
-| dialog | нативный `<dialog>` (top-layer, focus trap, Esc бесплатно); drawer-вариант закрывает бывший sheet |
-| menu | дропдаун: `position:absolute` в relative-родителе, закрытие по клику снаружи; без порталов и floating-ui |
+| Компонент             | База                                                                                                     |
+| --------------------- | -------------------------------------------------------------------------------------------------------- |
+| button                | `<button>`, варианты через `--color`                                                                     |
+| input, textarea       | нативные, токен-стили                                                                                    |
+| field                 | label + input + error для форм                                                                           |
+| badge, card, skeleton | простая разметка + CSS                                                                                   |
+| avatar                | `<img>` + фолбэк-инициалы                                                                                |
+| switch, checkbox      | скрытый нативный `<input>` + стилизованная обёртка (паттерн friendzone switch)                           |
+| select                | стилизованный нативный `<select>`                                                                        |
+| tabs                  | кнопки + state, без ARIA-машинерии                                                                       |
+| dialog                | нативный `<dialog>` (top-layer, focus trap, Esc бесплатно); drawer-вариант закрывает бывший sheet        |
+| menu                  | дропдаун: `position:absolute` в relative-родителе, закрытие по клику снаружи; без порталов и floating-ui |
 
 Не пишем: tooltip (нужен был только sidebar'у), separator/breadcrumb (обычный
 CSS/разметка на месте использования), sheet (закрывается dialog/drawer),

@@ -29,8 +29,7 @@ describe("wf.ts round-trips every real watchface .bin byte-for-byte", () => {
       if (!px || r !== face.resources[0]) continue;
       // compress -> decompress round trip on the first resource of the file
       const want =
-        ({ 4: 2, 5: 3, 24: 4 } as Record<number, number>)[r.cf] * r.w * r.h ||
-        (r.w * r.h + 1) >> 1;
+        ({ 4: 2, 5: 3, 24: 4 } as Record<number, number>)[r.cf] * r.w * r.h || (r.w * r.h + 1) >> 1;
       const raw = lz4Decompress(r.data, want);
       const rt = lz4Decompress(lz4Compress(raw), raw.length);
 

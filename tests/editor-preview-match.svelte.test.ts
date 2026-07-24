@@ -177,11 +177,7 @@ function labeled(canvas: HTMLCanvasElement, label: string): HTMLCanvasElement {
   return canvas;
 }
 
-function imageData(
-  source: CanvasImageSource,
-  w: number,
-  h: number,
-): Uint8ClampedArray {
+function imageData(source: CanvasImageSource, w: number, h: number): Uint8ClampedArray {
   const c = document.createElement("canvas");
 
   c.width = w;
@@ -225,8 +221,7 @@ describe("render() output matches embedded preview", () => {
 
       drawFace(canvas.getContext("2d")!, face, TAG.main, sim);
 
-      const scr =
-        face.screens.find((s) => s.tag === TAG.main) ?? face.screens[0];
+      const scr = face.screens.find((s) => s.tag === TAG.main) ?? face.screens[0];
       const pv = scr.subs
         ?.find((s) => s.tag === TAG.preview)
         ?.subs?.find((s) => s.tag === TAG.pvStruct);
@@ -249,11 +244,7 @@ describe("render() output matches embedded preview", () => {
       actualCanvas.height = r.h;
       actualCanvas
         .getContext("2d")!
-        .putImageData(
-          new ImageData(new Uint8ClampedArray(actual), r.w, r.h),
-          0,
-          0,
-        );
+        .putImageData(new ImageData(new Uint8ClampedArray(actual), r.w, r.h), 0, 0);
 
       const expectedCanvas = document.createElement("canvas");
 
@@ -261,31 +252,18 @@ describe("render() output matches embedded preview", () => {
       expectedCanvas.height = r.h;
       expectedCanvas
         .getContext("2d")!
-        .putImageData(
-          new ImageData(new Uint8ClampedArray(expected), r.w, r.h),
-          0,
-          0,
-        );
+        .putImageData(new ImageData(new Uint8ClampedArray(expected), r.w, r.h), 0, 0);
 
       const diffCanvas = document.createElement("canvas");
 
       diffCanvas.width = r.w;
       diffCanvas.height = r.h;
-      diffCanvas
-        .getContext("2d")!
-        .putImageData(new ImageData(diff, r.w, r.h), 0, 0);
+      diffCanvas.getContext("2d")!.putImageData(new ImageData(diff, r.w, r.h), 0, 0);
 
       title.textContent = `${name} — ${(ratio * 100).toFixed(2)}% diff (max ${(maxDiffRatio * 100).toFixed(0)}%)`;
       [actualCanvas, expectedCanvas, diffCanvas].forEach((c, i) =>
         row.appendChild(
-          labeled(
-            c,
-            [
-              "actual (our render)",
-              "expected (baked preview)",
-              "diff (pixelmatch)",
-            ][i],
-          ),
+          labeled(c, ["actual (our render)", "expected (baked preview)", "diff (pixelmatch)"][i]),
         ),
       );
 

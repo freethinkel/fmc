@@ -22,30 +22,32 @@
 - Code comments in English. Commit messages: short imperative (match repo style), end with:
   `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`
 - Tailwind → CSS cheatsheet for page migrations:
-  | Tailwind class | Replacement |
-  |---|---|
-  | `text-muted-foreground` | `color: oklch(from var(--color-text) l c h / 55%)` |
-  | `bg-muted`, `bg-secondary`, `bg-accent` | `background: oklch(from var(--color-text) l c h / 6%)` |
-  | `border`, `border-t/b/x` | `border: 1px solid oklch(from var(--color-text) l c h / 12%)` |
-  | `rounded-*` | `border-radius: var(--border-radius)` (halve for small chips) |
-  | `bg-cmf`, `text-cmf`, `--color-cmf` | `var(--color-accent)` |
-  | `font-display` | `font-family: var(--font-display)` |
-  | `text-xs` / `text-sm` | `font-size: 0.75rem` / `0.875rem` |
-  | `bg-background`, `text-foreground` | `var(--color-background)` / `var(--color-text)` (usually inherited — drop) |
-  | spacing utils (`p-4`, `gap-2`…) | plain CSS, 4px grid |
-  | `md:hidden` / `hidden md:flex` | `@media (min-width: 768px)` / `(max-width: 767px)` |
+  | Tailwind class                          | Replacement                                                                |
+  | --------------------------------------- | -------------------------------------------------------------------------- |
+  | `text-muted-foreground`                 | `color: oklch(from var(--color-text) l c h / 55%)`                         |
+  | `bg-muted`, `bg-secondary`, `bg-accent` | `background: oklch(from var(--color-text) l c h / 6%)`                     |
+  | `border`, `border-t/b/x`                | `border: 1px solid oklch(from var(--color-text) l c h / 12%)`              |
+  | `rounded-*`                             | `border-radius: var(--border-radius)` (halve for small chips)              |
+  | `bg-cmf`, `text-cmf`, `--color-cmf`     | `var(--color-accent)`                                                      |
+  | `font-display`                          | `font-family: var(--font-display)`                                         |
+  | `text-xs` / `text-sm`                   | `font-size: 0.75rem` / `0.875rem`                                          |
+  | `bg-background`, `text-foreground`      | `var(--color-background)` / `var(--color-text)` (usually inherited — drop) |
+  | spacing utils (`p-4`, `gap-2`…)         | plain CSS, 4px grid                                                        |
+  | `md:hidden` / `hidden md:flex`          | `@media (min-width: 768px)` / `(max-width: 767px)`                         |
 
 ---
 
 ### Task 1: Lightning CSS + design tokens
 
 **Files:**
+
 - Modify: `vite.config.ts`
 - Create: `src/lib/styles/tokens.css`
 - Modify: `src/routes/+layout.svelte:1-3`
 - Modify: `package.json` (dev dep `lightningcss`)
 
 **Interfaces:**
+
 - Produces: CSS custom properties `--color-accent`, `--color-text`, `--color-background`, `--color-error`, `--border-radius`, `--font-family`, `--font-display`, `--spring-transition` — every later task styles against these.
 
 - [ ] **Step 1: Install lightningcss**
@@ -68,9 +70,7 @@ export default defineConfig({
     },
   },
   build: { cssMinify: "lightningcss" },
-  plugins: [
-    /* unchanged */
-  ],
+  plugins: [/* unchanged */],
 });
 ```
 
@@ -94,17 +94,107 @@ export default defineConfig({
   /* spring easing shared by all micro-interactions (from friendzone) */
   --spring-transition: 0.5s
     linear(
-      0, 0.0142, 0.0525, 0.1095, 0.1798, 0.2591, 0.3434, 0.4295, 0.5147, 0.5969,
-      0.6743, 0.7458, 0.8105, 0.868, 0.9181, 0.9608, 0.9964, 1.0253, 1.0479,
-      1.0649, 1.0769, 1.0845, 1.0883, 1.089, 1.0871, 1.0832, 1.0777, 1.0712,
-      1.064, 1.0564, 1.0488, 1.0412, 1.034, 1.0272, 1.021, 1.0154, 1.0105,
-      1.0062, 1.0026, 0.9996, 0.9972, 0.9953, 0.9939, 0.9929, 0.9924, 0.9921,
-      0.9921, 0.9923, 0.9927, 0.9932, 0.9938, 0.9945, 0.9952, 0.9958, 0.9965,
-      0.9971, 0.9977, 0.9983, 0.9987, 0.9992, 0.9995, 0.9998, 1.0001, 1.0003,
-      1.0005, 1.0006, 1.0006, 1.0007, 1.0007, 1.0007, 1.0007, 1.0006, 1.0006,
-      1.0005, 1.0005, 1.0004, 1.0004, 1.0003, 1.0002, 1.0002, 1.0001, 1.0001,
-      1.0001, 1, 1, 1, 1, 1, 0.9999, 0.9999, 0.9999, 0.9999, 0.9999, 0.9999,
-      0.9999, 0.9999, 1, 1, 1, 1, 1
+      0,
+      0.0142,
+      0.0525,
+      0.1095,
+      0.1798,
+      0.2591,
+      0.3434,
+      0.4295,
+      0.5147,
+      0.5969,
+      0.6743,
+      0.7458,
+      0.8105,
+      0.868,
+      0.9181,
+      0.9608,
+      0.9964,
+      1.0253,
+      1.0479,
+      1.0649,
+      1.0769,
+      1.0845,
+      1.0883,
+      1.089,
+      1.0871,
+      1.0832,
+      1.0777,
+      1.0712,
+      1.064,
+      1.0564,
+      1.0488,
+      1.0412,
+      1.034,
+      1.0272,
+      1.021,
+      1.0154,
+      1.0105,
+      1.0062,
+      1.0026,
+      0.9996,
+      0.9972,
+      0.9953,
+      0.9939,
+      0.9929,
+      0.9924,
+      0.9921,
+      0.9921,
+      0.9923,
+      0.9927,
+      0.9932,
+      0.9938,
+      0.9945,
+      0.9952,
+      0.9958,
+      0.9965,
+      0.9971,
+      0.9977,
+      0.9983,
+      0.9987,
+      0.9992,
+      0.9995,
+      0.9998,
+      1.0001,
+      1.0003,
+      1.0005,
+      1.0006,
+      1.0006,
+      1.0007,
+      1.0007,
+      1.0007,
+      1.0007,
+      1.0006,
+      1.0006,
+      1.0005,
+      1.0005,
+      1.0004,
+      1.0004,
+      1.0003,
+      1.0002,
+      1.0002,
+      1.0001,
+      1.0001,
+      1.0001,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0.9999,
+      0.9999,
+      0.9999,
+      0.9999,
+      0.9999,
+      0.9999,
+      0.9999,
+      0.9999,
+      1,
+      1,
+      1,
+      1,
+      1
     );
 
   color-scheme: light dark;
@@ -145,6 +235,7 @@ git add -A && git commit -m "Add design tokens and Lightning CSS pipeline"
 ### Task 2: Base components — button, badge, card, skeleton, avatar, tabs
 
 **Files:**
+
 - Create: `src/lib/shared/components/button/{button.svelte,index.ts}`
 - Create: `src/lib/shared/components/badge/{badge.svelte,index.ts}`
 - Create: `src/lib/shared/components/card/{card.svelte,index.ts}`
@@ -153,6 +244,7 @@ git add -A && git commit -m "Add design tokens and Lightning CSS pipeline"
 - Create: `src/lib/shared/components/tabs/{tabs.svelte,index.ts}`
 
 **Interfaces:**
+
 - Consumes: tokens from Task 1.
 - Produces:
   - `Button`: `{ type?, kind?: "primary"|"secondary"|"ghost"|"danger", size?: "md"|"sm", disabled?, onClick?: (e: MouseEvent) => void, children? }`
@@ -443,6 +535,7 @@ git add -A && git commit -m "Add base components: button, badge, card, skeleton,
 ### Task 3: Form components — input, textarea, field, select, checkbox, switch
 
 **Files:**
+
 - Create: `src/lib/shared/components/input/{input.svelte,index.ts}`
 - Create: `src/lib/shared/components/textarea/{textarea.svelte,index.ts}`
 - Create: `src/lib/shared/components/field/{field.svelte,index.ts}`
@@ -451,6 +544,7 @@ git add -A && git commit -m "Add base components: button, badge, card, skeleton,
 - Create: `src/lib/shared/components/switch/{switch.svelte,index.ts}`
 
 **Interfaces:**
+
 - Produces:
   - `Input`: `{ value?: string ($bindable), type?, placeholder?, disabled?, required?, name?, autocomplete?, onInput?: (v: string) => void }`
   - `Textarea`: `{ value?: string ($bindable), placeholder?, rows?, disabled? }`
@@ -768,11 +862,13 @@ git add -A && git commit -m "Add form components: input, textarea, field, select
 ### Task 4: Overlays — dialog (modal + drawer) and menu
 
 **Files:**
+
 - Create: `src/lib/shared/components/dialog/{dialog.svelte,index.ts}`
 - Create: `src/lib/shared/components/menu/{menu.svelte,menu-item.svelte,index.ts}`
 - Test: `tests/ui-menu.svelte.test.ts`, `tests/__fixtures__/menu-fixture.svelte`
 
 **Interfaces:**
+
 - Produces:
   - `Dialog`: `{ open?: boolean, title?: string, side?: boolean, onClose?: () => void, children? }`. `side` turns it into a right-edge drawer (replaces shadcn Sheet). Parent controls `open`; Esc/backdrop/X call `onClose` — parent must set its flag to false there.
   - `Menu`: `{ trigger: Snippet<[{ open: boolean; toggle: () => void }]>, align?: "start" | "end", children? }`. Closes on outside pointerdown and after item click.
@@ -1062,12 +1158,14 @@ git add -A && git commit -m "Add dialog and menu overlay components"
 ### Task 5: New layout — app-header, bottom-nav rewrite, (app) layout, drop sidebar
 
 **Files:**
+
 - Create: `src/lib/shared/components/app-header/{app-header.svelte,index.ts}`
 - Modify: `src/lib/shared/components/bottom-nav.svelte` (full rewrite)
 - Modify: `src/routes/(app)/+layout.svelte` (full rewrite)
 - Delete: `src/lib/shared/components/ui/sidebar/` (whole dir), `src/lib/shared/components/ui/tooltip/`, `src/lib/shared/components/app-sidebar.svelte`, `src/lib/shared/components/site-header.svelte`, `src/lib/shared/components/nav-user.svelte`
 
 **Interfaces:**
+
 - Consumes: `Avatar`, `Menu`, `MenuItem` (Tasks 2, 4); `authModel` (`$user`, `logout`) from `$lib/modules/auth/model`.
 - Produces: `AppHeader` (no props), rewritten `BottomNav` (no props). `(app)/+layout.svelte` renders header + `<main class="content">` + bottom nav; main is the scroll container (`overflow: hidden` like today's Inset — pages manage their own scroll).
 
@@ -1303,11 +1401,13 @@ git add -A && git commit -m "Replace sidebar layout with app header + bottom tab
 ### Task 6: Migrate auth pages
 
 **Files:**
+
 - Modify: `src/lib/modules/auth/components/login-form.svelte`
 - Modify: `src/lib/modules/auth/components/signup-form.svelte`
 - Modify: `src/lib/modules/auth/pages/login.svelte`, `src/lib/modules/auth/pages/register.svelte`
 
 **Interfaces:**
+
 - Consumes: `Button`, `Input`, `Field`, `Card` (Tasks 2–3). Auth logic stays in `authModel` untouched.
 
 - [ ] **Step 1: Rewrite login-form.svelte** — replace `ui/button`, `ui/input`, `ui/field`, `ui/card` imports with the new components; form structure: `Field label="Email" > Input`, `Field label="Password" > Input type="password"`, submit `Button kind="primary" type="submit"`, error from the model shown in red under the form (`color: var(--color-error)`). Remove all Tailwind classes and `cn()`; layout via scoped styles (`display: flex; flex-direction: column; gap: 12px`). Keep the exact effector wiring (`loginFx`, pending flag from `loginFx.pending`, `.catch(() => {})` on calls).
@@ -1328,11 +1428,13 @@ git add -A && git commit -m "Migrate auth pages to custom components"
 ### Task 7: Migrate market pages
 
 **Files:**
+
 - Modify: `src/lib/modules/market/components/watchface-card/watchface-card.svelte`
 - Modify: `src/lib/modules/market/pages/market.svelte`
 - Modify: `src/lib/modules/market/pages/my.svelte`
 
 **Interfaces:**
+
 - Consumes: `Card`, `Badge`, `Button`, `Skeleton`, `Input` (search, if present), `Menu`/`MenuItem` (per-card actions in `my.svelte`, if present — check current markup). Market logic stays in `marketModel`.
 
 - [ ] **Step 1: watchface-card.svelte** — keep its current props/contract (it's consumed by both pages). Replace Tailwind grid/spacing with scoped styles: preview image with `border-radius: var(--border-radius)`, title, author `oklch(… / 55%)`, downloads badge → `Badge`. Card is clickable → wrap in `Card onClick` or keep `<a>` with card styles.
@@ -1353,9 +1455,11 @@ git add -A && git commit -m "Migrate market pages to custom components"
 ### Task 8: Migrate landing page
 
 **Files:**
+
 - Modify: `src/routes/+page.svelte`
 
 **Interfaces:**
+
 - Consumes: `Button`, `Badge`. This is the marketing page — display font allowed liberally.
 
 - [ ] **Step 1: Rewrite `src/routes/+page.svelte`** — keep the current content/sections (hero, features, CTA — 32 Tailwind class usages), converting per the Global Constraints cheatsheet. Hero heading in `var(--font-display)`, accent CTA `Button kind="primary"` linking to `/market`. All spacing/layout via one scoped `<style>` block.
@@ -1371,9 +1475,11 @@ git add -A && git commit -m "Migrate landing page to custom components"
 ### Task 9: Migrate watch (device) page
 
 **Files:**
+
 - Modify: `src/lib/modules/device/pages/watch.svelte`
 
 **Interfaces:**
+
 - Consumes: `Button`, `Card`, `Badge`, `Skeleton`, `Dialog` (if the page has a confirm/progress dialog — mirror current markup). BLE logic stays in the device model / `ble.ts` — untouched.
 
 - [ ] **Step 1: Rewrite watch.svelte markup** — connection state card (`Card`), connect/pair actions (`Button kind="primary"`), status text muted, progress/errors per cheatsheet. 21 Tailwind usages to convert.
@@ -1389,12 +1495,14 @@ git add -A && git commit -m "Migrate watch page to custom components"
 ### Task 10: Migrate editor — panels
 
 **Files:**
+
 - Modify: `src/lib/modules/editor/components/PropsPanel.svelte` (54 class usages — heaviest)
 - Modify: `src/lib/modules/editor/components/TreePanel.svelte`
 - Modify: `src/lib/modules/editor/components/SimPanel.svelte`
 - Modify: `src/lib/modules/editor/components/PublishDialog.svelte`
 
 **Interfaces:**
+
 - Consumes: `Input`, `Select`, `Checkbox`, `Switch`, `Tabs`, `Button`, `Field`, `Dialog` (PublishDialog), `Textarea` (publish description). Editor model contract (`patched`, `treeChanged`, `$editor`, undo/redo) untouched.
 
 - [ ] **Step 1: PropsPanel.svelte** — replace `ui/select` → `Select` (options prop from the same data), `ui/input` → `Input`, `ui/checkbox`/`ui/switch` → new ones, `ui/tabs` → `Tabs`, labels → `Field` or plain `<span class="label">`. Panel chrome: fixed width column, `overflow-y: auto`, section headings `0.75rem` uppercase muted. Remove the 1 `cn()` usage.
@@ -1413,9 +1521,11 @@ git add -A && git commit -m "Migrate editor panels to custom components"
 ### Task 11: Migrate editor page shell
 
 **Files:**
+
 - Modify: `src/lib/modules/editor/pages/editor.svelte` (43 class usages; `Sheet` at lines 397-415)
 
 **Interfaces:**
+
 - Consumes: `Dialog` with `side` (drawer replaces `Sheet.Root`/`Sheet.Content`), `Button`, `Tabs`. Canvas/rAF drawing untouched.
 
 - [ ] **Step 1: Replace Sheet** — `<Sheet.Root bind:open={x}>…<Sheet.Content>` becomes `<Dialog side open={x} onClose={() => (x = false)}>` with the same inner content (check how `open` is currently bound and keep that state variable).
@@ -1432,6 +1542,7 @@ git add -A && git commit -m "Migrate editor page shell to custom components"
 ### Task 12: Cleanup — remove shadcn, bits-ui, Tailwind
 
 **Files:**
+
 - Delete: `src/lib/shared/components/ui/` (entire directory)
 - Delete: `src/app.css`, `src/theme.css`
 - Modify: `src/routes/+layout.svelte` (drop `../theme.css` + `../app.css` imports)

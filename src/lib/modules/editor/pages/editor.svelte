@@ -263,16 +263,18 @@
         <input type="file" accept=".bin" hidden onchange={openFile} />
       </label>
     </Button>
-    <Button
-      kind="secondary"
-      size="sm"
-      onClick={() => {
-        openedWfSet(null);
-        newFaceRequested();
-      }}
-    >
-      <FilePlus2 size={16} /> <span class="btn-label">New</span>
-    </Button>
+    <span class="tool-slot" title="New">
+      <Button
+        kind="secondary"
+        size="sm"
+        onClick={() => {
+          openedWfSet(null);
+          newFaceRequested();
+        }}
+      >
+        <FilePlus2 size={16} /> <span class="btn-label">New</span>
+      </Button>
+    </span>
     {#if $editor.face}
       <span class="wf-name">{$editor.face.name}</span>
       <Tabs
