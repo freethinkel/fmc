@@ -1,6 +1,6 @@
 <script lang="ts">
   interface Props {
-    items: { value: string; label: string }[];
+    items: { value: string; label: string; disabled?: boolean }[];
     value: string;
     onChange?: (value: string) => void;
   }
@@ -14,6 +14,7 @@
       role="tab"
       aria-selected={item.value === value}
       class:active={item.value === value}
+      disabled={item.disabled}
       onclick={() => onChange?.(item.value)}
     >
       {item.label}
@@ -44,6 +45,10 @@
     &.active {
       background: var(--color-background);
       color: var(--color-text);
+    }
+    &:disabled {
+      opacity: 0.4;
+      cursor: default;
     }
   }
 </style>

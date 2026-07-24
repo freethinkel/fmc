@@ -1,20 +1,18 @@
 <script lang="ts">
-  import { Button } from "$lib/shared/components/ui/button";
-  import * as Tabs from "$lib/shared/components/ui/tabs";
-  import * as Sheet from "$lib/shared/components/ui/sheet";
-  import {
-    Undo2,
-    Redo2,
-    FolderInput,
-    FilePlus2,
-    Download,
-    UploadCloud,
-    Zap,
-    ListTree,
-    SlidersHorizontal,
-    Play,
-    Save,
-  } from "@lucide/svelte";
+  import { Button } from "$lib/shared/components/button";
+  import { Tabs } from "$lib/shared/components/tabs";
+  import { Dialog } from "$lib/shared/components/dialog";
+  import Undo2 from "@lucide/svelte/icons/undo-2";
+  import Redo2 from "@lucide/svelte/icons/redo-2";
+  import FolderInput from "@lucide/svelte/icons/folder-input";
+  import FilePlus2 from "@lucide/svelte/icons/file-plus-2";
+  import Download from "@lucide/svelte/icons/download";
+  import UploadCloud from "@lucide/svelte/icons/upload-cloud";
+  import Zap from "@lucide/svelte/icons/zap";
+  import ListTree from "@lucide/svelte/icons/list-tree";
+  import SlidersHorizontal from "@lucide/svelte/icons/sliders-horizontal";
+  import Play from "@lucide/svelte/icons/play";
+  import Save from "@lucide/svelte/icons/save";
   import { authModel } from "$lib/modules/auth/model";
   import { marketModel } from "$lib/modules/market/model";
   import PublishDialog from "../components/PublishDialog.svelte";
@@ -23,7 +21,6 @@
   import { render, parseFrame, type Hit } from "../lib/render";
   import { editorModel } from "../model";
   import TreePanel from "../components/TreePanel.svelte";
-  import { headerSlot } from "$lib/shared/components/header-slot.svelte.js";
   import PropsPanel from "../components/PropsPanel.svelte";
   import SimPanel from "../components/SimPanel.svelte";
 
@@ -59,7 +56,7 @@
   } = editorModel;
 
   let canvas = $state<HTMLCanvasElement | null>(null);
-  let mobilePanel = $state<"tree" | "props" | "sim" | null>(null); // bottom sheet on mobile
+  let mobilePanel = $state<"tree" | "props" | "sim" | null>(null); // drawer on mobile
   let hits: Hit[] = [];
 
   function openFile(e: Event) {
@@ -87,12 +84,6 @@
       preview: await previewBlob(),
     });
   }
-
-  // the editor toolbar lives in the shared header while this page is open
-  $effect(() => {
-    headerSlot.snippet = toolbar;
-    return () => (headerSlot.snippet = null);
-  });
 
   // ---- rendering ----
   $effect(() => {
@@ -243,175 +234,308 @@
   }
 
   const hasAOD = $derived($editor.face?.screens.some((s) => s.tag === TAG.aod));
+  const screenItems = $derived([
+    { value: "main", label: "Main" },
+    { value: "aod", label: "AOD", disabled: !hasAOD },
+  ]);
+  const panelItems = $derived([
+    { value: "props", label: "Properties" },
+    { value: "sim", label: "Simulator", disabled: !$editor.face },
+  ]);
+  const mobileTitle = $derived(
+    mobilePanel === "tree"
+      ? "Tree"
+      : mobilePanel === "props"
+        ? "Properties"
+        : mobilePanel === "sim"
+          ? "Simulator"
+          : undefined,
+  );
 </script>
 
 <svelte:window onkeydown={onKey} ondragover={(e) => e.preventDefault()} ondrop={openFile} />
 
-{#snippet toolbar()}
-  <Button size="sm" variant="outline">
-    <label class="flex cursor-pointer items-center gap-1.5"
-      ><FolderInput class="size-4" /> <span class="hidden lg:inline">Import bin</span>
-      <input type="file" accept=".bin" hidden onchange={openFile} /></label
-    >
-  </Button>
-  <Button
-    size="sm"
-    variant="outline"
-    onclick={() => {
-      openedWfSet(null);
-      newFaceRequested();
-    }}
-    title="New"
-  >
-    <FilePlus2 class="size-4" /> <span class="hidden lg:inline">New</span>
-  </Button>
-  {#if $editor.face}
-    <span class="hidden max-w-40 truncate px-1 text-sm text-emerald-400 lg:inline"
-      >{$editor.face.name}</span
-    >
-    <Tabs.Root
-      value={$editor.screenTag === TAG.aod ? "aod" : "main"}
-      onValueChange={(v) => screenTagSet(v === "aod" ? TAG.aod : TAG.main)}
-    >
-      <Tabs.List class="h-8">
-        <Tabs.Trigger value="main" class="text-xs">Main</Tabs.Trigger>
-        <Tabs.Trigger value="aod" class="text-xs" disabled={!hasAOD}>AOD</Tabs.Trigger>
-      </Tabs.List>
-    </Tabs.Root>
-    <Button
-      size="sm"
-      variant="ghost"
-      disabled={!$editor.undoN}
-      onclick={() => undo()}
-      title="Undo (⌘Z)"><Undo2 class="size-4" /></Button
-    >
-    <Button
-      size="sm"
-      variant="ghost"
-      disabled={!$editor.redoN}
-      onclick={() => redo()}
-      title="Redo (⇧⌘Z)"><Redo2 class="size-4" /></Button
-    >
-    <Button size="sm" onclick={exportBin} title="Export .bin"
-      ><Download class="size-4" /> <span class="hidden lg:inline">Export .bin</span></Button
-    >
-    {#if $user}
-      <Button
-        size="sm"
-        variant="secondary"
-        onclick={saveDraft}
-        disabled={$saving}
-        title={$openedWf ? "Save changes" : "Save as draft"}
-      >
-        <Save class="size-4" /> <span class="hidden lg:inline">{$saving ? "Saving…" : "Save"}</span>
-      </Button>
-      <Button size="sm" variant="secondary" onclick={() => publishDialogOpened()} title="Publish">
-        <UploadCloud class="size-4" /> <span class="hidden lg:inline">Publish</span>
-      </Button>
-    {/if}
-  {/if}
-  {#if $bleInfo && $editor.face}
-    <Button size="sm" onclick={flashWatch} disabled={$flashing} title="Upload to the watch">
-      <Zap class="size-4" />
-      {$flashing ? "Flashing…" : "Flash"}
+<div class="page">
+  <div class="toolbar">
+    <Button kind="secondary" size="sm">
+      <label class="file-label">
+        <FolderInput size={16} /> <span class="btn-label">Import bin</span>
+        <input type="file" accept=".bin" hidden onchange={openFile} />
+      </label>
     </Button>
-  {/if}
-{/snippet}
-
-<div class="flex h-full min-h-0 flex-1 flex-col bg-background text-foreground">
-  {#if $editor.err || ($flashing && $bleStatus) || $bleStatus?.startsWith("error:")}
-    <p
-      class="border-b px-3 py-1.5 text-sm {$editor.err || $bleStatus?.startsWith('error:')
-        ? 'text-destructive'
-        : 'text-muted-foreground'}"
+    <Button
+      kind="secondary"
+      size="sm"
+      onClick={() => {
+        openedWfSet(null);
+        newFaceRequested();
+      }}
     >
+      <FilePlus2 size={16} /> <span class="btn-label">New</span>
+    </Button>
+    {#if $editor.face}
+      <span class="wf-name">{$editor.face.name}</span>
+      <Tabs
+        items={screenItems}
+        value={$editor.screenTag === TAG.aod ? "aod" : "main"}
+        onChange={(v) => screenTagSet(v === "aod" ? TAG.aod : TAG.main)}
+      />
+      <span class="tool-slot" title="Undo (⌘Z)">
+        <Button kind="ghost" size="sm" disabled={!$editor.undoN} onClick={() => undo()}>
+          <Undo2 size={16} />
+        </Button>
+      </span>
+      <span class="tool-slot" title="Redo (⇧⌘Z)">
+        <Button kind="ghost" size="sm" disabled={!$editor.redoN} onClick={() => redo()}>
+          <Redo2 size={16} />
+        </Button>
+      </span>
+      <span class="tool-slot" title="Export .bin">
+        <Button kind="primary" size="sm" onClick={exportBin}>
+          <Download size={16} /> <span class="btn-label">Export .bin</span>
+        </Button>
+      </span>
+      {#if $user}
+        <span class="tool-slot" title={$openedWf ? "Save changes" : "Save as draft"}>
+          <Button kind="ghost" size="sm" onClick={saveDraft} disabled={$saving}>
+            <Save size={16} /> <span class="btn-label">{$saving ? "Saving…" : "Save"}</span>
+          </Button>
+        </span>
+        <span class="tool-slot" title="Publish">
+          <Button kind="secondary" size="sm" onClick={() => publishDialogOpened()}>
+            <UploadCloud size={16} /> <span class="btn-label">Publish</span>
+          </Button>
+        </span>
+      {/if}
+    {/if}
+    {#if $bleInfo && $editor.face}
+      <span class="tool-slot" title="Upload to the watch">
+        <Button kind="primary" size="sm" onClick={flashWatch} disabled={$flashing}>
+          <Zap size={16} />
+          {$flashing ? "Flashing…" : "Flash"}
+        </Button>
+      </span>
+    {/if}
+  </div>
+
+  {#if $editor.err || ($flashing && $bleStatus) || $bleStatus?.startsWith("error:")}
+    <p class="statusbar" class:error={$editor.err || $bleStatus?.startsWith("error:")}>
       {$editor.err || $bleStatus}
     </p>
   {/if}
 
-  <div
-    class="grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)_auto] md:grid-cols-[280px_1fr_330px] md:grid-rows-1"
-  >
-    <aside class="hidden min-h-0 border-r md:block">
+  <div class="layout">
+    <aside class="side-panel tree-panel">
       <TreePanel />
     </aside>
 
-    <section
-      class="flex min-h-0 flex-col items-center justify-center gap-2 overflow-hidden bg-black/20 p-4"
-    >
-      <div
-        class="aspect-square w-[min(70vh,90%,560px)] max-h-full overflow-hidden rounded-full bg-black shadow-[0_0_0_8px_theme(colors.zinc.800),0_0_50px_rgba(0,0,0,0.6)]"
-      >
+    <section class="canvas-section">
+      <div class="canvas-frame">
         <canvas
           bind:this={canvas}
           width="466"
           height="466"
-          class="block h-full w-full touch-none"
+          class="canvas"
           onpointerdown={onDown}
           onpointermove={onMove}
           onpointerup={onUp}
         ></canvas>
       </div>
-      <p class="hidden text-xs text-muted-foreground md:block">
-        click — select · drag / arrow keys (⇧ ×10) — move · ⌘Z undo
-      </p>
+      <p class="hint">click — select · drag / arrow keys (⇧ ×10) — move · ⌘Z undo</p>
     </section>
 
-    <aside class="hidden min-h-0 flex-col border-l md:flex">
-      <Tabs.Root
-        value={$rightPanel}
-        onValueChange={(v) => rightPanelSet(v as "props" | "sim")}
-        class="flex min-h-0 flex-1 flex-col gap-0"
-      >
-        <Tabs.List class="m-2 grid grid-cols-2">
-          <Tabs.Trigger value="props" class="text-xs">Properties</Tabs.Trigger>
-          <Tabs.Trigger value="sim" class="text-xs" disabled={!$editor.face}>Simulator</Tabs.Trigger
-          >
-        </Tabs.List>
-        <Tabs.Content value="props" class="min-h-0 flex-1 overflow-y-auto p-3 pt-0"
-          ><PropsPanel /></Tabs.Content
-        >
-        <Tabs.Content value="sim" class="min-h-0 flex-1 overflow-y-auto p-3 pt-0"
-          ><SimPanel /></Tabs.Content
-        >
-      </Tabs.Root>
+    <aside class="side-panel right-panel">
+      <div class="tabs-row">
+        <Tabs
+          items={panelItems}
+          value={$rightPanel}
+          onChange={(v) => rightPanelSet(v as "props" | "sim")}
+        />
+      </div>
+      <div class="panel-body">
+        {#if $rightPanel === "sim"}
+          <SimPanel />
+        {:else}
+          <PropsPanel />
+        {/if}
+      </div>
     </aside>
 
-    <!-- mobile panel buttons: each opens the bottom sheet -->
     {#if $editor.face}
-      <div class="flex gap-2 border-t p-2 md:hidden">
-        <Button variant="outline" class="flex-1" onclick={() => (mobilePanel = "tree")}>
-          <ListTree class="size-4" /> Tree
+      <div class="mobile-actions">
+        <Button kind="secondary" onClick={() => (mobilePanel = "tree")}>
+          <ListTree size={16} /> Tree
         </Button>
-        <Button variant="outline" class="flex-1" onclick={() => (mobilePanel = "props")}>
-          <SlidersHorizontal class="size-4" /> Props
+        <Button kind="secondary" onClick={() => (mobilePanel = "props")}>
+          <SlidersHorizontal size={16} /> Props
         </Button>
-        <Button variant="outline" class="flex-1" onclick={() => (mobilePanel = "sim")}>
-          <Play class="size-4" /> Sim
+        <Button kind="secondary" onClick={() => (mobilePanel = "sim")}>
+          <Play size={16} /> Sim
         </Button>
       </div>
     {/if}
   </div>
 </div>
 
-<Sheet.Root
-  open={mobilePanel !== null}
-  onOpenChange={(o) => {
-    if (!o) mobilePanel = null;
-  }}
->
-  <Sheet.Content
-    side="bottom"
-    class="overflow-y-auto pb-[env(safe-area-inset-bottom)] data-[side=bottom]:h-[65svh]"
-  >
-    {#if mobilePanel === "tree"}
-      <TreePanel />
-    {:else if mobilePanel === "props"}
-      <div class="p-3"><PropsPanel /></div>
-    {:else if mobilePanel === "sim"}
-      <div class="p-3"><SimPanel /></div>
-    {/if}
-  </Sheet.Content>
-</Sheet.Root>
+<Dialog side open={mobilePanel !== null} title={mobileTitle} onClose={() => (mobilePanel = null)}>
+  {#if mobilePanel === "tree"}
+    <TreePanel />
+  {:else if mobilePanel === "props"}
+    <PropsPanel />
+  {:else if mobilePanel === "sim"}
+    <SimPanel />
+  {/if}
+</Dialog>
 
 <PublishDialog />
+
+<style>
+  .page {
+    display: flex;
+    min-height: 0;
+    height: 100%;
+    flex-direction: column;
+    background: var(--color-background);
+    color: var(--color-text);
+  }
+  .toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-bottom: 1px solid oklch(from var(--color-text) l c h / 12%);
+  }
+  .file-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+  }
+  .btn-label {
+    display: none;
+  }
+  .wf-name {
+    display: none;
+    max-width: 160px;
+    overflow: hidden;
+    padding-inline: 4px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .tool-slot {
+    display: inline-flex;
+  }
+  @media (min-width: 1024px) {
+    .btn-label,
+    .wf-name {
+      display: inline-block;
+    }
+  }
+  .statusbar {
+    margin: 0;
+    padding: 6px 12px;
+    font-size: 0.875rem;
+    color: oklch(from var(--color-text) l c h / 55%);
+    border-bottom: 1px solid oklch(from var(--color-text) l c h / 12%);
+
+    &.error {
+      color: var(--color-error);
+    }
+  }
+  .layout {
+    display: grid;
+    min-height: 0;
+    flex: 1;
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+  @media (min-width: 768px) {
+    .layout {
+      grid-template-columns: auto 1fr auto;
+      grid-template-rows: 1fr;
+    }
+  }
+  .side-panel {
+    display: none;
+    min-height: 0;
+  }
+  @media (min-width: 768px) {
+    .side-panel {
+      display: flex;
+      flex-direction: column;
+    }
+  }
+  .tree-panel {
+    width: 280px;
+    border-inline-end: 1px solid oklch(from var(--color-text) l c h / 12%);
+  }
+  .right-panel {
+    width: 330px;
+    border-inline-start: 1px solid oklch(from var(--color-text) l c h / 12%);
+  }
+  .tabs-row {
+    padding: 8px;
+  }
+  .panel-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 0 12px 12px;
+  }
+  .canvas-section {
+    display: flex;
+    min-height: 0;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    overflow: hidden;
+    padding: 16px;
+    background: oklch(from var(--color-text) l c h / 4%);
+  }
+  .canvas-frame {
+    aspect-ratio: 1;
+    width: min(70vh, 90%, 560px);
+    max-height: 100%;
+    overflow: hidden;
+    border-radius: 50%;
+    background: oklch(0 0 0);
+    box-shadow:
+      0 0 0 8px oklch(0.28 0 0),
+      0 0 50px oklch(0 0 0 / 60%);
+  }
+  .canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    touch-action: none;
+  }
+  .hint {
+    display: none;
+    margin: 0;
+    font-size: 0.75rem;
+    color: oklch(from var(--color-text) l c h / 55%);
+  }
+  @media (min-width: 768px) {
+    .hint {
+      display: block;
+    }
+  }
+  .mobile-actions {
+    display: flex;
+    gap: 8px;
+    padding: 8px;
+    border-top: 1px solid oklch(from var(--color-text) l c h / 12%);
+  }
+  .mobile-actions :global(.btn) {
+    flex: 1;
+  }
+  @media (min-width: 768px) {
+    .mobile-actions {
+      display: none;
+    }
+  }
+</style>

@@ -71,6 +71,8 @@
     max-height: 100svh;
     width: min(420px, 90vw);
     border-radius: 0;
+    display: flex;
+    flex-direction: column;
     transform: translateX(24px);
     &[open] {
       transform: none;
@@ -78,6 +80,12 @@
         opacity: 0;
         transform: translateX(24px);
       }
+    }
+    /* header stays put, body scrolls independently — needed once content can exceed the viewport */
+    .body {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
     }
   }
   header {
