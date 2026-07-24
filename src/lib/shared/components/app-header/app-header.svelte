@@ -2,6 +2,7 @@
   import { page } from "$app/state";
   import { Icon } from "$lib/shared/components/icon";
   import { authModel } from "$lib/modules/auth/model";
+  import WatchPopover from "$lib/modules/device/components/watch-popover.svelte";
   import { Avatar } from "$lib/shared/components/avatar";
   import { Menu, MenuItem } from "$lib/shared/components/menu";
 
@@ -10,7 +11,6 @@
     { title: "Market", url: "/market" },
     { title: "Editor", url: "/editor" },
     ...($user ? [{ title: "My", url: "/my" }] : []),
-    { title: "Watch", url: "/watch" },
   ]);
 </script>
 
@@ -22,6 +22,14 @@
         {item.title}
       </a>
     {/each}
+    <WatchPopover>
+      {#snippet trigger({ open, toggle, connected })}
+        <button class="watch-btn" class:active={open} onclick={toggle} aria-label="Watch">
+          <Icon name="watch" size={18} />
+          {#if connected}<span class="dot"></span>{/if}
+        </button>
+      {/snippet}
+    </WatchPopover>
   </nav>
   <div class="user">
     {#if $user}
@@ -61,7 +69,12 @@
     display: flex;
     gap: 4px;
 
-    a {
+    a,
+    button {
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      font: inherit;
       text-decoration: none;
       font-size: 0.9rem;
       padding: 6px 12px;
@@ -76,6 +89,20 @@
         background: oklch(from var(--color-text) l c h / 8%);
       }
     }
+  }
+  .watch-btn {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+  }
+  .dot {
+    position: absolute;
+    top: 5px;
+    inset-inline-end: 7px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--color-accent);
   }
   .user {
     margin-inline-start: auto;

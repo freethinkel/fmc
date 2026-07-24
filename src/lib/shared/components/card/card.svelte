@@ -8,7 +8,9 @@
 </script>
 
 {#if onClick}
-  <button type="button" class="card clickable" onclick={onClick}>{@render children?.()}</button>
+  <button type="button" class="card clickable" onclick={onClick}
+    >{@render children?.()}</button
+  >
 {:else}
   <div class="card">{@render children?.()}</div>
 {/if}
@@ -21,7 +23,7 @@
     font: inherit;
     color: inherit;
     border: none;
-    padding: 16px;
+    padding: 0.8rem;
     border-radius: var(--border-radius);
     background: oklch(from var(--color-text) l c h / 5%);
   }

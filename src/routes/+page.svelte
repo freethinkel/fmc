@@ -154,7 +154,7 @@
   .logo {
     font-family: var(--font-display);
     font-size: 0.875rem;
-    font-weight: 700;
+    font-weight: 400;
     letter-spacing: 0.1em;
   }
 
@@ -200,7 +200,7 @@
     margin: 24px 0 0;
     font-family: var(--font-display);
     font-size: 2.25rem;
-    font-weight: 900;
+    font-weight: 400;
     line-height: 1.05;
 
     @media (min-width: 768px) {
@@ -334,8 +334,8 @@
     h3 {
       margin: 12px 0 0;
       font-family: var(--font-display);
-      font-size: 0.875rem;
-      font-weight: 700;
+      font-size: 1.5rem;
+      font-weight: 400;
     }
 
     .desc {

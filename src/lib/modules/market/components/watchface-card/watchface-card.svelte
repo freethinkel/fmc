@@ -82,6 +82,8 @@
     display: block;
     width: 100%;
     aspect-ratio: 1 / 1;
+    /* flex item in a height-constrained column: without this the circle squashes into a pill */
+    flex-shrink: 0;
     padding: 0;
     border: none;
     overflow: hidden;

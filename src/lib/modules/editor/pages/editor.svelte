@@ -100,7 +100,9 @@
 
   function drawSelection(ctx: CanvasRenderingContext2D, sel: FaceNode | null) {
     if (!sel) return;
-    const h = hits.findLast((h) => h.node === sel || h.node.subs?.includes(sel));
+    const h = hits.findLast(
+      (h) => h.node === sel || h.node.subs?.includes(sel),
+    );
 
     if (!h) return;
     ctx.save();
@@ -129,13 +131,30 @@
   // ---- selection and drag ----
   type XY = { x: number; y: number };
   type Drag =
-    | { p: XY; x0: number; y0: number; moved: boolean; st: FaceNode; fr?: undefined }
-    | { p: XY; x0: number; y0: number; moved: boolean; fr: FaceNode; st?: undefined };
+    | {
+        p: XY;
+        x0: number;
+        y0: number;
+        moved: boolean;
+        st: FaceNode;
+        fr?: undefined;
+      }
+    | {
+        p: XY;
+        x0: number;
+        y0: number;
+        moved: boolean;
+        fr: FaceNode;
+        st?: undefined;
+      };
   let drag: Drag | null = null;
   const canvasXY = (e: PointerEvent): XY => {
     const r = canvas!.getBoundingClientRect();
 
-    return { x: ((e.clientX - r.left) * 466) / r.width, y: ((e.clientY - r.top) * 466) / r.height };
+    return {
+      x: ((e.clientX - r.left) * 466) / r.width,
+      y: ((e.clientY - r.top) * 466) / r.height,
+    };
   };
   const selStruct = (n: FaceNode | null) =>
     n?.tag === TAG.struct ? n : n?.subs?.find((s) => s.tag === TAG.struct);
@@ -154,7 +173,9 @@
   function onDown(e: PointerEvent) {
     if (!$editor.face) return;
     const p = canvasXY(e);
-    const h = hits.findLast((h) => p.x >= h.x && p.x < h.x + h.w && p.y >= h.y && p.y < h.y + h.h);
+    const h = hits.findLast(
+      (h) => p.x >= h.x && p.x < h.x + h.w && p.y >= h.y && p.y < h.y + h.h,
+    );
 
     select(h?.node || null);
     if (!h?.node) return;
@@ -162,7 +183,8 @@
     const fr = h.node.tag === TAG.group ? parseFrame(h.node) : null;
 
     if (fr) drag = { p, fr: h.node, x0: fr.x, y0: fr.y, moved: false };
-    else if (st && st.x != null) drag = { p, st, x0: st.x, y0: st.y!, moved: false };
+    else if (st && st.x != null)
+      drag = { p, st, x0: st.x, y0: st.y!, moved: false };
     canvas?.setPointerCapture(e.pointerId);
   }
   function onMove(e: PointerEvent) {
@@ -189,7 +211,12 @@
   }
 
   function onKey(e: KeyboardEvent) {
-    if (["INPUT", "TEXTAREA", "SELECT"].includes((e.target as HTMLElement).tagName)) return;
+    if (
+      ["INPUT", "TEXTAREA", "SELECT"].includes(
+        (e.target as HTMLElement).tagName,
+      )
+    )
+      return;
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
       if (e.shiftKey) redo();
       else undo();
@@ -213,9 +240,13 @@
     const st = selStruct(sel);
     const fr = sel.tag === TAG.group ? parseFrame(sel) : null;
 
-    if (fr) setFrameXY(sel, Math.max(0, fr.x + mv[0]), Math.max(0, fr.y + mv[1]));
+    if (fr)
+      setFrameXY(sel, Math.max(0, fr.x + mv[0]), Math.max(0, fr.y + mv[1]));
     else if (st && st.x != null)
-      patched({ node: st, patch: { x: Math.max(0, st.x + mv[0]), y: Math.max(0, st.y! + mv[1]) } });
+      patched({
+        node: st,
+        patch: { x: Math.max(0, st.x + mv[0]), y: Math.max(0, st.y! + mv[1]) },
+      });
     e.preventDefault();
   }
 
@@ -243,13 +274,18 @@
   );
 </script>
 
-<svelte:window onkeydown={onKey} ondragover={(e) => e.preventDefault()} ondrop={openFile} />
+<svelte:window
+  onkeydown={onKey}
+  ondragover={(e) => e.preventDefault()}
+  ondrop={openFile}
+/>
 
 <div class="page">
   <div class="toolbar">
     <Button kind="secondary" size="sm">
       <label class="file-label">
-        <Icon name="folder-input" size={16} /> <span class="btn-label">Import bin</span>
+        <Icon name="folder-input" size={16} />
+        <span class="btn-label">Import bin</span>
         <input type="file" accept=".bin" hidden onchange={openFile} />
       </label>
     </Button>
@@ -273,36 +309,61 @@
         onChange={(v) => screenTagSet(v === "aod" ? TAG.aod : TAG.main)}
       />
       <span class="tool-slot" title="Undo (⌘Z)">
-        <Button kind="ghost" size="sm" disabled={!$editor.undoN} onClick={() => undo()}>
+        <Button
+          kind="ghost"
+          size="sm"
+          disabled={!$editor.undoN}
+          onClick={() => undo()}
+        >
           <Icon name="undo" size={16} />
         </Button>
       </span>
       <span class="tool-slot" title="Redo (⇧⌘Z)">
-        <Button kind="ghost" size="sm" disabled={!$editor.redoN} onClick={() => redo()}>
+        <Button
+          kind="ghost"
+          size="sm"
+          disabled={!$editor.redoN}
+          onClick={() => redo()}
+        >
           <Icon name="redo" size={16} />
         </Button>
       </span>
       <span class="tool-slot" title="Export .bin">
         <Button kind="primary" size="sm" onClick={exportBin}>
-          <Icon name="download" size={16} /> <span class="btn-label">Export .bin</span>
+          <Icon name="download" size={16} />
+          <span class="btn-label">Export .bin</span>
         </Button>
       </span>
       {#if $user}
-        <span class="tool-slot" title={$openedWf ? "Save changes" : "Save as draft"}>
+        <span
+          class="tool-slot"
+          title={$openedWf ? "Save changes" : "Save as draft"}
+        >
           <Button kind="ghost" size="sm" onClick={saveDraft} disabled={$saving}>
-            <Icon name="save" size={16} /> <span class="btn-label">{$saving ? "Saving…" : "Save"}</span>
+            <Icon name="save" size={16} />
+            <span class="btn-label">{$saving ? "Saving…" : "Save"}</span>
           </Button>
         </span>
         <span class="tool-slot" title="Publish">
-          <Button kind="secondary" size="sm" onClick={() => publishDialogOpened()}>
-            <Icon name="upload-cloud" size={16} /> <span class="btn-label">Publish</span>
+          <Button
+            kind="secondary"
+            size="sm"
+            onClick={() => publishDialogOpened()}
+          >
+            <Icon name="upload-cloud" size={16} />
+            <span class="btn-label">Publish</span>
           </Button>
         </span>
       {/if}
     {/if}
     {#if $bleInfo && $editor.face}
       <span class="tool-slot" title="Upload to the watch">
-        <Button kind="primary" size="sm" onClick={flashWatch} disabled={$flashing}>
+        <Button
+          kind="primary"
+          size="sm"
+          onClick={flashWatch}
+          disabled={$flashing}
+        >
           <Icon name="zap" size={16} />
           {$flashing ? "Flashing…" : "Flash"}
         </Button>
@@ -311,7 +372,10 @@
   </div>
 
   {#if $editor.err || ($flashing && $bleStatus) || $bleStatus?.startsWith("error:")}
-    <p class="statusbar" class:error={$editor.err || $bleStatus?.startsWith("error:")}>
+    <p
+      class="statusbar"
+      class:error={$editor.err || $bleStatus?.startsWith("error:")}
+    >
       {$editor.err || $bleStatus}
     </p>
   {/if}
@@ -333,7 +397,9 @@
           onpointerup={onUp}
         ></canvas>
       </div>
-      <p class="hint">click — select · drag / arrow keys (⇧ ×10) — move · ⌘Z undo</p>
+      <p class="hint">
+        click — select · drag / arrow keys (⇧ ×10) — move · ⌘Z undo
+      </p>
     </section>
 
     <aside class="side-panel right-panel">
@@ -369,7 +435,12 @@
   </div>
 </div>
 
-<Dialog side open={mobilePanel !== null} title={mobileTitle} onClose={() => (mobilePanel = null)}>
+<Dialog
+  side
+  open={mobilePanel !== null}
+  title={mobileTitle}
+  onClose={() => (mobilePanel = null)}
+>
   {#if mobilePanel === "tree"}
     <TreePanel />
   {:else if mobilePanel === "props"}
@@ -498,6 +569,8 @@
     box-shadow:
       0 0 0 8px oklch(0.28 0 0),
       0 0 50px oklch(0 0 0 / 60%);
+    margin-top: auto;
+    margin-bottom: auto;
   }
   .canvas {
     display: block;

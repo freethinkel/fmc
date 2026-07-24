@@ -1,17 +1,19 @@
 /* Design tokens — the only source of truth for color/type/motion.
    Components derive every shade via oklch(from …); never add per-shade tokens. */
+
 :root {
-  --color-accent: #ff5c00;
-  --color-text: #171310;
-  --color-background: #ffffff;
-  --color-error: #ff3f40;
+  /* Nothing palette (playground.nothing.tech): yellow accent on grey monochrome */
+  font-size: 14px;
+  --color-accent: #ffc700;
+  --color-text: #1c1c1c;
+  --color-background: #f2f2f2;
+  --color-error: #d71921;
 
-  --border-radius: 12px;
+  --border-radius: 8px;
 
-  --font-family:
-    ui-rounded, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-display: "Unbounded", var(--font-family);
-  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-family: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-display: "Instrument Serif", Georgia, serif;
+  --font-mono: var(--font-family);
 
   /* spring easing shared by all micro-interactions (from friendzone) */
   --spring-transition: 0.5s
@@ -124,7 +126,13 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --color-text: #f4efe9;
-    --color-background: #141110;
+    --color-text: #f2f2f2;
+    --color-background: #131313;
+  }
+}
+
+@media (max-width: 768px) {
+  :root {
+    font-size: 16px;
   }
 }

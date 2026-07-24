@@ -62,7 +62,7 @@
   }
   .kind__primary {
     background-color: var(--color-accent);
-    color: oklch(1 0 0);
+    color: var(--color-background);
     &:hover:not(:disabled) {
       background-color: oklch(from var(--color-accent) calc(l * 1.08) c h);
     }
