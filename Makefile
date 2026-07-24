@@ -9,7 +9,7 @@ DEPLOY_PATH ?= /root/fmc_pocketbase/www
 .PHONY: build deploy
 
 build:
-	npm run build
+	pnpm run build
 
 deploy: build
 	rsync -az --delete build/ $(DEPLOY_HOST):$(DEPLOY_PATH)/

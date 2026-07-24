@@ -10,8 +10,8 @@ flashing a watchface to the watch over Web Bluetooth), login/register (`/login`,
 ## Development
 
 ```sh
-npm install
-npm run dev
+pnpm install
+pnpm dev
 ```
 
 Open `http://localhost:5173`. Requires `fmc_pocketbase` running (`./pocketbase serve`,
@@ -32,7 +32,7 @@ Email login and registration work out of the box. For OAuth (Google/GitHub):
 ## Build and deploy
 
 ```sh
-npm run build      # static output into build/
+pnpm build      # static output into build/
 make deploy DEPLOY_HOST=root@1.2.3.4   # builds and rsyncs to the VPS
 ```
 
@@ -43,6 +43,6 @@ server — served by Caddy. Prod infra details — in
 ## Type checking and tests
 
 ```sh
-npm run check   # svelte-check
-npm test        # round-trip test of the .bin parser/compiler against watchfaces/files/ fixtures
+pnpm check   # svelte-check
+pnpm test    # round-trip test of the .bin parser/compiler against watchfaces/files/ fixtures
 ```
