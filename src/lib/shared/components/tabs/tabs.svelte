@@ -10,6 +10,7 @@
 <div class="tabs" role="tablist">
   {#each items as item (item.value)}
     <button
+      type="button"
       role="tab"
       aria-selected={item.value === value}
       class:active={item.value === value}
