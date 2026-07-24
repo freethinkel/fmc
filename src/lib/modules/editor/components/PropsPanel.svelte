@@ -25,15 +25,28 @@
 
   const selStruct = n => (n?.tag === TAG.struct ? n : n?.subs?.find(s => s.tag === TAG.struct));
   const st = $derived(selStruct($editor.sel));
-  const meta = $derived(st?.meta ? metaInfo(st) : null);
   const pivot = $derived($editor.sel?.subs?.find(s => s.tag === TAG.pivot));
   const fmtNode = $derived($editor.sel?.subs?.find(s => s.tag === TAG.fmt));
   const bindNode = $derived($editor.sel?.subs?.find(s => s.tag === TAG.bind));
   const frame = $derived($editor.sel?.tag === TAG.group ? parseFrame($editor.sel) : null);
-  const fmtByte = $derived(fmtNode ? unhex(fmtNode.hex)[0] || 0 : 0);
+  // The face tree is mutated in place (editor.model's patched), so node-returning deriveds
+  // above keep yielding the SAME object and property reads off them (st.x, st.meta…) never
+  // invalidate. Everything the template DISPLAYS goes through this snapshot instead — it
+  // depends on $editor (a fresh store object per update), so drags, undo and checkbox
+  // patches show up immediately. The node deriveds above stay as patch targets for set().
+  const sv = $derived.by(() => {
+    void $editor;
+    return {
+      x: st?.x, y: st?.y, metaHex: st?.meta, images: st?.images,
+      pivotX: pivot?.pivotX, pivotY: pivot?.pivotY, bindHex: bindNode?.hex,
+    };
+  });
+  const meta = $derived.by(() => { void $editor; return st?.meta ? metaInfo(st) : null; });
+  const fmtByte = $derived.by(() => { void $editor; return fmtNode ? unhex(fmtNode.hex)[0] || 0 : 0; });
   // 0x5f: [slotIndex][count][activeIdx][count × metric id][padding] — see 0x85 "Widget slot"
   const slotNode = $derived($editor.sel?.tag === 0x85 ? $editor.sel.subs?.find(s => s.tag === 0x5f) : null);
   const slotInfo = $derived.by(() => {
+    void $editor;
     const v = slotNode?.hex ? unhex(slotNode.hex) : null;
     if (!v || v.length < 3) return null;
     return { activeIdx: v[2], ids: [...v.subarray(3, 3 + v[1])] };
@@ -41,6 +54,20 @@
 
   const num = e => +e.target.value || 0;
   const set = (node, patch) => { checkpoint(); patched({ node, patch }); };
+
+  // frame.align acts on the CROSS axis of the group's auto row — same direction inference
+  // as drawGroup (AUTO children's x/y spread), so the icons match what actually moves
+  const groupVertical = $derived.by(() => {
+    if (!frame) return false;
+    const autos = ($editor.sel.subs || [])
+      .map(k => k.subs?.find(s => s.tag === TAG.struct))
+      .filter(s => s && metaInfo(s).w === 0x8000);
+    const spread = a => (a.length ? Math.max(...a) - Math.min(...a) : 0);
+    return autos.length > 1 && spread(autos.map(s => s.y || 0)) > spread(autos.map(s => s.x || 0));
+  });
+  const frameAlignBtns = $derived(groupVertical
+    ? [[1, AlignStartVertical, 'Children left'], [0, AlignCenterVertical, 'Children centered'], [2, AlignEndVertical, 'Children right']]
+    : [[1, AlignStartHorizontal, 'Children top'], [0, AlignCenterHorizontal, 'Children middle'], [2, AlignEndHorizontal, 'Children bottom']]);
 
   function setFrame(patch) {
     const f = $editor.sel.subs.find(s => s.tag === TAG.frame);
@@ -66,6 +93,15 @@
   function setAccent(on) {
     const v = unhex(st.meta);
     v[7] = on ? 4 : 0;
+    set(st, { meta: hex(v) });
+  }
+  // Second hands come in two firmware flavors, chosen by the data source id (corpus survey):
+  // 0x12 ticks once per second, 0x72 sweeps smoothly (0x71 is a rarer smooth variant).
+  const SECOND_IDS = [0x12, 0x71, 0x72];
+  const isSecondHand = $derived($editor.sel?.tag === TAG.hand && SECOND_IDS.includes(meta?.id));
+  function setSmooth(on) {
+    const v = unhex(st.meta);
+    v[9] = on ? 0x72 : 0x12;
     set(st, { meta: hex(v) });
   }
   function thumbURL(r) {
@@ -100,10 +136,10 @@
         {/each}
       </div>
     {/if}
-    {#if st && st.x != null && !frame}
+    {#if st && sv.x != null && !frame}
       <div class="flex items-center gap-2">
-        <Label class="w-8">x</Label><Input class="h-8" type="number" value={st.x} oninput={e => set(st, { x: num(e) })} />
-        <Label class="w-8">y</Label><Input class="h-8" type="number" value={st.y} oninput={e => set(st, { y: num(e) })} />
+        <Label class="w-8">x</Label><Input class="h-8" type="number" value={sv.x} oninput={e => set(st, { x: num(e) })} />
+        <Label class="w-8">y</Label><Input class="h-8" type="number" value={sv.y} oninput={e => set(st, { y: num(e) })} />
       </div>
     {/if}
     {#if frame}
@@ -121,26 +157,27 @@
       <div class="flex items-center gap-2">
         <Label class="w-14">align</Label>
         <div class="flex gap-1">
-          {#each [[1, 'start'], [0, 'center'], [2, 'end']] as [v, label] (v)}
+          {#each frameAlignBtns as [v, Icon, title] (v)}
             <button
               type="button"
+              {title}
               class={cn(
-                'h-8 rounded-lg border px-2 text-xs',
-                frame.align === v ? 'bg-accent text-accent-foreground' : 'text-muted-foreground',
+                'flex h-8 w-8 items-center justify-center rounded-lg border',
+                frame.align === v ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
               )}
               onclick={() => setFrame({ align: v })}
-            >{label}</button>
+            ><Icon class="size-4" /></button>
           {/each}
         </div>
       </div>
       <p class="text-xs text-muted-foreground">
-        align — cross-axis alignment of children in this group (editor-only, real watches always center)
+        align — cross-axis alignment of auto children (editor-only, real watches always center)
       </p>
     {/if}
     {#if pivot}
       <div class="flex items-center gap-2">
-        <Label class="w-14">pivot x</Label><Input class="h-8" type="number" value={pivot.pivotX} oninput={e => set(pivot, { pivotX: num(e) })} />
-        <Label class="w-8">y</Label><Input class="h-8" type="number" value={pivot.pivotY} oninput={e => set(pivot, { pivotY: num(e) })} />
+        <Label class="w-14">pivot x</Label><Input class="h-8" type="number" value={sv.pivotX} oninput={e => set(pivot, { pivotX: num(e) })} />
+        <Label class="w-8">y</Label><Input class="h-8" type="number" value={sv.pivotY} oninput={e => set(pivot, { pivotY: num(e) })} />
       </div>
       <p class="text-xs text-muted-foreground">screen center = 233,233 (x+pivotX, y+pivotY)</p>
     {/if}
@@ -156,10 +193,16 @@
         <Label for="accent">tints with device accent color</Label>
       </div>
     {/if}
+    {#if isSecondHand}
+      <div class="flex items-center gap-2">
+        <Checkbox checked={meta.id !== 0x12} onCheckedChange={v => setSmooth(v)} id="smooth" />
+        <Label for="smooth">smooth sweep (moves continuously, not once per second)</Label>
+      </div>
+    {/if}
     {#if st?.meta}
       <div>
         <Label class="text-xs text-muted-foreground">meta (hex)</Label>
-        <Input class="mt-1 h-8 font-mono text-xs" value={st.meta}
+        <Input class="mt-1 h-8 font-mono text-xs" value={sv.metaHex}
           oninput={e => { if (/^[0-9a-f]{28}$/i.test(e.target.value)) set(st, { meta: e.target.value }); }} />
       </div>
     {/if}
@@ -175,7 +218,7 @@
     {#if bindNode}
       <div>
         <Label class="text-xs text-muted-foreground">condition (hex)</Label>
-        <Input class="mt-1 h-8 font-mono text-xs" value={bindNode.hex}
+        <Input class="mt-1 h-8 font-mono text-xs" value={sv.bindHex}
           oninput={e => { if (/^([0-9a-f]{2})*$/i.test(e.target.value)) set(bindNode, { hex: e.target.value }); }} />
       </div>
     {/if}
@@ -195,9 +238,9 @@
         </Select.Root>
       </div>
     {/if}
-    {#if st?.images}
+    {#if sv.images}
       <div class="flex flex-wrap gap-2">
-        {#each st.images as ri}
+        {#each sv.images as ri}
           <div class="group relative">
             <label title="res{ri} · {$editor.face.resources[ri].w}×{$editor.face.resources[ri].h} · cf{$editor.face.resources[ri].cf} — click to replace"
               class="cursor-pointer">

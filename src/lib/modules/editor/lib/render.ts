@@ -84,7 +84,11 @@ export function idValue(id: number, sim: Sim, t: TimeParts): number {
     case 0x0c: return Math.floor(t.m / 10);
     case 0x0d: return t.m % 10;
     case 0x0e: return t.m + t.s / 60;
-    case 0x0f: case 0x12: case 0x71: case 0x72: return t.s;
+    // 0x0f/0x12 tick once per second on the real device; 0x71/0x72 are the smooth-sweep
+    // second sources (see the corpus survey in the Dichotomy work) — mirror that here so
+    // the preview matches what the watch will actually do.
+    case 0x0f: case 0x12: return Math.floor(t.s);
+    case 0x71: case 0x72: return t.s;
     case 0x13: return t.h < 12 ? 0 : 1;
     case 0x16: return t.mon;
     case 0x17: return t.day;
