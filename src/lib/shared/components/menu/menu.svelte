@@ -16,12 +16,23 @@
   onpointerdown={(e) => {
     if (open && root && !root.contains(e.target as Node)) open = false;
   }}
+  onkeydown={(e) => {
+    if (open && e.key === "Escape") open = false;
+  }}
 />
 
 <div class="root" bind:this={root}>
   {@render trigger({ open, toggle: () => (open = !open) })}
   {#if open}
-    <div class="menu align__{align}" role="menu" onclick={() => (open = false)}>
+    <div
+      class="menu align__{align}"
+      role="menu"
+      tabindex="-1"
+      onclick={() => (open = false)}
+      onkeydown={(e) => {
+        if (e.key === "Escape") open = false;
+      }}
+    >
       {@render children?.()}
     </div>
   {/if}
