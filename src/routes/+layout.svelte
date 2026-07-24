@@ -1,6 +1,4 @@
 <script lang="ts">
-  import "../theme.css";
-  import "../app.css";
   import "$lib/styles/tokens.css";
   import favicon from "$lib/assets/favicon.svg";
 
