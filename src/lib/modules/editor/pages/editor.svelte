@@ -23,7 +23,7 @@
   } = bleModel;
   const {
     $openedWf: openedWf,
-    openedWfSet,
+    faceDetached,
     saveDraftRequested,
     $savePending: saving,
     publishDialogOpened,
@@ -56,7 +56,7 @@
       (e as DragEvent).dataTransfer?.files?.[0];
 
     if (f) f.arrayBuffer().then((buf) => loadRequested({ buf, label: f.name }));
-    openedWfSet(null);
+    faceDetached();
     e.preventDefault();
     if (t instanceof HTMLInputElement) t.value = "";
   }
@@ -294,7 +294,7 @@
         kind="secondary"
         size="sm"
         onClick={() => {
-          openedWfSet(null);
+          faceDetached();
           newFaceRequested();
         }}
       >

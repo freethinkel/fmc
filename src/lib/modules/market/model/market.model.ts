@@ -19,6 +19,11 @@ export const $myLoading = marketApi.loadMyFx.pending;
 export const $removing = marketApi.removeFx.pending;
 // watchface opened in the editor from the market/my pages — Save/Publish update it in place instead of spawning copies
 export const $openedWf = createStore<RecordModel | null>(null);
+// wf record currently loaded in the editor, regardless of owner — narrower than $openedWf
+// (which only tracks the caller's OWN record, for save-in-place) wouldn't do: flashing someone
+// else's design should still count as a download. Cleared on New/drag-drop import (faceDetached),
+// which have no backing record at all.
+export const $loadedWf = createStore<RecordModel | null>(null);
 // editorModel.loadDone also fires for unrelated loads (drag-drop import on /editor) — only
 // navigate when the load we're waiting on is specifically the one editRequested started
 const $awaitingEdit = createStore(false);
@@ -43,6 +48,8 @@ export const myLoadRequested = createEvent<string>();
 export const removeRequested = createEvent<RecordModel>();
 export const publishToggleRequested = createEvent<RecordModel>();
 export const openedWfSet = createEvent<RecordModel | null>();
+// fired by the component on New / drag-drop import — the loaded face has no backing record
+export const faceDetached = createEvent();
 // "open in editor" from a market/my card: fetch the .bin, hand it to the editor model, then
 // navigate once it's actually loaded — used by both pages (market.svelte, my.svelte)
 export const editRequested = createEvent<RecordModel>();
@@ -84,6 +91,11 @@ const toggleLikeFx = attach({
   }),
 });
 
+// bumpDownloadsFx.done only carries back {} — patch the count locally on every successful
+// flash instead of waiting for a refetch (market list loads once per session, see above)
+const bumpDownloads = (list: RecordModel[], wfId: string) =>
+  list.map((i) => (i.id === wfId ? { ...i, downloads: (i.downloads || 0) + 1 } : i));
+
 // ---- business logic ----
 sample({
   clock: marketLoadRequested,
@@ -122,6 +134,12 @@ sample({
 });
 
 sample({
+  clock: faceDetached,
+  fn: () => null,
+  target: [$openedWf, $loadedWf],
+});
+
+sample({
   clock: editRequested,
   target: openInEditorFx,
 });
@@ -136,6 +154,11 @@ sample({
   source: authModel.$user,
   fn: (user, { wf }) => (user && wf.owner === user.id ? wf : null),
   target: openedWfSet,
+});
+sample({
+  clock: openInEditorFx.doneData,
+  fn: ({ wf }) => wf,
+  target: $loadedWf,
 });
 sample({
   clock: openInEditorFx.doneData,
@@ -163,6 +186,10 @@ sample({
 sample({
   clock: saveFx.doneData,
   target: openedWfSet,
+});
+sample({
+  clock: saveFx.doneData,
+  target: $loadedWf,
 });
 
 sample({
@@ -289,13 +316,25 @@ sample({
   target: $marketErr,
 });
 
-// downloads counter also bumps on a successful flash to the watch — no auth check
+// downloads counter also bumps on a successful flash to the watch — no auth check, own or not
 sample({
   clock: bleModel.flashDone,
-  source: $openedWf,
+  source: $loadedWf,
   filter: Boolean,
   fn: (wf) => wf.id,
   target: marketApi.bumpDownloadsFx,
+});
+sample({
+  clock: marketApi.bumpDownloadsFx.done,
+  source: $items,
+  fn: (list, { params: wfId }) => bumpDownloads(list, wfId),
+  target: $items,
+});
+sample({
+  clock: marketApi.bumpDownloadsFx.done,
+  source: $myItems,
+  fn: (list, { params: wfId }) => bumpDownloads(list, wfId),
+  target: $myItems,
 });
 
 reset({ clock: marketApi.loadMarketFx.done, target: $marketErr });
