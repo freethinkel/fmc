@@ -97,9 +97,10 @@
   }
   // Second hands come in two firmware flavors, chosen by the data source id (corpus
   // survey): 0x0f/0x12 tick once per second, 0x71/0x72 sweep smoothly. HANDS ONLY: a ring
-  // (0x80/0x81) switched to 0x72 renders as a static full bitmap on the real device
-  // (verified on Wavy Seconds) — for rings the toggle only appears on an already-smooth id
-  // so it can be switched back to its native ticking 0x0f.
+  // (0x80/0x81) switched to a smooth id renders as a static full bitmap on the real device
+  // (BOTH 0x72 and 0x71 verified on Wavy Seconds — the firmware only animates hands; ring
+  // widgets redraw at 1 Hz, period). For rings the toggle only appears on an already-smooth
+  // id so it can be switched back to its native ticking 0x0f.
   const SECOND_IDS = [0x0f, 0x12, 0x71, 0x72];
   const isSecondWidget = $derived(
     ($editor.sel?.tag === TAG.hand && SECOND_IDS.includes(meta?.id)) ||
