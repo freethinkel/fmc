@@ -167,6 +167,46 @@ patched.watch(() => {
   if (face && sim.accentColor) queueAccent(face, sim.accentColor);
 });
 
+// Figma-style alignment: nudge the selected node so its RENDERED bounding box lands on the
+// screen edge/center. Delta-based off the render hits, so it works uniformly for groups
+// (frame x/y), widgets (struct x/y) and grouped children whose drawn position differs from
+// their raw x/y. ponytail: clamped to >=0 — a group child at the x=0 "center me" convention
+// can't be pushed further left than the format can express.
+export type AlignDir = 'left' | 'hcenter' | 'right' | 'top' | 'vcenter' | 'bottom';
+export function alignSelected(dir: AlignDir) {
+  const s = editor.getState();
+  if (!s.face || !s.sel) return;
+  const c = document.createElement('canvas');
+  c.width = c.height = 466;
+  const hits = render(c.getContext('2d')!, s.face, s.screenTag, s.sim);
+  const h = hits.findLast(h => h.node === s.sel);
+  if (!h) return;
+  let dx = dir === 'left' ? -h.x : dir === 'hcenter' ? Math.round((466 - h.w) / 2 - h.x)
+    : dir === 'right' ? 466 - h.w - h.x : 0;
+  let dy = dir === 'top' ? -h.y : dir === 'vcenter' ? Math.round((466 - h.h) / 2 - h.y)
+    : dir === 'bottom' ? 466 - h.h - h.y : 0;
+  // a hand's bbox rotates with the live angle — centering means "pivot on screen center",
+  // not "AABB centered" (which would drift with the current second)
+  const pivot = s.sel.subs?.find(n => n.tag === TAG.pivot);
+  const pst = pivot && s.sel.subs?.find(n => n.tag === TAG.struct);
+  if (pivot && pst) {
+    if (dir === 'hcenter') dx = 233 - pivot.pivotX! - pst.x!;
+    if (dir === 'vcenter') dy = 233 - pivot.pivotY! - pst.y!;
+  }
+  checkpoint(0);
+  if (s.sel.tag === TAG.group) {
+    const f = s.sel.subs!.find(n => n.tag === TAG.frame)!;
+    const v = unhex(f.hex!);
+    const fx = Math.max(0, (v[0] | v[1] << 8) + dx), fy = Math.max(0, (v[2] | v[3] << 8) + dy);
+    v[0] = fx; v[1] = fx >> 8; v[2] = fy; v[3] = fy >> 8;
+    patched({ node: f, patch: { hex: hex(v) } });
+  } else {
+    const st = s.sel.subs?.find(n => n.tag === TAG.struct);
+    if (!st || st.x == null) return;
+    patched({ node: st, patch: { x: Math.max(0, st.x + dx), y: Math.max(0, (st.y || 0) + dy) } });
+  }
+}
+
 export const newFaceFx = createEffect(async (name: string = 'Custom') => {
   const black = (w: number, h: number): Resource => {
     const px = new Uint8ClampedArray(w * h * 4);

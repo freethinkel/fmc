@@ -3,12 +3,25 @@
   import { Label } from '$lib/shared/components/ui/label';
   import { Checkbox } from '$lib/shared/components/ui/checkbox';
   import * as Select from '$lib/shared/components/ui/select';
-  import { Download } from '@lucide/svelte';
+  import { Download, AlignStartVertical, AlignCenterVertical, AlignEndVertical,
+    AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal } from '@lucide/svelte';
   import { cn } from '$lib/shared/helpers';
   import { TAG, unhex, hex } from '../lib/wf';
   import { metaInfo, ID_LABELS, parseFrame } from '../lib/render';
   import { editorModel } from '../model';
-  const { editor, checkpoint, patched, replaceImageFx } = editorModel;
+  const { editor, checkpoint, patched, replaceImageFx, alignSelected } = editorModel;
+
+  // Figma-style position buttons: [dir, icon, title] — two groups of three
+  const alignH = [
+    ['left', AlignStartVertical, 'Align left'],
+    ['hcenter', AlignCenterVertical, 'Align horizontal centers'],
+    ['right', AlignEndVertical, 'Align right'],
+  ];
+  const alignV = [
+    ['top', AlignStartHorizontal, 'Align top'],
+    ['vcenter', AlignCenterHorizontal, 'Align vertical centers'],
+    ['bottom', AlignEndHorizontal, 'Align bottom'],
+  ];
 
   const selStruct = n => (n?.tag === TAG.struct ? n : n?.subs?.find(s => s.tag === TAG.struct));
   const st = $derived(selStruct($editor.sel));
@@ -71,6 +84,22 @@
 
 {#if $editor.sel}
   <div class="space-y-3 text-sm">
+    {#if (st && st.x != null) || frame}
+      <div class="flex items-center gap-3">
+        {#each [alignH, alignV] as group}
+          <div class="flex gap-1">
+            {#each group as [dir, Icon, title] (dir)}
+              <button
+                type="button"
+                {title}
+                class="hover:bg-accent hover:text-accent-foreground text-muted-foreground flex h-8 w-8 items-center justify-center rounded-lg border"
+                onclick={() => alignSelected(dir)}
+              ><Icon class="size-4" /></button>
+            {/each}
+          </div>
+        {/each}
+      </div>
+    {/if}
     {#if st && st.x != null && !frame}
       <div class="flex items-center gap-2">
         <Label class="w-8">x</Label><Input class="h-8" type="number" value={st.x} oninput={e => set(st, { x: num(e) })} />
