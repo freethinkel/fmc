@@ -97,7 +97,8 @@
 </div>
 
 <style>
-  /* -global-: referenced from inline styles, must not be scoped */
+  /* -global-: the spin animation is also started from an inline style (per-hand
+     duration/delay are computed per item), so its name must not be scoped */
   @keyframes -global-spin {
     to {
       rotate: 360deg;
@@ -144,9 +145,8 @@
     align-items: center;
     justify-content: space-between;
     padding: 20px 24px;
-  }
-  @media (min-width: 768px) {
-    header {
+
+    @media (min-width: 768px) {
       padding: 20px 48px;
     }
   }
@@ -165,16 +165,19 @@
   nav {
     display: flex;
     gap: 24px;
+    font-family: var(--font-mono);
     font-size: 0.75rem;
     color: oklch(from var(--color-text) l c h / 55%);
-  }
-  nav a {
-    color: inherit;
-    text-decoration: none;
-    transition: color 0.15s ease;
-  }
-  nav a:hover {
-    color: var(--color-accent);
+
+    a {
+      color: inherit;
+      text-decoration: none;
+      transition: color 0.15s ease;
+
+      &:hover {
+        color: var(--color-accent);
+      }
+    }
   }
 
   .hero {
@@ -182,15 +185,13 @@
     z-index: 1;
     display: grid;
     align-items: center;
-    gap: 48px;
+    gap: 64px;
     max-width: 1152px;
     margin: 0 auto;
     padding: 48px 24px 96px;
-  }
-  @media (min-width: 768px) {
-    .hero {
+
+    @media (min-width: 768px) {
       grid-template-columns: 1.2fr 1fr;
-      gap: 64px;
       padding: 96px 48px 96px;
     }
   }
@@ -201,9 +202,8 @@
     font-size: 2.25rem;
     font-weight: 900;
     line-height: 1.05;
-  }
-  @media (min-width: 768px) {
-    .pitch h1 {
+
+    @media (min-width: 768px) {
       font-size: 3.75rem;
     }
   }
@@ -238,9 +238,8 @@
     box-shadow:
       0 0 0 10px oklch(from var(--color-text) l c h / 6%),
       0 0 80px oklch(from var(--color-accent) l c h / 15%);
-  }
-  @media (min-width: 768px) {
-    .watch {
+
+    @media (min-width: 768px) {
       width: 320px;
     }
   }
@@ -261,12 +260,14 @@
     inset: 0;
     display: grid;
     place-items: center;
-  }
-  .center-label span {
-    margin-top: 96px;
-    font-size: 10px;
-    letter-spacing: 0.3em;
-    color: oklch(from var(--color-text) l c h / 40%);
+
+    span {
+      margin-top: 96px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 0.4em;
+      color: oklch(from var(--color-text) l c h / 40%);
+    }
   }
 
   .hand {
@@ -315,9 +316,8 @@
     max-width: 1152px;
     margin: 0 auto;
     background: oklch(from var(--color-text) l c h / 10%);
-  }
-  @media (min-width: 768px) {
-    .grid {
+
+    @media (min-width: 768px) {
       grid-template-columns: repeat(3, 1fr);
     }
   }
@@ -326,29 +326,31 @@
     padding: 32px;
     background: var(--color-background);
     transition: background-color 0.15s ease;
-  }
-  article:hover {
-    background: oklch(from var(--color-text) l c h / 4%);
+
+    &:hover {
+      background: oklch(from var(--color-text) l c h / 4%);
+    }
+
+    h3 {
+      margin: 12px 0 0;
+      font-family: var(--font-display);
+      font-size: 0.875rem;
+      font-weight: 700;
+    }
+
+    .desc {
+      margin: 12px 0 0;
+      font-size: 0.75rem;
+      line-height: 1.6;
+      color: oklch(from var(--color-text) l c h / 55%);
+    }
   }
 
   .num {
     margin: 0;
+    font-family: var(--font-mono);
     font-size: 0.75rem;
     color: var(--color-accent);
-  }
-
-  article h3 {
-    margin: 12px 0 0;
-    font-family: var(--font-display);
-    font-size: 0.875rem;
-    font-weight: 700;
-  }
-
-  article .desc {
-    margin: 12px 0 0;
-    font-size: 0.75rem;
-    line-height: 1.6;
-    color: oklch(from var(--color-text) l c h / 55%);
   }
 
   footer {
@@ -356,16 +358,17 @@
     z-index: 1;
     border-top: 1px solid oklch(from var(--color-text) l c h / 10%);
     padding: 24px;
-  }
-  @media (min-width: 768px) {
-    footer {
+
+    @media (min-width: 768px) {
       padding: 24px 48px;
     }
-  }
-  footer p {
-    margin: 0;
-    font-size: 10px;
-    letter-spacing: 0.1em;
-    color: oklch(from var(--color-text) l c h / 40%);
+
+    p {
+      margin: 0;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      color: oklch(from var(--color-text) l c h / 40%);
+    }
   }
 </style>
