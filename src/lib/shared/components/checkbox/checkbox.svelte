@@ -44,4 +44,7 @@
     outline: 2px solid var(--color-accent);
     outline-offset: 2px;
   }
+  input:disabled + .box {
+    opacity: 0.5;
+  }
 </style>
