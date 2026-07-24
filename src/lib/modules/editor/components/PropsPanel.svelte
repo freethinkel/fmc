@@ -33,7 +33,9 @@
   const pivot = $derived($editor.sel?.subs?.find((s) => s.tag === TAG.pivot));
   const fmtNode = $derived($editor.sel?.subs?.find((s) => s.tag === TAG.fmt));
   const bindNode = $derived($editor.sel?.subs?.find((s) => s.tag === TAG.bind));
-  const frame = $derived($editor.sel?.tag === TAG.group ? parseFrame($editor.sel) : null);
+  const frame = $derived(
+    $editor.sel?.tag === TAG.group ? parseFrame($editor.sel) : null,
+  );
   // The face tree is mutated in place (editor.model's patched), so node-returning deriveds
   // above keep yielding the SAME object and property reads off them (st.x, st.meta…) never
   // invalidate. Everything the template DISPLAYS goes through this snapshot instead — it
@@ -61,7 +63,9 @@
   });
   // 0x5f: [slotIndex][count][activeIdx][count × metric id][padding] — see 0x85 "Widget slot"
   const slotNode = $derived(
-    $editor.sel?.tag === 0x85 ? $editor.sel.subs?.find((s) => s.tag === 0x5f) : null,
+    $editor.sel?.tag === 0x85
+      ? $editor.sel.subs?.find((s) => s.tag === 0x5f)
+      : null,
   );
   const slotInfo = $derived.by(() => {
     void $editor;
@@ -83,33 +87,6 @@
     patched({ node, patch });
   };
 
-  // frame.align acts on the CROSS axis of the group's auto row — same direction inference
-  // as drawGroup (AUTO children's x/y spread), so the icons match what actually moves
-  const groupVertical = $derived.by(() => {
-    if (!frame) return false;
-    const autos = ($editor.sel?.subs || [])
-      .map((k) => k.subs?.find((s) => s.tag === TAG.struct))
-      .filter((s): s is FaceNode => s != null && metaInfo(s).w === 0x8000);
-    const spread = (a: number[]) => (a.length ? Math.max(...a) - Math.min(...a) : 0);
-
-    return (
-      autos.length > 1 && spread(autos.map((s) => s.y || 0)) > spread(autos.map((s) => s.x || 0))
-    );
-  });
-  const frameAlignBtns: [number, IconName, string][] = $derived(
-    groupVertical
-      ? [
-          [1, "align-left", "Children left"],
-          [0, "align-center", "Children centered"],
-          [2, "align-right", "Children right"],
-        ]
-      : [
-          [1, "align-top", "Children top"],
-          [0, "align-middle", "Children middle"],
-          [2, "align-bottom", "Children bottom"],
-        ],
-  );
-
   function setFrame(patch: Partial<Frame>) {
     if (!frame) return;
     const f = $editor.sel?.subs?.find((s) => s.tag === TAG.frame);
@@ -117,12 +94,12 @@
     if (!f) return;
     let v = unhex(f.hex || "");
 
-    if (v.length < 10) {
-      const b = new Uint8Array(10);
+    if (v.length < 9) {
+      const b = new Uint8Array(9);
 
       b.set(v);
       v = b;
-    } // frame.hex may omit the align byte
+    }
     const cur = { ...frame, ...patch };
 
     v[0] = cur.x;
@@ -134,7 +111,6 @@
     v[6] = cur.h;
     v[7] = cur.h >> 8;
     v[8] = cur.gap;
-    v[9] = cur.align;
     set(f, { hex: hex(v) });
   }
   function setSlotActive(idx: number) {
@@ -146,7 +122,9 @@
   }
   function setFmt(digits: number, pad: number | boolean) {
     if (!fmtNode) return;
-    set(fmtNode, { hex: hex(new Uint8Array([(digits & 0x1f) | (pad ? 0x80 : 0)])) });
+    set(fmtNode, {
+      hex: hex(new Uint8Array([(digits & 0x1f) | (pad ? 0x80 : 0)])),
+    });
   }
   // meta[7] === 4 marks this widget's resource(s) accent-tintable on the real device — see
   // docs/cmf-protocol.md "Accent color". Every non-transparent pixel gets swapped, regardless
@@ -165,7 +143,9 @@
   // get a rescue button back to their native 0x0f if left on a broken smooth-era id.
   const SECOND_IDS = [0x0f, 0x12, 0x71, 0x72];
   const isSecondHand = $derived(
-    $editor.sel?.tag === TAG.hand && meta != null && SECOND_IDS.includes(meta.id),
+    $editor.sel?.tag === TAG.hand &&
+      meta != null &&
+      SECOND_IDS.includes(meta.id),
   );
   const isBrokenRing = $derived(
     $editor.sel != null &&
@@ -206,7 +186,12 @@
         {#each [alignH, alignV] as group}
           <div class="btn-group">
             {#each group as [dir, iconName, title] (dir)}
-              <button type="button" {title} class="icon-btn" onclick={() => alignSelected(dir)}>
+              <button
+                type="button"
+                {title}
+                class="icon-btn"
+                onclick={() => alignSelected(dir)}
+              >
                 <Icon name={iconName} size={16} />
               </button>
             {/each}
@@ -216,48 +201,57 @@
     {/if}
     {#if st && sv.x != null && !frame}
       <div class="row">
-        <span class="field-label w-sm">x</span>
-        <Input type="number" value={String(sv.x)} onInput={(v) => set(st, { x: num(v) })} />
-        <span class="field-label w-sm">y</span>
-        <Input type="number" value={String(sv.y)} onInput={(v) => set(st, { y: num(v) })} />
+        <span class="field-label">x</span>
+        <Input
+          type="number"
+          value={String(sv.x)}
+          onInput={(v) => set(st, { x: num(v) })}
+        />
+        <span class="field-label">y</span>
+        <Input
+          type="number"
+          value={String(sv.y)}
+          onInput={(v) => set(st, { y: num(v) })}
+        />
       </div>
     {/if}
     {#if frame}
       <div class="row">
-        <span class="field-label w-sm">x</span>
-        <Input type="number" value={String(frame.x)} onInput={(v) => setFrame({ x: num(v) })} />
-        <span class="field-label w-sm">y</span>
-        <Input type="number" value={String(frame.y)} onInput={(v) => setFrame({ y: num(v) })} />
+        <span class="field-label">x</span>
+        <Input
+          type="number"
+          value={String(frame.x)}
+          onInput={(v) => setFrame({ x: num(v) })}
+        />
+        <span class="field-label">y</span>
+        <Input
+          type="number"
+          value={String(frame.y)}
+          onInput={(v) => setFrame({ y: num(v) })}
+        />
       </div>
       <div class="row">
-        <span class="field-label w-sm">w</span>
-        <Input type="number" value={String(frame.w)} onInput={(v) => setFrame({ w: num(v) })} />
-        <span class="field-label w-sm">h</span>
-        <Input type="number" value={String(frame.h)} onInput={(v) => setFrame({ h: num(v) })} />
+        <span class="field-label">w</span>
+        <Input
+          type="number"
+          value={String(frame.w)}
+          onInput={(v) => setFrame({ w: num(v) })}
+        />
+        <span class="field-label">h</span>
+        <Input
+          type="number"
+          value={String(frame.h)}
+          onInput={(v) => setFrame({ h: num(v) })}
+        />
       </div>
       <div class="row">
-        <span class="field-label w-sm">gap</span>
-        <Input type="number" value={String(frame.gap)} onInput={(v) => setFrame({ gap: num(v) })} />
+        <span class="field-label">gap</span>
+        <Input
+          type="number"
+          value={String(frame.gap)}
+          onInput={(v) => setFrame({ gap: num(v) })}
+        />
       </div>
-      <div class="row">
-        <span class="field-label w-md">align</span>
-        <div class="btn-group">
-          {#each frameAlignBtns as [v, iconName, title] (v)}
-            <button
-              type="button"
-              {title}
-              class="icon-btn"
-              class:active={frame.align === v}
-              onclick={() => setFrame({ align: v })}
-            >
-              <Icon name={iconName} size={16} />
-            </button>
-          {/each}
-        </div>
-      </div>
-      <p class="hint-xs">
-        align — cross-axis alignment of auto children (editor-only, real watches always center)
-      </p>
     {/if}
     {#if pivot}
       <div class="row">
@@ -278,7 +272,8 @@
     {/if}
     {#if meta?.id}
       <p class="hint">
-        source: <span class="text-emph">0x{meta.id.toString(16)} — {ID_LABELS[meta.id] || "?"}</span
+        source: <span class="text-emph"
+          >0x{meta.id.toString(16)} — {ID_LABELS[meta.id] || "?"}</span
         >
         {#if meta.max}, max {meta.max}{/if}
       </p>
@@ -286,7 +281,10 @@
     {#if st?.meta}
       <div class="check-row">
         <Checkbox checked={!!meta?.accent} onChange={(v) => setAccent(v)} />
-        <button type="button" class="check-label" onclick={() => setAccent(!meta?.accent)}
+        <button
+          type="button"
+          class="check-label"
+          onclick={() => setAccent(!meta?.accent)}
           >tints with device accent color</button
         >
       </div>
@@ -300,7 +298,8 @@
         <button
           type="button"
           class="check-label"
-          onclick={() => setSecondId(meta?.id === 0x0f || meta?.id === 0x12 ? 0x72 : 0x12)}
+          onclick={() =>
+            setSecondId(meta?.id === 0x0f || meta?.id === 0x12 ? 0x72 : 0x12)}
         >
           smooth sweep (unchecked — ticks once per second)
         </button>
@@ -334,11 +333,15 @@
             onInput={(v) => setFmt(num(v), fmtByte & 0x80)}
           />
         </span>
-        <Checkbox checked={!!(fmtByte & 0x80)} onChange={(v) => setFmt(fmtByte & 0x1f, v)} />
+        <Checkbox
+          checked={!!(fmtByte & 0x80)}
+          onChange={(v) => setFmt(fmtByte & 0x1f, v)}
+        />
         <button
           type="button"
           class="check-label"
-          onclick={() => setFmt(fmtByte & 0x1f, !(fmtByte & 0x80))}>leading zeros</button
+          onclick={() => setFmt(fmtByte & 0x1f, !(fmtByte & 0x80))}
+          >leading zeros</button
         >
       </div>
     {/if}
@@ -368,7 +371,10 @@
         {#each sv.images as ri}
           {@const r = $editor.face!.resources[ri]}
           <div class="thumb-wrap">
-            <label title="res{ri} · {r.w}×{r.h} · cf{r.cf} — click to replace" class="thumb">
+            <label
+              title="res{ri} · {r.w}×{r.h} · cf{r.cf} — click to replace"
+              class="thumb"
+            >
               <img src={thumbURL(r)} alt="res{ri}" />
               <input
                 type="file"
@@ -381,7 +387,11 @@
                 }}
               />
             </label>
-            <button title="Download PNG" onclick={() => downloadRes(ri)} class="dl-btn">
+            <button
+              title="Download PNG"
+              onclick={() => downloadRes(ri)}
+              class="dl-btn"
+            >
               <Icon name="download" size={14} />
             </button>
           </div>
@@ -460,10 +470,6 @@
     &:hover {
       background: oklch(from var(--color-text) l c h / 6%);
       color: var(--color-text);
-    }
-    &.active {
-      background: oklch(from var(--color-accent) l c h / 12%);
-      color: var(--color-accent);
     }
   }
   .text-btn {

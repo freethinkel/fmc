@@ -51,6 +51,7 @@
   import IconSearch from "@tabler/icons-svelte/icons/search";
   import IconGlobe from "@tabler/icons-svelte/icons/globe";
   import IconGlobeOff from "@tabler/icons-svelte/icons/globe-off";
+  import IconHelp from "@tabler/icons-svelte/icons/help";
 
   // Central icon registry — the single place to retune an icon app-wide.
   // Keys are OUR semantic names (used at call sites); values are Tabler components.
@@ -109,6 +110,7 @@
     search: IconSearch,
     globe: IconGlobe,
     "globe-lock": IconGlobeOff, // no globe+lock icon in tabler — globe-off (same family as "globe") reads as "not public"
+    help: IconHelp,
   } as const;
 
   export type IconName = keyof typeof ICONS;

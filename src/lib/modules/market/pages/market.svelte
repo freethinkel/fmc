@@ -45,10 +45,11 @@
   });
 
   let query = $state("");
-  let sort = $state("new"); // new | popular
+  let sort = $state("new"); // new | popular | downloads
   const SORT_OPTIONS = [
     { value: "new", label: "Newest" },
     { value: "popular", label: "Popular" },
+    { value: "downloads", label: "Most downloaded" },
   ];
 
   const likeCount = (id: string) =>
@@ -75,7 +76,9 @@
             likeCount(b.id) -
             (a.downloads || 0) -
             likeCount(a.id)
-          : b.created.localeCompare(a.created),
+          : sort === "downloads"
+            ? (b.downloads || 0) - (a.downloads || 0)
+            : b.created.localeCompare(a.created),
       ),
   );
 
@@ -251,7 +254,7 @@
     padding: 16px;
 
     & > :global(*) {
-      min-height: 275px;
+      min-height: auto;
       height: 100%;
     }
   }

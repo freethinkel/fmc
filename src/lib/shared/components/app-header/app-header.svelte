@@ -32,6 +32,16 @@
     </WatchPopover>
   </nav>
   <div class="user">
+    <a
+      class="help-btn"
+      href="https://github.com/freethinkel/fmc/issues"
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label="Report an issue"
+      title="Report an issue"
+    >
+      <Icon name="help" size={18} />
+    </a>
     {#if $user}
       <Menu>
         {#snippet trigger({ toggle })}
@@ -105,7 +115,24 @@
     background: var(--color-accent);
   }
   .user {
+    display: flex;
+    align-items: center;
+    gap: 12px;
     margin-inline-start: auto;
+  }
+  .help-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    color: oklch(from var(--color-text) l c h / 55%);
+
+    &:hover {
+      background: oklch(from var(--color-text) l c h / 6%);
+      color: var(--color-text);
+    }
   }
   .avatar-btn {
     border: none;

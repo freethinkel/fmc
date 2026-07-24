@@ -464,18 +464,12 @@ function progressFrac(id: number, sim: Sim, t: TimeParts, spec: ArcSpec): number
   return Math.max(0, Math.min(1, (v - spec.min) / d));
 }
 
-// align (byte 9): cross-axis alignment of auto-laid-out children, Flutter Row/Column
-// crossAxisAlignment equivalent — 0 center (default, matches every real face in the corpus,
-// where this byte is always zero), 1 start, 2 end. Not a real firmware field: the whole
-// 12-byte tail after gap is always zero across the 100-face corpus, so this is an editor-only
-// extension with no device-side meaning beyond "0 = same as stock".
 export interface Frame {
   x: number;
   y: number;
   w: number;
   h: number;
   gap: number;
-  align: number;
   node: FaceNode;
 }
 export function parseFrame(node: FaceNode): Frame | null {
@@ -491,15 +485,8 @@ export function parseFrame(node: FaceNode): Frame | null {
     w: v[4] | (v[5] << 8),
     h: v[6] | (v[7] << 8),
     gap: v[8],
-    align: v[9] || 0,
     node: f,
   };
-}
-
-function crossOffset(align: number, avail: number, size: number): number {
-  if (align === 1) return 0;
-  if (align === 2) return avail - size;
-  return (avail - size) / 2;
 }
 
 // accentBitmap (if set — see editor.model.ts's applyAccent) takes priority over the baked bitmap
@@ -963,8 +950,8 @@ function drawGroup(
 
       if (z) {
         const pos = vertical
-          ? { x: x + crossOffset(fr.align, fr.w, z.w), y: c }
-          : { x: c, y: rowCross ?? y + crossOffset(fr.align, fr.h, z.h) };
+          ? { x: x + (fr.w - z.w) / 2, y: c }
+          : { x: c, y: rowCross ?? y + (fr.h - z.h) / 2 };
 
         drawWidget(ctx, k, res, sim, t, 0, 0, pos, hits, arcsById);
         c += (vertical ? z.h : z.w) + gapAfter(shownPos);
@@ -1002,8 +989,7 @@ function drawGroup(
         const measured =
           o && !o.x ? drawWidget(null, k, res, sim, t, 0, 0, { x: 0, y: 0 }, null, arcsById) : null;
         const pos =
-          ringPos ??
-          (measured ? { x: x + crossOffset(fr.align, fr.w, measured.w), y: y + o!.y } : null);
+          ringPos ?? (measured ? { x: x + (fr.w - measured.w) / 2, y: y + o!.y } : null);
 
         drawWidget(ctx, k, res, sim, t, isRing ? 0 : x, isRing ? 0 : y, pos, hits, arcsById);
       }

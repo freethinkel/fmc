@@ -29,6 +29,9 @@ const $awaitingEdit = createStore(false);
 // of the follow-up (dialog open state, navigation, error banner) lives here, not in components.
 const $saveKind = createStore<"draft" | "publish" | null>(null);
 export const $publishDialogOpen = createStore(false);
+// marketLoadRequested fires on every market.svelte mount — load the catalog once per session,
+// a page revisit reuses $items; reloading needs a full page refresh (or removeFx's own reload below)
+const $marketRequestedOnce = createStore(false);
 export const $likes = createStore<RecordModel[]>([]);
 export const $items = createStore<RecordModel[]>([]);
 export const $myItems = createStore<RecordModel[]>([]);
@@ -84,7 +87,14 @@ const toggleLikeFx = attach({
 // ---- business logic ----
 sample({
   clock: marketLoadRequested,
+  source: $marketRequestedOnce,
+  filter: (requested) => !requested,
   target: marketApi.loadMarketFx,
+});
+sample({
+  clock: marketLoadRequested,
+  fn: () => true,
+  target: $marketRequestedOnce,
 });
 
 sample({

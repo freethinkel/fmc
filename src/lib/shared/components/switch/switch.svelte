@@ -8,7 +8,12 @@
 </script>
 
 <label class="root">
-  <input type="checkbox" bind:checked {disabled} onchange={() => onChange?.(checked)} />
+  <input
+    type="checkbox"
+    bind:checked
+    {disabled}
+    onchange={() => onChange?.(checked)}
+  />
   <span class="switch"><span class="thumb"></span></span>
 </label>
 
@@ -26,15 +31,15 @@
   .switch {
     width: 40px;
     height: 24px;
-    padding: 3px;
+    padding: 2px;
     border-radius: 12px;
     background: oklch(from var(--color-text) l c h / 15%);
     transition: background-color 0.2s ease;
   }
   .thumb {
     display: block;
-    width: 18px;
-    height: 18px;
+    width: 20px;
+    height: 20px;
     border-radius: 50%;
     background: oklch(1 0 0);
     transition: transform var(--spring-transition);
