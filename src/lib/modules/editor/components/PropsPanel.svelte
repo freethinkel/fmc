@@ -95,13 +95,18 @@
     v[7] = on ? 4 : 0;
     set(st, { meta: hex(v) });
   }
-  // Second hands come in two firmware flavors, chosen by the data source id (corpus survey):
-  // 0x12 ticks once per second, 0x72 sweeps smoothly (0x71 is a rarer smooth variant).
-  const SECOND_IDS = [0x12, 0x71, 0x72];
-  const isSecondHand = $derived($editor.sel?.tag === TAG.hand && SECOND_IDS.includes(meta?.id));
+  // Second-driven widgets come in two firmware flavors, chosen by the data source id
+  // (corpus survey): 0x0f/0x12 tick once per second, 0x71/0x72 sweep smoothly. Hands use
+  // 0x12 as the ticking id, progress rings (0x80/0x81) use 0x0f — restore the right one on
+  // toggle-off. ponytail: no factory face pairs a ring with a smooth id, so on-device
+  // behavior of a smooth ring is unverified — the preview models it as smooth.
+  const SECOND_IDS = [0x0f, 0x12, 0x71, 0x72];
+  const isSecondWidget = $derived(
+    [TAG.hand, 0x80, 0x81].includes($editor.sel?.tag) && SECOND_IDS.includes(meta?.id),
+  );
   function setSmooth(on) {
     const v = unhex(st.meta);
-    v[9] = on ? 0x72 : 0x12;
+    v[9] = on ? 0x72 : $editor.sel.tag === TAG.hand ? 0x12 : 0x0f;
     set(st, { meta: hex(v) });
   }
   function thumbURL(r) {
@@ -193,9 +198,9 @@
         <Label for="accent">tints with device accent color</Label>
       </div>
     {/if}
-    {#if isSecondHand}
+    {#if isSecondWidget}
       <div class="flex items-center gap-2">
-        <Checkbox checked={meta.id !== 0x12} onCheckedChange={v => setSmooth(v)} id="smooth" />
+        <Checkbox checked={meta.id === 0x71 || meta.id === 0x72} onCheckedChange={v => setSmooth(v)} id="smooth" />
         <Label for="smooth">smooth sweep (moves continuously, not once per second)</Label>
       </div>
     {/if}
