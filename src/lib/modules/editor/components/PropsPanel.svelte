@@ -95,14 +95,15 @@
     v[7] = on ? 4 : 0;
     set(st, { meta: hex(v) });
   }
-  // Second-driven widgets come in two firmware flavors, chosen by the data source id
-  // (corpus survey): 0x0f/0x12 tick once per second, 0x71/0x72 sweep smoothly. Hands use
-  // 0x12 as the ticking id, progress rings (0x80/0x81) use 0x0f — restore the right one on
-  // toggle-off. ponytail: no factory face pairs a ring with a smooth id, so on-device
-  // behavior of a smooth ring is unverified — the preview models it as smooth.
+  // Second hands come in two firmware flavors, chosen by the data source id (corpus
+  // survey): 0x0f/0x12 tick once per second, 0x71/0x72 sweep smoothly. HANDS ONLY: a ring
+  // (0x80/0x81) switched to 0x72 renders as a static full bitmap on the real device
+  // (verified on Wavy Seconds) — for rings the toggle only appears on an already-smooth id
+  // so it can be switched back to its native ticking 0x0f.
   const SECOND_IDS = [0x0f, 0x12, 0x71, 0x72];
   const isSecondWidget = $derived(
-    [TAG.hand, 0x80, 0x81].includes($editor.sel?.tag) && SECOND_IDS.includes(meta?.id),
+    ($editor.sel?.tag === TAG.hand && SECOND_IDS.includes(meta?.id)) ||
+    ([0x80, 0x81].includes($editor.sel?.tag) && [0x71, 0x72].includes(meta?.id)),
   );
   function setSmooth(on) {
     const v = unhex(st.meta);
