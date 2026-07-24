@@ -1,7 +1,8 @@
 // Web Bluetooth: watch connection and flashing.
-import { createEffect, createEvent, createStore, sample } from 'effector';
-import { Watch, type WatchDials, type WatchInfo } from '../lib/ble';
-import * as bleApi from './ble.api';
+import { createEffect, createEvent, createStore, sample } from "effector";
+import { reset } from "patronum";
+import { Watch, type WatchDials, type WatchInfo } from "../lib/ble";
+import * as bleApi from "./ble.api";
 
 export type { WatchDials };
 
@@ -10,7 +11,7 @@ const statusChanged = createEvent<string>();
 const disconnected = createEvent();
 const dialsChanged = createEvent<WatchDials>();
 
-export const $bleStatus = createStore('');
+export const $bleStatus = createStore("");
 sample({ clock: statusChanged, target: $bleStatus });
 
 // connectFx/flashFx stay here instead of moving to ble.api.ts: they aren't request/response
@@ -20,28 +21,33 @@ sample({ clock: statusChanged, target: $bleStatus });
 const connectFx = createEffect(async () => {
   const w = new Watch((s: string) => {
     statusChanged(s);
-    if (s === 'disconnected') { watch = null; disconnected(); }
+    if (s === "disconnected") {
+      watch = null;
+      disconnected();
+    }
   });
   w.onDials = dialsChanged;
   const info = await w.connect();
   watch = w;
   return info;
 });
-sample({ clock: connectFx.failData, fn: e => `error: ${e.message}`, target: statusChanged });
+sample({ clock: connectFx.failData, fn: (e) => `error: ${e.message}`, target: statusChanged });
 
 export const connectRequested = createEvent();
 sample({ clock: connectRequested, target: connectFx });
 export const $connecting = connectFx.pending;
 
-export const $bleInfo = createStore<WatchInfo | null>(null).reset(connectFx, disconnected);
+export const $bleInfo = createStore<WatchInfo | null>(null);
 sample({ clock: connectFx.doneData, target: $bleInfo });
+reset({ clock: [connectFx, disconnected], target: $bleInfo });
 
 // list of installed watchfaces from a055; the firmware doesn't report our own side-loaded one
-export const $dials = createStore<WatchDials | null>(null).reset(disconnected);
+export const $dials = createStore<WatchDials | null>(null);
 sample({ clock: dialsChanged, target: $dials });
+reset({ clock: disconnected, target: $dials });
 
 const flashFx = createEffect((bin: Uint8Array) => watch!.uploadWatchface(bin));
-sample({ clock: flashFx.failData, fn: e => `error: ${e.message}`, target: statusChanged });
+sample({ clock: flashFx.failData, fn: (e) => `error: ${e.message}`, target: statusChanged });
 
 export const flashRequested = createEvent<Uint8Array>();
 sample({ clock: flashRequested, target: flashFx });
@@ -56,7 +62,11 @@ sample({ clock: forgetRequested, target: bleApi.forgetFx });
 export const $forgetting = bleApi.forgetFx.pending;
 sample({
   clock: bleApi.forgetFx.doneData,
-  fn: n => (n ? `forgot ${n} device(s) — connect to pick again` : 'nothing to forget'),
+  fn: (n) => (n ? `forgot ${n} device(s) — connect to pick again` : "nothing to forget"),
   target: statusChanged,
 });
-sample({ clock: bleApi.forgetFx.failData, fn: e => `error: ${e.message}`, target: statusChanged });
+sample({
+  clock: bleApi.forgetFx.failData,
+  fn: (e) => `error: ${e.message}`,
+  target: statusChanged,
+});

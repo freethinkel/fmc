@@ -1,24 +1,29 @@
 <script>
-  import { Button } from '$lib/shared/components/ui/button';
-  import { Badge } from '$lib/shared/components/ui/badge/index.js';
-  import { Heart, Download, Trash2, Pencil, Globe, GlobeLock } from '@lucide/svelte';
-  import { fileUrl } from '$lib/shared/api';
-  import { goto } from '$app/navigation';
-  import { authModel } from '$lib/modules/auth/model';
-  import { marketModel } from '../model';
+  import { Button } from "$lib/shared/components/ui/button";
+  import { Badge } from "$lib/shared/components/ui/badge/index.js";
+  import { Heart, Download, Trash2, Pencil, Globe, GlobeLock } from "@lucide/svelte";
+  import { fileUrl } from "$lib/shared/api";
+  import { goto } from "$app/navigation";
+  import { authModel } from "$lib/modules/auth/model";
+  import { marketModel } from "../model";
 
   const { $user: user } = authModel;
   const {
-    $myItems: myItems, $likes: likes, $marketErr: marketErr,
-    myLoadRequested, removeRequested, publishToggleRequested, editRequested,
+    $myItems: myItems,
+    $likes: likes,
+    $marketErr: marketErr,
+    myLoadRequested,
+    removeRequested,
+    publishToggleRequested,
+    editRequested,
   } = marketModel;
 
   $effect(() => {
     if ($user) myLoadRequested($user.id);
-    else goto('/login');
+    else goto("/login");
   });
 
-  const likeCount = id => $likes.filter(l => l.watchface === id).length;
+  const likeCount = (id) => $likes.filter((l) => l.watchface === id).length;
 
   function remove(wf) {
     if (!confirm(`Delete "${wf.name}"?`)) return;
@@ -30,32 +35,43 @@
 
 {#if $marketErr}<p class="px-4 pt-3 text-sm text-destructive lg:px-6">{$marketErr}</p>{/if}
 
-<main class="grid flex-1 auto-rows-min grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-3 overflow-y-auto p-3 sm:grid-cols-[repeat(auto-fill,minmax(220px,1fr))] sm:gap-4 sm:p-4 lg:p-6">
+<main
+  class="grid flex-1 auto-rows-min grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-3 overflow-y-auto p-3 sm:grid-cols-[repeat(auto-fill,minmax(220px,1fr))] sm:gap-4 sm:p-4 lg:p-6"
+>
   {#each $myItems as wf (wf.id)}
     <div class="flex flex-col gap-2 rounded-xl border p-3 transition-shadow hover:shadow-md">
-      <button class="aspect-square cursor-pointer overflow-hidden rounded-full bg-black"
-        onclick={() => editRequested(wf)} title="Open in editor">
-        <img src={fileUrl(wf, 'preview')} alt={wf.name} class="h-full w-full object-cover" />
+      <button
+        class="aspect-square cursor-pointer overflow-hidden rounded-full bg-black"
+        onclick={() => editRequested(wf)}
+        title="Open in editor"
+      >
+        <img src={fileUrl(wf, "preview")} alt={wf.name} class="h-full w-full object-cover" />
       </button>
       <div class="flex items-center justify-between gap-2">
         <span class="truncate text-sm font-medium">{wf.name}</span>
-        <Badge variant={wf.published ? 'default' : 'secondary'}>
-          {wf.published ? 'Published' : 'Draft'}
+        <Badge variant={wf.published ? "default" : "secondary"}>
+          {wf.published ? "Published" : "Draft"}
         </Badge>
       </div>
       <div class="mt-auto flex items-center gap-1">
         {#if wf.published}
           <span class="text-muted-foreground flex items-center gap-1 text-xs">
-            <Heart class="size-3.5" /> {likeCount(wf.id)}
-            <Download class="ms-1.5 size-3.5" /> {wf.downloads || 0}
+            <Heart class="size-3.5" />
+            {likeCount(wf.id)}
+            <Download class="ms-1.5 size-3.5" />
+            {wf.downloads || 0}
           </span>
         {/if}
         <div class="ms-auto flex items-center">
           <Button size="sm" variant="ghost" onclick={() => editRequested(wf)} title="Edit">
             <Pencil class="size-4" />
           </Button>
-          <Button size="sm" variant="ghost" onclick={() => publishToggleRequested(wf)}
-            title={wf.published ? 'Unpublish' : 'Publish'}>
+          <Button
+            size="sm"
+            variant="ghost"
+            onclick={() => publishToggleRequested(wf)}
+            title={wf.published ? "Unpublish" : "Publish"}
+          >
             {#if wf.published}<GlobeLock class="size-4" />{:else}<Globe class="size-4" />{/if}
           </Button>
           <Button size="sm" variant="ghost" onclick={() => remove(wf)} title="Delete">

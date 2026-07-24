@@ -1,8 +1,8 @@
 <script>
-	import { EditorPage } from '$lib/modules/editor/pages';
-	import { editorModel } from '$lib/modules/editor/model';
+  import { EditorPage } from "$lib/modules/editor/pages";
+  import { editorModel } from "$lib/modules/editor/model";
 
-	window.wfEd = editorModel; // console access for debugging/automated runs
+  window.wfEd = editorModel; // console access for debugging/automated runs
 </script>
 
 <svelte:head><title>Editor — FMC Watchfaces</title></svelte:head>

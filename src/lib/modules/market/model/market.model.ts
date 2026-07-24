@@ -1,14 +1,15 @@
 // Marketplace: effector stores on top of PocketBase.
-import { attach, createEffect, createEvent, createStore, sample } from 'effector';
-import type { RecordModel } from 'pocketbase';
-import { goto } from '$app/navigation';
-import { fileUrl } from '$lib/shared/api';
-import { authModel } from '$lib/modules/auth/model';
-import { bleModel } from '$lib/modules/device/model';
-import { editorModel } from '$lib/modules/editor/model';
-import * as marketApi from './market.api';
+import { attach, createEffect, createEvent, createStore, sample } from "effector";
+import { reset } from "patronum";
+import type { RecordModel } from "pocketbase";
+import { goto } from "$app/navigation";
+import { fileUrl } from "$lib/shared/api";
+import { authModel } from "$lib/modules/auth/model";
+import { bleModel } from "$lib/modules/device/model";
+import { editorModel } from "$lib/modules/editor/model";
+import * as marketApi from "./market.api";
 
-export type { SavePayload } from './market.api';
+export type { SavePayload } from "./market.api";
 
 // api effects stay private — components only dispatch the *Requested events below
 
@@ -37,11 +38,11 @@ sample({ clock: openedWfSet, target: $openedWf });
 // navigate once it's actually loaded — used by both pages (market.svelte, my.svelte)
 export const editRequested = createEvent<RecordModel>();
 const openInEditorFx = createEffect(async (wf: RecordModel) => {
-  const buf = await (await fetch(fileUrl(wf, 'bin'))).arrayBuffer();
+  const buf = await (await fetch(fileUrl(wf, "bin"))).arrayBuffer();
   return { wf, buf };
 });
 sample({ clock: editRequested, target: openInEditorFx });
-sample({ clock: openInEditorFx.failData, fn: e => e.message, target: editorModel.errored });
+sample({ clock: openInEditorFx.failData, fn: (e) => e.message, target: editorModel.errored });
 
 sample({
   clock: openInEditorFx.doneData,
@@ -59,8 +60,13 @@ sample({
 // navigate when the load we're waiting on is specifically the one editRequested started
 const $awaitingEdit = createStore(false);
 sample({ clock: openInEditorFx.doneData, fn: () => true, target: $awaitingEdit });
-const navigateToEditorFx = createEffect(() => goto('/editor'));
-sample({ clock: editorModel.loadDone, source: $awaitingEdit, filter: Boolean, target: navigateToEditorFx });
+const navigateToEditorFx = createEffect(() => goto("/editor"));
+sample({
+  clock: editorModel.loadDone,
+  source: $awaitingEdit,
+  filter: Boolean,
+  target: navigateToEditorFx,
+});
 sample({ clock: editorModel.loadDone, fn: () => false, target: $awaitingEdit });
 
 // resolves openedId from $openedWf so the api layer doesn't need to know about model state
@@ -68,7 +74,8 @@ const saveFx = attach({
   source: $openedWf,
   effect: marketApi.saveFx,
   mapParams: (p: marketApi.SavePayload, opened) => ({
-    ...p, openedId: opened && opened.owner === p.ownerId ? opened.id : undefined,
+    ...p,
+    openedId: opened && opened.owner === p.ownerId ? opened.id : undefined,
   }),
 });
 sample({ clock: saveFx.doneData, target: openedWfSet });
@@ -84,13 +91,16 @@ export const publishRequested = createEvent<marketApi.SavePayload>();
 sample({ clock: saveDraftRequested, target: saveFx });
 sample({ clock: publishRequested, target: saveFx });
 
-const $saveKind = createStore<'draft' | 'publish' | null>(null);
-sample({ clock: saveDraftRequested, fn: () => 'draft' as const, target: $saveKind });
-sample({ clock: publishRequested, fn: () => 'publish' as const, target: $saveKind });
+const $saveKind = createStore<"draft" | "publish" | null>(null);
+sample({ clock: saveDraftRequested, fn: () => "draft" as const, target: $saveKind });
+sample({ clock: publishRequested, fn: () => "publish" as const, target: $saveKind });
 
 sample({
-  clock: saveFx.failData, source: $saveKind, filter: k => k === 'draft',
-  fn: (_k, e) => `save: ${e.message}`, target: editorModel.errored,
+  clock: saveFx.failData,
+  source: $saveKind,
+  filter: (k) => k === "draft",
+  fn: (_k, e) => `save: ${e.message}`,
+  target: editorModel.errored,
 });
 
 export const $publishDialogOpen = createStore(false);
@@ -99,29 +109,45 @@ export const publishDialogClosed = createEvent();
 sample({ clock: publishDialogOpened, fn: () => true, target: $publishDialogOpen });
 sample({ clock: publishDialogClosed, fn: () => false, target: $publishDialogOpen });
 sample({
-  clock: saveFx.done, source: $saveKind, filter: k => k === 'publish',
-  fn: () => false, target: $publishDialogOpen,
+  clock: saveFx.done,
+  source: $saveKind,
+  filter: (k) => k === "publish",
+  fn: () => false,
+  target: $publishDialogOpen,
 });
 sample({
-  clock: saveFx.failData, source: $saveKind, filter: k => k === 'publish',
-  fn: () => false, target: $publishDialogOpen,
+  clock: saveFx.failData,
+  source: $saveKind,
+  filter: (k) => k === "publish",
+  fn: () => false,
+  target: $publishDialogOpen,
 });
 sample({
-  clock: saveFx.failData, source: $saveKind, filter: k => k === 'publish',
-  fn: (_k, e) => `publish: ${e.message}`, target: editorModel.errored,
+  clock: saveFx.failData,
+  source: $saveKind,
+  filter: (k) => k === "publish",
+  fn: (_k, e) => `publish: ${e.message}`,
+  target: editorModel.errored,
 });
-const navigateToMarketFx = createEffect(() => goto('/market'));
-sample({ clock: saveFx.done, source: $saveKind, filter: k => k === 'publish', target: navigateToMarketFx });
+const navigateToMarketFx = createEffect(() => goto("/market"));
+sample({
+  clock: saveFx.done,
+  source: $saveKind,
+  filter: (k) => k === "publish",
+  target: navigateToMarketFx,
+});
 
 export const $likes = createStore<RecordModel[]>([]);
-sample({ clock: marketApi.loadMarketFx.doneData, fn: d => d.likes, target: $likes });
+sample({ clock: marketApi.loadMarketFx.doneData, fn: (d) => d.likes, target: $likes });
 
 // resolves the caller's existing like id from $likes so the api layer doesn't need to know about model state
 const toggleLikeFx = attach({
   source: $likes,
   effect: marketApi.toggleLikeFx,
   mapParams: ({ wf, userId }: { wf: RecordModel; userId: string }, likes) => ({
-    wf, userId, mineId: likes.find(l => l.watchface === wf.id && l.user === userId)?.id,
+    wf,
+    userId,
+    mineId: likes.find((l) => l.watchface === wf.id && l.user === userId)?.id,
   }),
 });
 sample({ clock: toggleLikeFx.doneData, target: $likes });
@@ -130,35 +156,42 @@ export const likeToggleRequested = createEvent<{ wf: RecordModel; userId: string
 sample({ clock: likeToggleRequested, target: toggleLikeFx });
 
 export const $items = createStore<RecordModel[]>([]);
-sample({ clock: marketApi.loadMarketFx.doneData, fn: d => d.items, target: $items });
+sample({ clock: marketApi.loadMarketFx.doneData, fn: (d) => d.items, target: $items });
 
 export const $myItems = createStore<RecordModel[]>([]);
 sample({ clock: marketApi.loadMyFx.doneData, target: $myItems });
 sample({
   clock: marketApi.togglePublishFx.doneData,
   source: $myItems,
-  fn: (list, r) => list.map(i => (i.id === r.id ? r : i)),
+  fn: (list, r) => list.map((i) => (i.id === r.id ? r : i)),
   target: $myItems,
 });
 sample({
   clock: marketApi.removeFx.done,
   source: $myItems,
-  fn: (list, { params }) => list.filter(i => i.id !== params.id),
+  fn: (list, { params }) => list.filter((i) => i.id !== params.id),
   target: $myItems,
 });
 
-export const $marketErr = createStore('').reset(marketApi.loadMarketFx.done);
+export const $marketErr = createStore("");
+reset({ clock: marketApi.loadMarketFx.done, target: $marketErr });
 sample({
   clock: [
-    marketApi.loadMarketFx.failData, marketApi.loadMyFx.failData, toggleLikeFx.failData,
-    marketApi.removeFx.failData, marketApi.togglePublishFx.failData,
+    marketApi.loadMarketFx.failData,
+    marketApi.loadMyFx.failData,
+    toggleLikeFx.failData,
+    marketApi.removeFx.failData,
+    marketApi.togglePublishFx.failData,
   ],
-  fn: e => e.message,
+  fn: (e) => e.message,
   target: $marketErr,
 });
 
 // downloads counter also bumps on a successful flash to the watch — no auth check
 sample({
-  clock: bleModel.flashDone, source: $openedWf, filter: Boolean,
-  fn: wf => wf.id, target: marketApi.bumpDownloadsFx,
+  clock: bleModel.flashDone,
+  source: $openedWf,
+  filter: Boolean,
+  fn: (wf) => wf.id,
+  target: marketApi.bumpDownloadsFx,
 });

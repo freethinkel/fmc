@@ -15,11 +15,11 @@ pnpm dev
 ```
 
 Open `http://localhost:5173`. Requires `fmc_pocketbase` running (`./pocketbase serve`,
-see its `README.md`) — in dev, `/api` is proxied to `http://127.0.0.1:8090`
-(`vite.config.js`), no separate setup needed.
+see its `README.md`) — set `VITE_PB_URL` (e.g. in `.env`) to point at it directly, e.g.
+`VITE_PB_URL=http://127.0.0.1:8090`.
 
-The backend address can be overridden with the `VITE_PB_URL` env var; without it —
-same-origin (`location.origin`), which is also what's used in prod behind Caddy.
+Without `VITE_PB_URL` the client falls back to same-origin (`location.origin`), which is
+what's used in prod behind Caddy.
 
 ### OAuth setup (one-time, optional)
 

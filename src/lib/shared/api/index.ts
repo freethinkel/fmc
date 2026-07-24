@@ -1,1 +1,1 @@
-export { pb, fileUrl, downloadUrl } from './pb';
+export { pb, fileUrl, downloadUrl } from "./pb";

@@ -1,1 +1,1 @@
-export * as editorModel from './editor.model';
+export * as editorModel from "./editor.model";

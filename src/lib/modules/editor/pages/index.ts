@@ -1,1 +1,1 @@
-export { default as EditorPage } from './editor.svelte';
+export { default as EditorPage } from "./editor.svelte";

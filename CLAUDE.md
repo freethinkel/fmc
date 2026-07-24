@@ -2,10 +2,10 @@
 
 SvelteKit (Svelte 5 runes) + Tailwind 4 + shadcn-svelte, static SPA build
 (`@sveltejs/adapter-static`, `fallback: 'index.html'`). Backend — the sibling repo
-`fmc_pocketbase` (PocketBase); the address comes from `VITE_PB_URL`, and falls back to
-same-origin (`location.origin`) without it: in dev this works through the `/api` proxy →
-PocketBase in `vite.config.js`, in prod — through Caddy on the same domain as the backend
-(see `fmc_pocketbase/README.md`).
+`fmc_pocketbase` (PocketBase); the address comes from `VITE_PB_URL` (set in dev via `.env`,
+pointing straight at PocketBase — no vite dev-server proxy involved), and falls back to
+same-origin (`location.origin`) without it, which is what prod uses — through Caddy on the
+same domain as the backend (see `fmc_pocketbase/README.md`).
 
 App: landing page (`/`), marketplace (`/market`, `/my`), watchface editor (`/editor`,
 with a BLE connection to the CMF Watch Pro 2) and auth (`/login`, `/register`).

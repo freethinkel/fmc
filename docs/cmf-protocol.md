@@ -12,6 +12,7 @@ re-derive it. When in doubt, re-read those two files — they're short (≈450 l
 ```
 
 Header (`wf.ts:183-217,315-324`):
+
 - `0x00-0x03` CRC32 "raw" (reflected IEEE poly 0xEDB88320, init=0, **no final XOR**) of `header[4:36] + treeSection`
 - `0x04-0x07` magic `01 00 00 (00|02)` — last byte unconfirmed, both values seen
 - `0x08-0x17` 16-byte NUL-terminated face name (may have a non-zero unexplained tail after the NUL — round-trip it verbatim as `nameRaw`, don't regenerate from `name`)
@@ -30,23 +31,23 @@ Body: `[0x20][u16 tree length][TLV tree]` then resources back-to-back, each
 
 Every node: `[tag u8][len u16][value]`. `TAG` constants (`wf.ts:45-50`):
 
-| const | hex | meaning |
-|---|---|---|
-| root | 0x20 | body wrapper, not a real node |
-| main | 0x21 | normal screen |
-| aod | 0x22 | always-on-display screen (keep simple — no rings, dimmer, big clock only) |
-| name | 0x86 | 64-byte NUL-terminated display name node (not drawn) |
-| preview | 0x28 | embedded catalog thumbnail (pvStruct child) |
-| struct | 0x01 | `x u16, y u16, meta[14]` + optional image ref |
-| bind | 0x02 | visibility condition, sibling of a widget's struct |
-| pivot | 0x05 | `flag u8, pivotX u16, pivotY u16` — hand rotation center |
-| pvStruct | 0x08 | `prefix[5]` + image ref, no x/y (preview image only) |
-| fmt | 0x40 | 1 byte: digit-count/zero-pad flag, sibling of a `number` struct |
-| frame | 0x48 | `x,y,w,h,gap,align` — auto-layout row/column (**skip this**: every widget can be placed with absolute x/y directly at screen top level, no group needed) |
-| image | 0x30 | static image OR pick-by-value from N images |
-| number | 0x60 | live numeric readout, digit-image strip |
-| group | 0x68 | frame + auto-laid-out children (skip, see frame) |
-| hand | 0x70 | rotating image around a pivot |
+| const    | hex  | meaning                                                                                                                                                  |
+| -------- | ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| root     | 0x20 | body wrapper, not a real node                                                                                                                            |
+| main     | 0x21 | normal screen                                                                                                                                            |
+| aod      | 0x22 | always-on-display screen (keep simple — no rings, dimmer, big clock only)                                                                                |
+| name     | 0x86 | 64-byte NUL-terminated display name node (not drawn)                                                                                                     |
+| preview  | 0x28 | embedded catalog thumbnail (pvStruct child)                                                                                                              |
+| struct   | 0x01 | `x u16, y u16, meta[14]` + optional image ref                                                                                                            |
+| bind     | 0x02 | visibility condition, sibling of a widget's struct                                                                                                       |
+| pivot    | 0x05 | `flag u8, pivotX u16, pivotY u16` — hand rotation center                                                                                                 |
+| pvStruct | 0x08 | `prefix[5]` + image ref, no x/y (preview image only)                                                                                                     |
+| fmt      | 0x40 | 1 byte: digit-count/zero-pad flag, sibling of a `number` struct                                                                                          |
+| frame    | 0x48 | `x,y,w,h,gap,align` — auto-layout row/column (**skip this**: every widget can be placed with absolute x/y directly at screen top level, no group needed) |
+| image    | 0x30 | static image OR pick-by-value from N images                                                                                                              |
+| number   | 0x60 | live numeric readout, digit-image strip                                                                                                                  |
+| group    | 0x68 | frame + auto-laid-out children (skip, see frame)                                                                                                         |
+| hand     | 0x70 | rotating image around a pivot                                                                                                                            |
 
 Plus literals used directly (not in the `TAG` object): `0x80`/`0x81` progress rings,
 `0x5a`/`0x5b` their arc-spec sibling, `0x85`/`0x5f` user-assignable complication slot
@@ -64,16 +65,16 @@ placeholder bytes (`(1,0,0)`/`(4,0,0)`), not a meaningful color, at least on fla
 
 ### Data-source ids (`render.ts:6-15,57-90`)
 
-| id (hex) | meaning | id (hex) | meaning |
-|---|---|---|---|
-| 0x01 | hour (12/24 per device setting) | 0x19 | steps |
-| 0x07 | hour, forced 24h | 0x1a | heart rate |
-| 0x0b | minute | 0x1e/0x48 | calories |
-| 0x0f/0x12/0x71/0x72 | second | 0x22/0x23 | distance km/mi (int part) |
-| 0x13 | AM/PM flag (0/1) | 0x30 | battery level |
-| 0x16 | month (1-12) | 0x36/0x5f | temperature |
-| 0x17 | day of month | 0x73 | 24h/metric-units flag |
-| 0x18 | weekday (0=Monday, unconfirmed) | | |
+| id (hex)            | meaning                         | id (hex)  | meaning                   |
+| ------------------- | ------------------------------- | --------- | ------------------------- |
+| 0x01                | hour (12/24 per device setting) | 0x19      | steps                     |
+| 0x07                | hour, forced 24h                | 0x1a      | heart rate                |
+| 0x0b                | minute                          | 0x1e/0x48 | calories                  |
+| 0x0f/0x12/0x71/0x72 | second                          | 0x22/0x23 | distance km/mi (int part) |
+| 0x13                | AM/PM flag (0/1)                | 0x30      | battery level             |
+| 0x16                | month (1-12)                    | 0x36/0x5f | temperature               |
+| 0x17                | day of month                    | 0x73      | 24h/metric-units flag     |
+| 0x18                | weekday (0=Monday, unconfirmed) |           |                           |
 
 Any id can drive a `number` widget, an `image`-pick widget, or an arc ring — the mechanism
 is generic (see below), not hardcoded per id.
@@ -92,8 +93,9 @@ number (0x60)
 ├─ struct (0x01): x, y, meta.id = <data source>, images = [ten consecutive resource indices, digit 0..9]
 └─ fmt (0x40): 1 byte = digitCount | (0x80 if zero-padded)
 ```
+
 Renderer rounds `idValue(id)`, formats to `digitCount` chars (zero-padded or not), then draws
-**each character** by indexing the *same* 10-image array (`imgs[+ch]`) left-to-right starting
+**each character** by indexing the _same_ 10-image array (`imgs[+ch]`) left-to-right starting
 at `x,y`. Height = tallest glyph, width = sum of glyph widths (no built-in centering — if you
 need a number to look centered, precompute the expected value's rendered width and offset `x`
 accordingly; the ceiling is real, there's no alignment field).
@@ -110,6 +112,7 @@ you do NOT need separate tens/units widgets. Confirmed live in the corpus
 ├─ struct (0x01), SHORT form: x, y, meta.id = <data source>, NO images/ref at all
 └─ 0x5a (or 0x5b): min i32, max i32, start i16 (0.1°), end i16 (0.1°), width u16, radius u16 (0x5a only)
 ```
+
 `x,y` = top-left of the ring's bounding box (center = `x+radius, y+radius`). Angle 0° = 3
 o'clock, positive = clockwise. `frac = (idValue(id) - min) / (max - min)`, clamped 0..1 — **set
 min/max to the metric's real range** (e.g. heart rate 0-200 bpm, steps 0-10000, battery 0-100);
@@ -128,7 +131,7 @@ color for whatever's baked there, at render time. `render.ts`'s `metaInfo(node).
 this; `editor.model.ts`'s `accentFlaggedResources(face)` walks the tree collecting flagged
 resource indices, and `accentBitmapFor` recolors **every non-transparent pixel** of a flagged
 resource (alpha untouched) — no per-pixel color test at all, because the flag identifies the
-*whole resource* as tintable regardless of what color it happens to be baked as.
+_whole resource_ as tintable regardless of what color it happens to be baked as.
 
 This flag was reached the hard way — **don't redo the color-matching approach that preceded
 it**. The original theory ("some pixels are baked a specific reddish placeholder color the
@@ -136,25 +139,26 @@ firmware swaps out") looked promising and was refined repeatedly (single exact R
 reference points, plus a widget-role allowlist to suppress false positives), but ultimately
 **can't work**: `Multifunction__348__Tumbler`'s accent-tintable ring and
 `Digital__282__Radar_Sweep`/`Digital__291__Vertical`'s ordinary non-accent digit strips bake
-the *exact same* `(255,72,32)` RGB — genuinely indistinguishable by pixel color, confirmed
+the _exact same_ `(255,72,32)` RGB — genuinely indistinguishable by pixel color, confirmed
 exhaustively (every pixel, both files). Worse: `Analog__305__Dots`' accent-tintable hour hand
 and `Analog__306__Large_Number`'s accent-tintable digits are baked **plain white** — no
 reddish color at all — so a color-based approach would have missed them entirely regardless of
-tuning. The flag is a *per-widget* signal that has nothing to do with the resource's own baked
+tuning. The flag is a _per-widget_ signal that has nothing to do with the resource's own baked
 color; treat any color-based heuristic here as a dead end, not a starting point to refine.
 
 Confirmed against 7 real-device/companion-app checks — 4 positive, 3 negative, chosen
 specifically to stress both directions:
-| file | real device | `meta[7]===4` widgets found |
-|---|---|---|
-| `Theatre` | accent setting present, tints the (colored) second hand | 1 (`hand`, id `0x72`) |
-| `Digits_time` | present, tints big digits + weekday badge | matches (2 `image` roles) |
-| `Analog__305__Dots` | present, tints one (white) hour-ish hand | 1 (`hand`, id `0x0a`) |
-| `Analog__306__Large_Number` | present, tints (white) digits | 1 (`image`, id `0x0`) |
-| `Multifunction__304__Elaborate_2` | present | 18 hits across several widgets |
-| `Analog__316__Trailing` | **absent** — confirmed no setting despite a reddish hand | 0 |
-| `Creative__312__Disc` | **absent** | 0 |
-| `Diwali__295__Vortex` | **absent** | 0 |
+
+| file                              | real device                                              | `meta[7]===4` widgets found    |
+| --------------------------------- | -------------------------------------------------------- | ------------------------------ |
+| `Theatre`                         | accent setting present, tints the (colored) second hand  | 1 (`hand`, id `0x72`)          |
+| `Digits_time`                     | present, tints big digits + weekday badge                | matches (2 `image` roles)      |
+| `Analog__305__Dots`               | present, tints one (white) hour-ish hand                 | 1 (`hand`, id `0x0a`)          |
+| `Analog__306__Large_Number`       | present, tints (white) digits                            | 1 (`image`, id `0x0`)          |
+| `Multifunction__304__Elaborate_2` | present                                                  | 18 hits across several widgets |
+| `Analog__316__Trailing`           | **absent** — confirmed no setting despite a reddish hand | 0                              |
+| `Creative__312__Disc`             | **absent**                                               | 0                              |
+| `Diwali__295__Vortex`             | **absent**                                               | 0                              |
 
 **56 of the 100 corpus files** have at least one `meta[7]===4` widget.
 
@@ -173,20 +177,20 @@ first — that's the only thing that's mattered so far.
 
 ### Hard resource-packing rule
 
-**Every node's `images` array must reference *consecutive* resource-array indices.**
+**Every node's `images` array must reference _consecutive_ resource-array indices.**
 `buildBin`/`refTailBytes` (`wf.ts:271-293`) throws if not. Plan your `resources` array
 construction so each digit-set (10), each pick-list (N), sits as one contiguous block;
 standalone single images can go anywhere else.
 
 ## Pixel/resource formats (`encodePixels`, `wf.ts:432-454`)
 
-| cf | bytes/px | notes |
-|---|---|---|
-| 4 | 2 | RGB565, no alpha |
-| 5 | 3 | RGB565 + separate alpha byte — **most common, use this by default** |
-| 13 | 0.5 | 4-bit alpha-only mask, RGB forced white — only if you truly want a monochrome mask |
-| 24 | 4 | full BGRA8888 |
-| 1 | — | raw JPEG, **decode-only**, `encodePixels` throws — never produce this |
+| cf  | bytes/px | notes                                                                              |
+| --- | -------- | ---------------------------------------------------------------------------------- |
+| 4   | 2        | RGB565, no alpha                                                                   |
+| 5   | 3        | RGB565 + separate alpha byte — **most common, use this by default**                |
+| 13  | 0.5      | 4-bit alpha-only mask, RGB forced white — only if you truly want a monochrome mask |
+| 24  | 4        | full BGRA8888                                                                      |
+| 1   | —        | raw JPEG, **decode-only**, `encodePixels` throws — never produce this              |
 
 `encodePixels(px: Uint8ClampedArray RGBA, w, h, cf)` returns a `Resource` (LZ4-compressed
 internally via the file's own from-scratch codec — just call it, don't touch LZ4 yourself).
@@ -219,11 +223,11 @@ this `number`'s id, the number renders `round(progressFrac(...) * 100)` **instea
   own (e.g. Pillow) to turn a source face's fonts into per-state PNGs.
   - Fixed small enumerations (day-of-week, month, AM/PM, 0-9 digits) → straightforward:
     render once, use as an `image` pick-list or `number` digit strip.
-  - Anything the source renders as free-form text with a *live* value beyond a bounded
+  - Anything the source renders as free-form text with a _live_ value beyond a bounded
     digit strip (e.g. arbitrary-precision computed strings, conditional text) has no
     direct equivalent — falls back to a `number` widget if it's fundamentally numeric,
     or gets baked as static art if it never changes at runtime.
-- **Temperature (numeric) is supported, weather *condition* is not.** `id=0x36`/`0x5f`
+- **Temperature (numeric) is supported, weather _condition_ is not.** `id=0x36`/`0x5f`
   both read `sim.temp` and are exercised for real by the corpus's own
   `Digital__361__TempoG.bin` (a plain `number` widget, same pattern as any other digit
   strip — no unit/locale handling, just the raw number). Checked exhaustively across all

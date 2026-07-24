@@ -1,1 +1,1 @@
-export * as marketModel from './market.model';
+export * as marketModel from "./market.model";

@@ -106,7 +106,7 @@ const CASES = [
     name: "Multifunction__366__Combo",
     url: comboUrl,
     time: "2026-01-09T10:09:30",
-	sim: { steps: 10000 },
+    sim: { steps: 10000 },
     maxDiffRatio: 0.02,
   },
   // sim time matches the baked preview's actual capture date/second (found by inspection —
@@ -175,11 +175,7 @@ function labeled(canvas: HTMLCanvasElement, label: string): HTMLCanvasElement {
   return canvas;
 }
 
-function imageData(
-  source: CanvasImageSource,
-  w: number,
-  h: number,
-): Uint8ClampedArray {
+function imageData(source: CanvasImageSource, w: number, h: number): Uint8ClampedArray {
   const c = document.createElement("canvas");
   c.width = w;
   c.height = h;
@@ -216,8 +212,7 @@ describe("render() output matches embedded preview", () => {
       };
       drawFace(canvas.getContext("2d")!, face, TAG.main, sim);
 
-      const scr =
-        face.screens.find((s) => s.tag === TAG.main) ?? face.screens[0];
+      const scr = face.screens.find((s) => s.tag === TAG.main) ?? face.screens[0];
       const pv = scr.subs
         ?.find((s) => s.tag === TAG.preview)
         ?.subs?.find((s) => s.tag === TAG.pvStruct);
@@ -252,21 +247,12 @@ describe("render() output matches embedded preview", () => {
       const diffCanvas = document.createElement("canvas");
       diffCanvas.width = r.w;
       diffCanvas.height = r.h;
-      diffCanvas
-        .getContext("2d")!
-        .putImageData(new ImageData(diff, r.w, r.h), 0, 0);
+      diffCanvas.getContext("2d")!.putImageData(new ImageData(diff, r.w, r.h), 0, 0);
 
       title.textContent = `${name} — ${(ratio * 100).toFixed(2)}% diff (max ${(maxDiffRatio * 100).toFixed(0)}%)`;
       [actualCanvas, expectedCanvas, diffCanvas].forEach((c, i) =>
         row.appendChild(
-          labeled(
-            c,
-            [
-              "actual (our render)",
-              "expected (baked preview)",
-              "diff (pixelmatch)",
-            ][i],
-          ),
+          labeled(c, ["actual (our render)", "expected (baked preview)", "diff (pixelmatch)"][i]),
         ),
       );
 

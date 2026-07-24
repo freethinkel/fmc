@@ -1,11 +1,11 @@
-# Деплой статики на VPS: каталог www/ в клоне fmc_pocketbase,
-# его раздаёт Caddy (см. docker-compose.yml бэкенда).
-# Хост нужно задать: make deploy DEPLOY_HOST=root@1.2.3.4
+# Deploy the static build to the VPS: the www/ directory in the fmc_pocketbase clone,
+# served by Caddy (see the backend's docker-compose.yml).
+# Host must be set: make deploy DEPLOY_HOST=root@1.2.3.4
 DEPLOY_HOST ?= CHANGE_ME
 DEPLOY_PATH ?= /root/fmc_pocketbase/www
 
-# build — phony, иначе make принимает каталог build/ за готовую цель
-# и деплоит старую сборку без пересборки
+# build is phony, otherwise make treats the build/ directory as an up-to-date target
+# and deploys the old build without rebuilding
 .PHONY: build deploy
 
 build:

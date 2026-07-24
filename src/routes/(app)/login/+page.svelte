@@ -1,5 +1,5 @@
-<script>
-	import { LoginPage } from '$lib/modules/auth/pages';
+<script lang="ts">
+  import { LoginPage } from "$lib/modules/auth/pages";
 </script>
 
 <LoginPage />

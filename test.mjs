@@ -1,12 +1,14 @@
 // Round-trip check of parser/builder against real .bin files from watchfaces/:
 // parse -> build must produce a byte-for-byte identical file (resources are not re-encoded).
 // Plus lz4: decompress all resources + compress->decompress round-trip.
-import { readFileSync, readdirSync } from 'node:fs';
-import { parseBin, buildBin, decodePixels, lz4Compress, lz4Decompress } from './src/lib/wf.js';
+import { readFileSync, readdirSync } from "node:fs";
+import { parseBin, buildBin, decodePixels, lz4Compress, lz4Decompress } from "./src/lib/wf.js";
 
-const dir = new URL('../watchfaces/files/', import.meta.url).pathname;
-const files = readdirSync(dir).filter(f => f.endsWith('.bin'));
-let identical = 0, decoded = 0, lzOK = 0;
+const dir = new URL("../watchfaces/files/", import.meta.url).pathname;
+const files = readdirSync(dir).filter((f) => f.endsWith(".bin"));
+let identical = 0,
+  decoded = 0,
+  lzOK = 0;
 
 for (const f of files) {
   const src = new Uint8Array(readFileSync(dir + f));
@@ -29,5 +31,7 @@ for (const f of files) {
     }
   }
 }
-console.log(`round-trip identical: ${identical}/${files.length}, resources decoded: ${decoded}, lz4 rt: ${lzOK}`);
+console.log(
+  `round-trip identical: ${identical}/${files.length}, resources decoded: ${decoded}, lz4 rt: ${lzOK}`,
+);
 if (identical !== files.length) process.exit(1);

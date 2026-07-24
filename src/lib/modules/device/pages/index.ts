@@ -1,1 +1,1 @@
-export { default as WatchPage } from './watch.svelte';
+export { default as WatchPage } from "./watch.svelte";
