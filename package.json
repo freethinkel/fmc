@@ -36,6 +36,7 @@
     "@vitest/browser": "^4.1.10",
     "@vitest/browser-playwright": "^4.1.10",
     "clsx": "^2.1.1",
+    "lightningcss": "^1.33.0",
     "oxfmt": "^0.60.0",
     "oxlint": "^1.75.0",
     "pixelmatch": "^7.2.0",

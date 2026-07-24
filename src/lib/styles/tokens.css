@@ -1,0 +1,39 @@
+/* Design tokens — the only source of truth for color/type/motion.
+   Components derive every shade via oklch(from …); never add per-shade tokens. */
+:root {
+  --color-accent: #ff5c00;
+  --color-text: #171310;
+  --color-background: #ffffff;
+  --color-error: #ff3f40;
+
+  --border-radius: 12px;
+
+  --font-family:
+    ui-rounded, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Unbounded", var(--font-family);
+
+  /* spring easing shared by all micro-interactions (from friendzone) */
+  --spring-transition: 0.5s
+    linear(
+      0, 0.0142, 0.0525, 0.1095, 0.1798, 0.2591, 0.3434, 0.4295, 0.5147, 0.5969,
+      0.6743, 0.7458, 0.8105, 0.868, 0.9181, 0.9608, 0.9964, 1.0253, 1.0479,
+      1.0649, 1.0769, 1.0845, 1.0883, 1.089, 1.0871, 1.0832, 1.0777, 1.0712,
+      1.064, 1.0564, 1.0488, 1.0412, 1.034, 1.0272, 1.021, 1.0154, 1.0105,
+      1.0062, 1.0026, 0.9996, 0.9972, 0.9953, 0.9939, 0.9929, 0.9924, 0.9921,
+      0.9921, 0.9923, 0.9927, 0.9932, 0.9938, 0.9945, 0.9952, 0.9958, 0.9965,
+      0.9971, 0.9977, 0.9983, 0.9987, 0.9992, 0.9995, 0.9998, 1.0001, 1.0003,
+      1.0005, 1.0006, 1.0006, 1.0007, 1.0007, 1.0007, 1.0007, 1.0006, 1.0006,
+      1.0005, 1.0005, 1.0004, 1.0004, 1.0003, 1.0002, 1.0002, 1.0001, 1.0001,
+      1.0001, 1, 1, 1, 1, 1, 0.9999, 0.9999, 0.9999, 0.9999, 0.9999, 0.9999,
+      0.9999, 0.9999, 1, 1, 1, 1, 1
+    );
+
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-text: #f4efe9;
+    --color-background: #141110;
+  }
+}

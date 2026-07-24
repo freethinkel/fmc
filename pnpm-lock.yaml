@@ -60,6 +60,9 @@ importers:
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
+      lightningcss:
+        specifier: ^1.33.0
+        version: 1.33.0
       oxfmt:
         specifier: ^0.60.0
         version: 0.60.0(svelte@5.56.7)

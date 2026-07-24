@@ -5,6 +5,14 @@ import basicSsl from "@vitejs/plugin-basic-ssl";
 import { defineConfig } from "vite";
 
 export default defineConfig({
+  css: {
+    transformer: "lightningcss",
+    lightningcss: {
+      // evergreen floor: native nesting + oklch relative color everywhere else
+      targets: { chrome: 112 << 16, safari: (16 << 16) | (4 << 8), firefox: 128 << 16 },
+    },
+  },
+  build: { cssMinify: "lightningcss" },
   plugins: [
     ...(process.env.BASIC_SSL ? [basicSsl()] : []),
     tailwindcss(),
