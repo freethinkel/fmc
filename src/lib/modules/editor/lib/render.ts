@@ -183,8 +183,21 @@ export function parseArcSpec(node: FaceNode): ArcSpec | null {
   };
 }
 
-function sectorImage(ctx: Ctx, b: ImageBitmap | OffscreenCanvas, x: number, y: number, spec: ArcSpec, frac: number) {
-  const cx = x + b.width / 2, cy = y + b.height / 2;
+function sectorImage(
+  ctx: Ctx, b: ImageBitmap | OffscreenCanvas, x: number, y: number, spec: ArcSpec, frac: number,
+  mw = 0, mh = 0,
+) {
+  // meta.w/h is the widget's full circle diameter; the bitmap may be cropped to the arc's
+  // bounding box (Dichotomy's 284x214 half-rings on a 284x284 circle). The sector pivot is
+  // the CIRCLE's center, and a cropped bitmap anchors to the side of the circle its arc
+  // midpoint lies on (top/bottom via cos, left/right via sin — angles are 12-o'clock-relative,
+  // see a0 below). An uncropped (or oversized, e.g. Sport_Mode's 132px-on-128px) bitmap just
+  // centers on the circle. Falls back to bitmap size when meta carries no w/h.
+  const W = mw || b.width, H = mh || b.height;
+  const mid = ((spec.start + spec.end) / 2) * Math.PI / 180;
+  const bx = x + (b.width >= W ? (W - b.width) / 2 : Math.sin(mid) > 0 ? W - b.width : 0);
+  const by = y + (b.height >= H ? (H - b.height) / 2 : Math.cos(mid) > 0 ? 0 : H - b.height);
+  const cx = x + W / 2, cy = y + H / 2;
   // ponytail: image-backed arcs (0x5b) start at 12 o'clock, not the 3-o'clock/LVGL convention
   // documented for procedural arcs (0x5a) near parseArcSpec — measured against Function's
   // battery ring (id 0x24): our gap centered ~90° clockwise of the baked preview's at start=0.
@@ -199,7 +212,7 @@ function sectorImage(ctx: Ctx, b: ImageBitmap | OffscreenCanvas, x: number, y: n
     ctx.closePath();
     ctx.clip();
   }
-  ctx.drawImage(b, x, y);
+  ctx.drawImage(b, bx, by);
   ctx.restore();
 }
 
@@ -463,10 +476,10 @@ function drawWidget(
     const spec = parseArcSpec(node);
     if (!spec) return null;
     const b = ringBmp(res, imgs[0]);
-    const { id, w } = metaInfo(struct);
+    const { id, w, h } = metaInfo(struct);
     const frac = progressFrac(id, sim, t, spec);
     if (!b) return drawProceduralArc(ctx, spec, x, y, frac, hits, node, w, ringRGB(struct) ?? hexRGB(sim.accentColor));
-    if (ctx && frac > 0.002) sectorImage(ctx, b, x, y, spec, frac);
+    if (ctx && frac > 0.002) sectorImage(ctx, b, x, y, spec, frac, w, h);
     if (ctx) hits?.push({ node, x, y, w: b.width, h: b.height });
     return { w: b.width, h: b.height };
   }
@@ -477,7 +490,7 @@ function drawWidget(
     const spec = parseArcSpec(node);
     if (!spec) return null;
     const b = ringBmp(res, imgs[0]);
-    const { id, w } = metaInfo(struct);
+    const { id, w, h } = metaInfo(struct);
     const frac = progressFrac(id, sim, t, spec);
     if (b && b.height > 3 * b.width) { // vertical bar
       if (ctx && frac > 0.002) {
@@ -492,7 +505,7 @@ function drawWidget(
       return { w: b.width, h: b.height };
     }
     if (b) {
-      if (ctx && frac > 0.002) sectorImage(ctx, b, x, y, spec, frac);
+      if (ctx && frac > 0.002) sectorImage(ctx, b, x, y, spec, frac, w, h);
       if (ctx) hits?.push({ node, x, y, w: b.width, h: b.height });
       return { w: b.width, h: b.height };
     }
@@ -551,13 +564,20 @@ function drawWidget(
   return { w: b.width, h: b.height };
 }
 
-// 0x68: frame 0x48 (x,y,w,h,gap) + children. Two layout modes per child (docs §9.6a):
-// struct meta w = 0x8000 — auto-layout, joins a row/column centered in the frame;
-// anything else — absolute at frame origin + child x/y (verified: Progress_Day dot circle,
-// Glare_2 stacked kcal block; no layout flag exists in frame 0x48 — bytes 9..20 are
-// always zero across the 100-face corpus, byte 8 is just the row gap).
-// ponytail: exact firmware direction rule is unverified — guessed from the original child
-// x/y spread (bigger vertical spread = stacked column); flip to a real flag if one turns up.
+// 0x68: frame 0x48 (x,y,w,h,gap) + children. Layout model (reversed from the 101-face
+// corpus survey; no layout flag exists in frame 0x48 — bytes 9..20 are always zero, byte 8
+// is the row gap):
+// - struct meta w = 0x8000 (AUTO) — packs into a row/column centered in the frame;
+// - a NUMBER at x=0 with a true-AUTO sibling joins that row gapless (its width is dynamic,
+//   so it can't carry the 0x8000 marker itself — Function/Elaborate_2 "80%");
+// - progress rings (0x80/0x81) — struct x/y is already screen-absolute; a 0 on either axis
+//   means "center me in the frame on that axis";
+// - anything else — y is always literal frame.y + y (no vertical centering exists:
+//   Dichotomy's ring labels at authored y=0/70); x=0 centers horizontally, nonzero is
+//   literal frame.x + x (Progress_Day dot circle).
+// ponytail: exact firmware direction rule for AUTO rows is unverified — guessed from the
+// 0x8000 children's own x/y spread (bigger vertical spread = column); flip to a real flag
+// if one turns up.
 function drawGroup(
   ctx: Ctx | null, node: FaceNode, res: Resource[], sim: Sim, t: TimeParts,
   ox: number, oy: number, origin: { x: number; y: number } | null, hits: Hit[] | null,
@@ -626,29 +646,6 @@ function drawGroup(
     return null;
   };
 
-  // boxed non-auto children (see below) need their own direction reading — pulling in
-  // unrelated abs siblings (e.g. a lone icon at a different y) to decide `vertical` would
-  // also skew the auto/shown centering above, which already worked. With only one boxed
-  // sibling there's nothing to read a spread from, so fall back to the group's own axis.
-  // Deliberately keyed off the stricter x===0&&y===0 NUMBER-hug reading (isAuto above is
-  // looser), not because a hugged NUMBER is still "boxed" — it isn't, rowCross positions it —
-  // but because this group's OTHER boxed sibling (Elaborate_2's "Battery" label) still needs
-  // the exact same boxedVertical it always got: with the NUMBER's own (x=0,y=46) folded back
-  // in here, the spread against the label's (x=0,y=82) reads correctly as a vertical pair,
-  // where dropping to a single leftover sibling would fall back to `vertical` and misread it.
-  const boxedOrigins = kids
-    .filter(k => {
-      if (k.tag === 0x80 || k.tag === 0x81 || isTrueAuto(k)) return false;
-      if (!hasTrueAutoSibling || k.tag !== TAG.number) return true;
-      const st = k.subs?.find(s => s.tag === TAG.struct);
-      return !(st && !st.x && !st.y);
-    })
-    .map(localOrigin)
-    .filter((p): p is { x: number; y: number } => !!p);
-  const boxedVertical = boxedOrigins.length > 1
-    ? spread(boxedOrigins.map(p => p.y)) > spread(boxedOrigins.map(p => p.x))
-    : vertical;
-
   // a NUMBER packed next to a real auto sibling hugs it with no gap, unlike two true 0x8000
   // icons — confirmed on Function's battery tile: the baked "80%" has no space between digits
   // and the % sign, while our render used the group's own fr.gap there same as between icons.
@@ -697,31 +694,18 @@ function drawGroup(
               y: ringStruct!.y || y + (fr.h - ringMeta.h) / 2,
             }
           : null;
-        // non-auto but still boxed: plenty of these siblings aren't 0x8000 auto-layout (no
-        // row/column packing) yet are meant to be cross-axis centered, not flush against the
-        // frame edge — Combo's weekday/day (meta.w>0, a declared-but-unused box size) and
-        // Function's calorie/battery/heart-rate/temperature tiles (meta.w===0, no box at all)
-        // both need it. The common signal in every corpus example so far: the struct's own
-        // cross-axis coordinate is 0, i.e. "not positioned, center me" — a real deliberate
-        // offset (verified: Progress_Day dot circle, Glare_2 stacked kcal block) is non-zero
-        // and is left alone. Either way the box/declared size isn't the widget's actual pixel
-        // size, so measure the real drawn size for centering rather than trust meta.w.
-        // ponytail: only Combo/Function confirm this reading — revisit if a face turns up
-        // where a non-auto child sits at cross-axis 0 on purpose without wanting centering.
-        // Applies to nested Group children too (e.g. the temperature tile's icon+digits+degree
-        // row sitting beside a standalone degree-symbol sibling) via localOrigin's frame.x/y.
-        // Requires a second boxedOrigins candidate to compare against — a solitary non-auto,
-        // non-ring child (Dichotomy's ring-group label, alone beside an excluded ring) has
-        // nothing to pack/stack with, so boxedVertical's fallback-to-`vertical` default was
-        // centering it vertically across the whole 284px ring frame instead of leaving its
-        // authored (0,0) corner position alone.
-        const origin2 = !isRing ? localOrigin(k) : null;
-        const boxed = origin2 && boxedOrigins.length > 1 && (boxedVertical ? !origin2.x : !origin2.y);
-        const measured = boxed ? drawWidget(null, k, res, sim, t, 0, 0, { x: 0, y: 0 }, null, arcsById) : null;
+        // any other non-auto child: y is always literal (frame.y + y — Dichotomy's ring
+        // labels sit at authored y=0/y=70, never vertically centered; a real offset like
+        // Progress_Day's dot circle is nonzero and kept). x===0 means "not positioned,
+        // center me horizontally" — confirmed on Combo's weekday/day, Function's tiles,
+        // Elaborate_2's Battery label and Glare_2's stacked kcal block, all x=0 + real y.
+        // The declared meta.w isn't the widget's pixel width, so measure the drawn size.
+        // Applies to nested Group children too (Function's icon+digits+degree row) via
+        // localOrigin's frame.x/y.
+        const o = !isRing ? localOrigin(k) : null;
+        const measured = o && !o.x ? drawWidget(null, k, res, sim, t, 0, 0, { x: 0, y: 0 }, null, arcsById) : null;
         const pos = ringPos ?? (measured
-          ? (boxedVertical
-              ? { x: x + crossOffset(fr.align, fr.w, measured.w), y: y + origin2!.y }
-              : { x: x + origin2!.x, y: y + crossOffset(fr.align, fr.h, measured.h) })
+          ? { x: x + crossOffset(fr.align, fr.w, measured.w), y: y + o!.y }
           : null);
         drawWidget(ctx, k, res, sim, t, isRing ? 0 : x, isRing ? 0 : y, pos, hits, arcsById);
       }

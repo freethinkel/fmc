@@ -141,23 +141,23 @@ const CASES = [
     maxDiffRatio: 0.02,
   },
   // 8 swipeable metric tiles, same 0x79/0x7a bind-per-slot mechanism as Function, correctly
-  // gated. Two real bugs found here, both from a ring (0x81) sharing its group with a static
-  // "BATT"/"KCAL" text label (tag 0x30): the ring's own bitmap is cf=4 (RGB565, no alpha —
-  // see wf.ts's decodePixels), so its "empty" background bakes as opaque black rather than
-  // transparent. Drawn as a literal rectangle, that opaque black blotted out the text label
-  // sharing its group (drawn earlier in the file, so under it) and clipped into the
-  // background's own baked "10" hour-marker glyph at the ring's edge. Fixed by chroma-keying
-  // near-black to transparent for cf=4 bitmaps specifically, lazily once per bitmap (see
-  // render.ts's ringBmp) — cf=5 images already carry real alpha and are untouched. This also
-  // meaningfully improved Combo/Activity_Mood/Elaborate_2's own ratios above (their thresholds
-  // are untouched here since they're not this case's concern). Remaining gap is the two rings'
-  // fill fraction (battery/steps-goal-relative, defaultSim's guess vs the baked device's actual
-  // unknowable live value — same caveat as every other ring case above).
+  // gated. Bugs found here: (1) cf=4 ring bitmaps (RGB565, no alpha) bake their empty
+  // background as opaque black — chroma-keyed near-black to transparent in render.ts's
+  // ringBmp; (2) the two half-rings' bitmaps (284x214) are CROPPED to their arc's bounding
+  // box within the widget's full 284x284 circle (meta.w/h) — sectorImage previously spun the
+  // sector around the bitmap's own center and drew the bottom half-ring's bitmap at the
+  // circle's top; it now pivots on the circle center and anchors a cropped bitmap to the
+  // side its arc midpoint lies on. This face also pinned down the Group alignment model
+  // (see drawGroup's header): its ring labels sit at authored y=0/y=70, proving non-auto
+  // children are never vertically centered — y is literal, only x=0 centers (horizontally).
+  // Remaining diff is the minute hand's unknowable exact baked second plus the two rings'
+  // fill fraction (battery/kcal, defaultSim's guess vs the device's actual live value —
+  // same caveat as every other ring case above).
   {
     name: "Default__276__Dichotomy",
     url: dichotomyUrl,
     time: "2026-01-09T10:09:30",
-    maxDiffRatio: 0.07,
+    maxDiffRatio: 0.025,
   },
 ];
 
