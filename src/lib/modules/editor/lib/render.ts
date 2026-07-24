@@ -11,11 +11,11 @@ import { TAG, unhex, type Face, type FaceNode, type Resource } from './wf';
 export const ID_LABELS: Record<number, string> = {
   0x01: 'hour', 0x04: 'minute?', 0x07: 'hour (24h)',
   0x08: 'hour tens', 0x09: 'hour ones', 0x0a: 'hour (hand)', 0x0b: 'minute',
-  0x0c: 'min tens', 0x0d: 'min ones', 0x0e: 'minute (hand)', 0x0f: 'second',
-  0x12: 'second', 0x13: 'AM/PM', 0x16: 'month', 0x17: 'day of month', 0x18: 'weekday',
+  0x0c: 'min tens', 0x0d: 'min ones', 0x0e: 'minute (hand)', 0x0f: 'second (smooth hand)',
+  0x12: 'second (smooth hand)', 0x13: 'AM/PM', 0x16: 'month', 0x17: 'day of month', 0x18: 'weekday',
   0x19: 'steps', 0x1a: 'heart rate', 0x1c: 'calories', 0x1e: 'calories', 0x22: 'distance km int', 0x23: 'distance mi int',
   0x24: 'battery', 0x26: 'steps (slot)', 0x30: 'battery', 0x36: 'temperature 2?', 0x48: 'stands', 0x49: 'steps (slot)',
-  0x5f: 'temperature', 0x6a: 'metric (slot)?', 0x6c: 'metric (slot)?', 0x71: 'second?', 0x72: 'second (hand)',
+  0x5f: 'temperature', 0x6a: 'metric (slot)?', 0x6c: 'metric (slot)?', 0x71: 'second (ticking)', 0x72: 'second (ticking)',
   0x73: '24h/metric flag', 0x74: 'distance km frac', 0x75: 'distance mi frac', 0x76: 'distance', 0x8b: 'aqi',
 };
 
@@ -84,10 +84,9 @@ export function idValue(id: number, sim: Sim, t: TimeParts): number {
     case 0x0c: return Math.floor(t.m / 10);
     case 0x0d: return t.m % 10;
     case 0x0e: return t.m + t.s / 60;
-    // ALL second sources tick at 1 Hz on the real device — verified on hardware: a factory
-    // 0x72 hand (Sundial) ticks exactly like 0x12, 0x71 (Disc_2) doesn't animate at all,
-    // and rings freeze entirely on 0x71/0x72. Quantize so the preview doesn't oversell.
-    // If a genuinely smooth face ever turns up, diff its structure before trusting ids.
+    // Second sources tick at 1 Hz here — HANDS on 0x0f/0x12 are the one exception, they
+    // sweep smoothly (device-verified: Elegant_Sweep's 0x12 hand is smooth, Sundial's 0x72
+    // hand ticks, rings tick on every id) — drawWidget's hand branch un-quantizes them.
     case 0x0f: case 0x12: case 0x71: case 0x72: return Math.floor(t.s);
     case 0x13: return t.h < 12 ? 0 : 1;
     case 0x16: return t.mon;
@@ -435,7 +434,11 @@ function drawWidget(
     const b = bmp(res, imgs[0]);
     if (!b || !pivot || !ctx) return null;
     const { id, max } = metaInfo(struct);
-    const angle = idValue(id, sim, t) / (max || 60) * 2 * Math.PI;
+    // hands on 0x0f/0x12 sweep smoothly on the real device (Elegant_Sweep vs Sundial,
+    // verified on hardware) — every other widget/source ticks, see idValue
+    const noOv = sim.overrides[id] === undefined || sim.overrides[id] === '';
+    const v = (id === 0x0f || id === 0x12) && noOv ? t.s : idValue(id, sim, t);
+    const angle = v / (max || 60) * 2 * Math.PI;
     const px0 = pivot.pivotX!, py0 = pivot.pivotY!;
     ctx.save();
     ctx.translate(x + px0, y + py0);
