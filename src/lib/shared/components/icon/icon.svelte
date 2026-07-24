@@ -1,4 +1,5 @@
 <script lang="ts" module>
+  import IconBrandGoogleFilled from "@tabler/icons-svelte/icons/brand-google-filled";
   import IconBuildingStore from "@tabler/icons-svelte/icons/building-store";
   import IconDeviceWatch from "@tabler/icons-svelte/icons/device-watch";
   import IconPencil from "@tabler/icons-svelte/icons/pencil";
@@ -56,6 +57,7 @@
   // Non-obvious / approximate picks (no exact Tabler equivalent) are commented inline —
   // see .superpowers/sdd/icons-report.md for the full name mapping table.
   const ICONS = {
+    google: IconBrandGoogleFilled, // filled variant reads better at button size than the outline
     store: IconBuildingStore,
     watch: IconDeviceWatch,
     pencil: IconPencil,
@@ -123,4 +125,4 @@
   const Cmp = $derived(ICONS[name]);
 </script>
 
-<Cmp {size} {...rest} />
+<Cmp {size} {...rest} stroke={1.5} />

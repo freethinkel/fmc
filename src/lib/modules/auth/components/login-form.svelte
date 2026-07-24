@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Button } from "$lib/shared/components/button";
   import { Field } from "$lib/shared/components/field";
+  import { Icon } from "$lib/shared/components/icon";
   import { Input } from "$lib/shared/components/input";
   import { authModel } from "../model";
 
@@ -17,6 +18,7 @@
   }}
 >
   <Button type="button" kind="secondary" disabled={$busy} onClick={() => oauthRequested("google")}>
+    <Icon name="google" size={16} />
     Login with Google
   </Button>
   <div class="divider"><span>Or continue with</span></div>
