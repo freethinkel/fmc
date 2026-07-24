@@ -418,7 +418,7 @@
     font-weight: 500;
   }
   .field-label.w-sm {
-    width: 20px;
+    width: 32px;
   }
   .field-label.w-md {
     width: 56px;
