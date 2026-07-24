@@ -6,6 +6,18 @@
   import Download from "@lucide/svelte/icons/download";
   import Trash2 from "@lucide/svelte/icons/trash-2";
   import { fileUrl, downloadUrl } from "$lib/shared/api";
+  import type { RecordModel } from "pocketbase";
+
+  interface Props {
+    wf: RecordModel;
+    likeCount?: number;
+    liked?: boolean;
+    canLike?: boolean;
+    canRemove?: boolean;
+    onOpen?: () => void;
+    onLike?: () => void;
+    onRemove?: () => void;
+  }
 
   let {
     wf,
@@ -16,7 +28,7 @@
     onOpen,
     onLike,
     onRemove,
-  } = $props();
+  }: Props = $props();
 </script>
 
 <Card>

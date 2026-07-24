@@ -74,6 +74,9 @@
     display: flex;
     flex-direction: column;
     transform: translateX(24px);
+    &:not([open]) {
+      display: none;
+    }
     &[open] {
       transform: none;
       @starting-style {
