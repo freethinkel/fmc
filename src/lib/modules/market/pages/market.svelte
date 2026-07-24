@@ -33,7 +33,9 @@
   const TABS = TAB_ITEMS.map((t) => t.value);
 
   const tabParam = page.url.searchParams.get("tab") ?? "";
-  let tab = $state<string | undefined>(TABS.includes(tabParam) ? tabParam : "nothing");
+  let tab = $state<string | undefined>(
+    TABS.includes(tabParam) ? tabParam : "nothing",
+  );
 
   $effect(() => {
     const url = new URL(window.location.href);
@@ -49,8 +51,10 @@
     { value: "popular", label: "Popular" },
   ];
 
-  const likeCount = (id: string) => $likes.filter((l) => l.watchface === id).length;
-  const myLike = (id: string) => $likes.find((l) => l.watchface === id && l.user === $user?.id);
+  const likeCount = (id: string) =>
+    $likes.filter((l) => l.watchface === id).length;
+  const myLike = (id: string) =>
+    $likes.find((l) => l.watchface === id && l.user === $user?.id);
 
   function remove(wf: RecordModel) {
     if (!confirm(`Delete "${wf.name}"?`)) return;
@@ -62,10 +66,15 @@
       // "From Nothing" — the whole catalog without an owner (both factory type=nothing
       // and cmf), grouped by category (see grouped below)
       .filter((wf) => (tab === "community" ? Boolean(wf.owner) : !wf.owner))
-      .filter((wf) => wf.name.toLowerCase().includes(query.trim().toLowerCase()))
+      .filter((wf) =>
+        wf.name.toLowerCase().includes(query.trim().toLowerCase()),
+      )
       .toSorted((a, b) =>
         sort === "popular"
-          ? (b.downloads || 0) + likeCount(b.id) - (a.downloads || 0) - likeCount(a.id)
+          ? (b.downloads || 0) +
+            likeCount(b.id) -
+            (a.downloads || 0) -
+            likeCount(a.id)
           : b.created.localeCompare(a.created),
       ),
   );
@@ -101,7 +110,8 @@
 
   function loadMore(node: HTMLElement) {
     const io = new IntersectionObserver(([e]) => {
-      if (e.isIntersecting) visibleCount = Math.min(visibleCount + PAGE, shown.length);
+      if (e.isIntersecting)
+        visibleCount = Math.min(visibleCount + PAGE, shown.length);
     });
 
     io.observe(node);
@@ -113,7 +123,11 @@
   {#if $marketErr}<p class="error">{$marketErr}</p>{/if}
 
   <div class="toolbar">
-    <Tabs items={TAB_ITEMS} value={tab ?? "nothing"} onChange={(v) => (tab = v)} />
+    <Tabs
+      items={TAB_ITEMS}
+      value={tab ?? "nothing"}
+      onChange={(v) => (tab = v)}
+    />
     <div class="search">
       <Search size={14} />
       <Input bind:value={query} placeholder="Search…" />
@@ -138,7 +152,7 @@
     <main class="sections">
       {#each grouped as [category, list] (category)}
         <section>
-          <h2>{category || "Other"}</h2>
+          <h2 class="category-title">{category || "Other"}</h2>
           <div class="h-scroll">
             {#each list as wf (wf.id)}
               <div class="h-item">
@@ -149,7 +163,8 @@
                   canLike={!!$user}
                   canRemove={$user?.id === wf.owner}
                   onOpen={() => editRequested(wf)}
-                  onLike={() => $user && likeToggleRequested({ wf, userId: $user.id })}
+                  onLike={() =>
+                    $user && likeToggleRequested({ wf, userId: $user.id })}
                   onRemove={() => remove(wf)}
                 />
               </div>
@@ -174,7 +189,9 @@
           onRemove={() => remove(wf)}
         />
       {:else}
-        <p class="empty full">No community watchfaces yet — publish yours from the editor.</p>
+        <p class="empty full">
+          No community watchfaces yet — publish yours from the editor.
+        </p>
       {/each}
       {#if visibleCount < shown.length}
         <div class="sentinel" use:loadMore></div>
@@ -224,14 +241,19 @@
     width: 130px;
   }
   main {
-    flex: 1;
     overflow-y: auto;
   }
   .grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    align-items: start;
     gap: 16px;
     padding: 16px;
+
+    & > :global(*) {
+      min-height: 275px;
+      height: 100%;
+    }
   }
   .skeleton-card {
     display: flex;
@@ -244,20 +266,23 @@
   section {
     margin-bottom: 24px;
   }
-  h2 {
+  .category-title {
+    font-size: 1.1rem;
     margin: 0 0 8px;
-    font-size: 0.875rem;
     font-weight: 600;
   }
   .h-scroll {
     display: flex;
     gap: 12px;
     overflow-x: auto;
+    /* don't chain edge-overscroll into the browser back/forward swipe */
+    overscroll-behavior-x: contain;
     padding-bottom: 8px;
   }
   .h-item {
     flex-shrink: 0;
-    width: 160px;
+    width: 190px;
+    min-height: 275px;
   }
   .empty {
     padding: 64px 0;
