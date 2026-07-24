@@ -8,7 +8,7 @@
 	import { page } from "$app/state";
 	import { authModel } from "$lib/modules/auth/model";
 
-	const { user } = authModel;
+	const { $user: user } = authModel;
 	const nav = $derived([
 		{ title: "Marketplace", url: "/market", icon: Store },
 		{ title: "Editor", url: "/editor", icon: Pencil },

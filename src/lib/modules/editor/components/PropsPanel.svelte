@@ -9,7 +9,7 @@
   import { TAG, unhex, hex } from '../lib/wf';
   import { metaInfo, ID_LABELS, parseFrame } from '../lib/render';
   import { editorModel } from '../model';
-  const { editor, checkpoint, patched, replaceImageFx, alignSelected } = editorModel;
+  const { $editor: editor, checkpoint, patched, replaceImageRequested, alignSelected } = editorModel;
 
   // Figma-style position buttons: [dir, icon, title] — two groups of three
   const alignH = [
@@ -260,7 +260,7 @@
               <img src={thumbURL($editor.face.resources[ri])} alt="res{ri}"
                 class="max-h-14 max-w-14 rounded border border-border bg-[repeating-conic-gradient(#333_0_25%,#222_0_50%)] bg-[length:12px_12px]" />
               <input type="file" accept="image/*" hidden
-                onchange={e => e.target.files[0] && replaceImageFx({ resIdx: ri, file: e.target.files[0] }).catch(() => {})} />
+                onchange={e => e.target.files[0] && replaceImageRequested({ resIdx: ri, file: e.target.files[0] })} />
             </label>
             <button title="Download PNG" onclick={() => downloadRes(ri)}
               class="bg-background/80 text-foreground absolute end-0.5 top-0.5 rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100">

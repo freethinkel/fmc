@@ -4,40 +4,33 @@
   import { Input } from '$lib/shared/components/ui/input';
   import { Label } from '$lib/shared/components/ui/label';
   import { Textarea } from '$lib/shared/components/ui/textarea';
-  import { goto } from '$app/navigation';
   import { authModel } from '$lib/modules/auth/model';
   import { marketModel } from '$lib/modules/market/model';
   import { editorModel } from '../model';
 
-  const { user } = authModel;
-  const { saveFx } = marketModel;
-  const { editor, buildCurrentBin, previewBlob, errored } = editorModel;
+  const { $user: user } = authModel;
+  const {
+    publishRequested, $savePending: busy,
+    $publishDialogOpen: open, publishDialogClosed,
+  } = marketModel;
+  const { $editor: editor, buildCurrentBin, previewBlob } = editorModel;
 
-  let { open = $bindable(false) } = $props();
   let name = $state('');
   let description = $state('');
-  const busy = saveFx.pending;
 
   $effect(() => {
-    if (open) name = $editor.face?.name || 'Custom';
+    if ($open) name = $editor.face?.name || 'Custom';
   });
 
   async function publish() {
-    try {
-      await saveFx({
-        name, description, ownerId: $user.id, published: true,
-        bin: buildCurrentBin(), preview: await previewBlob(),
-      });
-      open = false;
-      goto('/market');
-    } catch (e) {
-      errored(`publish: ${e.message}`);
-      open = false;
-    }
+    publishRequested({
+      name, description, ownerId: $user.id, published: true,
+      bin: buildCurrentBin(), preview: await previewBlob(),
+    });
   }
 </script>
 
-<Dialog.Root bind:open>
+<Dialog.Root open={$open} onOpenChange={o => { if (!o) publishDialogClosed(); }}>
   <Dialog.Content class="max-w-sm">
     <Dialog.Header>
       <Dialog.Title>Publish to marketplace</Dialog.Title>

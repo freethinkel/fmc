@@ -6,7 +6,7 @@
   import { TAG, unhex } from '../lib/wf';
   import { metaInfo, ID_LABELS } from '../lib/render';
   import { editorModel } from '../model';
-  const { editor, select, addWidgetFx, deleteWidget } = editorModel;
+  const { $editor: editor, select, addWidgetRequested, deleteWidget } = editorModel;
 
   const tagNames = {
     [TAG.main]: 'Screen', [TAG.aod]: 'AOD', [TAG.name]: 'Name', [TAG.preview]: 'Preview',
@@ -44,7 +44,7 @@
 
   function onAdd(kind, e) {
     const files = e.target.files;
-    if (files?.length) addWidgetFx({ kind, files: [...files] }).catch(() => {});
+    if (files?.length) addWidgetRequested({ kind, files: [...files] });
     e.target.value = '';
   }
 

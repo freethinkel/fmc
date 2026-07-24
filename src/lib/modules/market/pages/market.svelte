@@ -8,15 +8,16 @@
   import { fileUrl, downloadUrl } from '$lib/shared/api';
   import { authModel } from '$lib/modules/auth/model';
   import { marketModel } from '../model';
-  import { editorModel } from '$lib/modules/editor/model';
 
-  const { user } = authModel;
-  const { items, likes, marketErr, loadMarketFx, toggleLikeFx, removeFx, openedWfSet } = marketModel;
-  const { loadBufferFx, errored } = editorModel;
+  const { $user: user } = authModel;
+  const {
+    $items: items, $likes: likes, $marketErr: marketErr,
+    marketLoadRequested, likeToggleRequested, removeRequested, editRequested,
+  } = marketModel;
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
 
-  loadMarketFx().catch(() => {});
+  marketLoadRequested();
 
   const TABS = ['nothing', 'community'];
   // tab lives in the URL (?tab=) so it survives a page reload
@@ -74,20 +75,9 @@
     return { destroy: () => io.disconnect() };
   }
 
-  async function openInEditor(wf) {
-    try {
-      const buf = await (await fetch(fileUrl(wf, 'bin'))).arrayBuffer();
-      await loadBufferFx({ buf, label: wf.name });
-      openedWfSet($user && wf.owner === $user.id ? wf : null);
-      goto('/editor');
-    } catch (e) {
-      errored(e.message);
-    }
-  }
-
   function remove(wf) {
     if (!confirm(`Delete "${wf.name}"?`)) return;
-    removeFx(wf).catch(() => {});
+    removeRequested(wf);
   }
 </script>
 
@@ -117,7 +107,7 @@
   {#snippet card(wf, fixedWidth)}
     <div class={['flex flex-col gap-2 rounded-xl border p-3 transition-shadow hover:shadow-md', fixedWidth && 'w-40 shrink-0 sm:w-48']}>
       <button class="aspect-square cursor-pointer overflow-hidden rounded-full bg-black"
-        onclick={() => openInEditor(wf)} title="Open in editor">
+        onclick={() => editRequested(wf)} title="Open in editor">
         <img src={fileUrl(wf, 'preview')} alt={wf.name} class="h-full w-full object-cover" loading="lazy" />
       </button>
       <div class="flex items-baseline justify-between gap-2">
@@ -132,7 +122,7 @@
       {/if}
       <div class="mt-auto flex items-center gap-1">
         <Button size="sm" variant="ghost" disabled={!$user}
-          onclick={() => toggleLikeFx({ wf, userId: $user.id }).catch(() => {})}
+          onclick={() => likeToggleRequested({ wf, userId: $user.id })}
           title={$user ? 'Like' : 'Sign in to like'}>
           <Heart class={['size-4', myLike(wf.id) && 'fill-red-500 text-red-500']} />
           <span class="text-xs">{likeCount(wf.id)}</span>

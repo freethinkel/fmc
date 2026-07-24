@@ -1,23 +1,41 @@
 // Auth: effector wrapper around pb.authStore.
-import { createEffect, createEvent, createStore } from 'effector';
+import { createEvent, createStore, sample } from 'effector';
 import type { AuthRecord } from 'pocketbase';
 import { pb } from '$lib/shared/api';
+import * as authApi from './auth.api';
 
 const userChanged = createEvent<AuthRecord>();
-export const user = createStore<AuthRecord>(pb.authStore.record).on(userChanged, (_, u) => u);
+export const $user = createStore<AuthRecord>(pb.authStore.record);
+sample({ clock: userChanged, target: $user });
 pb.authStore.onChange(() => userChanged(pb.authStore.record));
 
-export const oauthFx = createEffect((provider: string) =>
-  pb.collection('users').authWithOAuth2({ provider }));
-export const loginFx = createEffect(({ email, password }: { email: string; password: string }) =>
-  pb.collection('users').authWithPassword(email, password));
-export const registerFx = createEffect(
-  async ({ email, password, name }: { email: string; password: string; name?: string }) => {
-    await pb.collection('users').create({
-      email, password, passwordConfirm: password, name: name || email.split('@')[0],
-    });
-    return pb.collection('users').authWithPassword(email, password);
-  });
-
 export const logout = createEvent();
-logout.watch(() => pb.authStore.clear());
+sample({ clock: logout, target: authApi.logoutFx });
+
+// effects (authApi.*) stay private to the model — components only dispatch these events
+export const loginRequested = createEvent<{ email: string; password: string }>();
+sample({ clock: loginRequested, target: authApi.loginFx });
+export const $loginPending = authApi.loginFx.pending;
+
+export const oauthRequested = createEvent<string>();
+sample({ clock: oauthRequested, target: authApi.oauthFx });
+export const $oauthPending = authApi.oauthFx.pending;
+
+// shared between password login and oauth — the form shows one error line regardless of method
+export const $loginErr = createStore('').reset([loginRequested, oauthRequested]);
+sample({
+  clock: authApi.loginFx.failData,
+  fn: (e: any) => e.data?.data?.email?.message || e.data?.data?.password?.message || e.message,
+  target: $loginErr,
+});
+sample({ clock: authApi.oauthFx.failData, fn: (e: Error) => `login: ${e.message}`, target: $loginErr });
+
+export const registerRequested = createEvent<{ email: string; password: string; name?: string }>();
+sample({ clock: registerRequested, target: authApi.registerFx });
+export const $registerPending = authApi.registerFx.pending;
+export const $registerErr = createStore('').reset(registerRequested);
+sample({
+  clock: authApi.registerFx.failData,
+  fn: (e: any) => e.data?.data?.email?.message || e.data?.data?.password?.message || e.message,
+  target: $registerErr,
+});

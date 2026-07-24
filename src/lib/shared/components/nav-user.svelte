@@ -6,7 +6,7 @@
 	import LogOutIcon from "@lucide/svelte/icons/log-out";
 	import LogInIcon from "@lucide/svelte/icons/log-in";
 	import { authModel } from "$lib/modules/auth/model";
-	const { user, logout } = authModel;
+	const { $user: user, logout } = authModel;
 
 	const sidebar = Sidebar.useSidebar();
 	const initials = $derived(($user?.name || $user?.email || "?").slice(0, 2).toUpperCase());

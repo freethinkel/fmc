@@ -5,7 +5,7 @@
   import { Button } from '$lib/shared/components/ui/button';
   import { ID_LABELS } from '../lib/render';
   import { editorModel } from '../model';
-  const { editor, simPatched, overrideSet } = editorModel;
+  const { $editor: editor, simPatched, overrideSet } = editorModel;
 
   // default for the baked-in sentinel color (see cmf-format-reference.md "Accent color
   // sentinel") — just shown in the picker until the user picks their own

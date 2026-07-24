@@ -6,33 +6,23 @@
   import { goto } from '$app/navigation';
   import { authModel } from '$lib/modules/auth/model';
   import { marketModel } from '../model';
-  import { editorModel } from '$lib/modules/editor/model';
 
-  const { user } = authModel;
-  const { myItems, likes, marketErr, loadMyFx, removeFx, togglePublishFx, openedWfSet } = marketModel;
-  const { loadBufferFx, errored } = editorModel;
+  const { $user: user } = authModel;
+  const {
+    $myItems: myItems, $likes: likes, $marketErr: marketErr,
+    myLoadRequested, removeRequested, publishToggleRequested, editRequested,
+  } = marketModel;
 
   $effect(() => {
-    if ($user) loadMyFx($user.id).catch(() => {});
+    if ($user) myLoadRequested($user.id);
     else goto('/login');
   });
 
   const likeCount = id => $likes.filter(l => l.watchface === id).length;
 
-  async function edit(wf) {
-    try {
-      const buf = await (await fetch(fileUrl(wf, 'bin'))).arrayBuffer();
-      await loadBufferFx({ buf, label: wf.name });
-      openedWfSet(wf);
-      goto('/editor');
-    } catch (e) {
-      errored(e.message);
-    }
-  }
-
   function remove(wf) {
     if (!confirm(`Delete "${wf.name}"?`)) return;
-    removeFx(wf).catch(() => {});
+    removeRequested(wf);
   }
 </script>
 
@@ -44,7 +34,7 @@
   {#each $myItems as wf (wf.id)}
     <div class="flex flex-col gap-2 rounded-xl border p-3 transition-shadow hover:shadow-md">
       <button class="aspect-square cursor-pointer overflow-hidden rounded-full bg-black"
-        onclick={() => edit(wf)} title="Open in editor">
+        onclick={() => editRequested(wf)} title="Open in editor">
         <img src={fileUrl(wf, 'preview')} alt={wf.name} class="h-full w-full object-cover" />
       </button>
       <div class="flex items-center justify-between gap-2">
@@ -61,10 +51,10 @@
           </span>
         {/if}
         <div class="ms-auto flex items-center">
-          <Button size="sm" variant="ghost" onclick={() => edit(wf)} title="Edit">
+          <Button size="sm" variant="ghost" onclick={() => editRequested(wf)} title="Edit">
             <Pencil class="size-4" />
           </Button>
-          <Button size="sm" variant="ghost" onclick={() => togglePublishFx(wf).catch(() => {})}
+          <Button size="sm" variant="ghost" onclick={() => publishToggleRequested(wf)}
             title={wf.published ? 'Unpublish' : 'Publish'}>
             {#if wf.published}<GlobeLock class="size-4" />{:else}<Globe class="size-4" />{/if}
           </Button>

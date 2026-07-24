@@ -7,7 +7,7 @@
 	import { cn } from "$lib/shared/helpers";
 	import { authModel } from "$lib/modules/auth/model";
 
-	const { user } = authModel;
+	const { $user: user } = authModel;
 	const nav = $derived([
 		{ title: "Market", url: "/market", icon: Store },
 		{ title: "Editor", url: "/editor", icon: Pencil },

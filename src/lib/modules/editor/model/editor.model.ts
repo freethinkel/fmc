@@ -37,56 +37,95 @@ const treeChanged = createEvent<(s: EditorState) => void>(); // tree mutation af
 let undoStack: string[] = [], redoStack: string[] = [], lastCp = 0;
 const snap = (s: EditorState) => JSON.stringify(s.face!.screens);
 
-export const editor = createStore<EditorState>({
+export const $editor = createStore<EditorState>({
   face: null, sel: null, screenTag: TAG.main, sim: defaultSim(), ids: [], err: '',
   undoN: 0, redoN: 0, dirty: false, fileLabel: '',
-})
-  .on(faceLoaded, (s, { face, label, dirty = false }) => {
+});
+
+sample({
+  clock: faceLoaded,
+  source: $editor,
+  fn: (s, { face, label, dirty = false }) => {
     undoStack = []; redoStack = []; lastCp = 0;
     return {
       ...s, face, sel: null, screenTag: TAG.main, ids: collectIds(face),
       fileLabel: label, err: '', dirty, undoN: 0, redoN: 0,
     };
-  })
-  .on(select, (s, sel) => ({ ...s, sel }))
-  .on(screenTagSet, (s, screenTag) => ({ ...s, screenTag }))
-  .on(checkpoint, (s, coalesce) => {
-    if (!s.face) return;
+  },
+  target: $editor,
+});
+sample({ clock: select, source: $editor, fn: (s, sel) => ({ ...s, sel }), target: $editor });
+sample({ clock: screenTagSet, source: $editor, fn: (s, screenTag) => ({ ...s, screenTag }), target: $editor });
+sample({
+  clock: checkpoint,
+  source: $editor,
+  fn: (s, coalesce) => {
+    if (!s.face) return s;
     const now = Date.now();
-    if (now - lastCp < (coalesce ?? 600)) return;
+    if (now - lastCp < (coalesce ?? 600)) return s;
     lastCp = now;
     undoStack.push(snap(s));
     if (undoStack.length > 100) undoStack.shift();
     redoStack = [];
     return { ...s, dirty: true, undoN: undoStack.length, redoN: 0 };
-  })
-  .on(undo, s => {
-    if (!undoStack.length || !s.face) return;
+  },
+  target: $editor,
+});
+sample({
+  clock: undo,
+  source: $editor,
+  fn: s => {
+    if (!undoStack.length || !s.face) return s;
     redoStack.push(snap(s));
     s.face.screens = JSON.parse(undoStack.pop()!);
     lastCp = 0;
     return { ...s, sel: null, undoN: undoStack.length, redoN: redoStack.length };
-  })
-  .on(redo, s => {
-    if (!redoStack.length || !s.face) return;
+  },
+  target: $editor,
+});
+sample({
+  clock: redo,
+  source: $editor,
+  fn: s => {
+    if (!redoStack.length || !s.face) return s;
     undoStack.push(snap(s));
     s.face.screens = JSON.parse(redoStack.pop()!);
     lastCp = 0;
     return { ...s, sel: null, undoN: undoStack.length, redoN: redoStack.length };
-  })
-  .on(patched, (s, { node, patch }) => {
-    Object.assign(node, patch);
-    return { ...s };
-  })
-  .on(treeChanged, (s, fn) => {
-    fn(s);
-    return { ...s };
-  })
-  .on(simPatched, (s, patch) => ({ ...s, sim: { ...s.sim, ...patch } }))
-  .on(overrideSet, (s, { id, value }) => ({
+  },
+  target: $editor,
+});
+sample({
+  clock: patched,
+  source: $editor,
+  fn: (s, { node, patch }) => { Object.assign(node, patch); return { ...s }; },
+  target: $editor,
+});
+sample({
+  clock: treeChanged,
+  source: $editor,
+  fn: (s, mutate) => { mutate(s); return { ...s }; },
+  target: $editor,
+});
+sample({ clock: simPatched, source: $editor, fn: (s, patch) => ({ ...s, sim: { ...s.sim, ...patch } }), target: $editor });
+sample({
+  clock: overrideSet,
+  source: $editor,
+  fn: (s, { id, value }) => ({
     ...s, sim: { ...s.sim, overrides: { ...s.sim.overrides, [id]: value } },
-  }))
-  .on(errored, (s, err) => ({ ...s, err }));
+  }),
+  target: $editor,
+});
+sample({ clock: errored, source: $editor, fn: (s, err) => ({ ...s, err }), target: $editor });
+
+// right-side panel tab (Properties/Simulator) — UI state, but driven by a model event (select),
+// not a reactive read of $editor.sel: $editor changes on every simPatched (a simulator tweak),
+// and if a node stayed selected from before, deriving off $editor.sel would flip the tab back
+// to Properties on every input. Keyed off the select event itself instead.
+export const $rightPanel = createStore<'props' | 'sim'>('props');
+export const rightPanelSet = createEvent<'props' | 'sim'>();
+sample({ clock: rightPanelSet, target: $rightPanel });
+sample({ clock: select, filter: Boolean, fn: () => 'props' as const, target: $rightPanel });
 
 // ---- loading ----
 export async function bitmapOf(r: Resource): Promise<ImageBitmap> {
@@ -96,12 +135,20 @@ export async function bitmapOf(r: Resource): Promise<ImageBitmap> {
     : createImageBitmap(new Blob([r.data as BlobPart], { type: 'image/jpeg' }));
 }
 
-export const loadBufferFx = createEffect(
+const loadBufferFx = createEffect(
   async ({ buf, label }: { buf: ArrayBuffer | Uint8Array; label: string }) => {
     const face = parseBin(buf);
     for (const r of face.resources) r.bitmap = await bitmapOf(r);
     return { face, label };
   });
+
+export const loadRequested = createEvent<{ buf: ArrayBuffer | Uint8Array; label: string }>();
+sample({ clock: loadRequested, target: loadBufferFx });
+export const $loading = loadBufferFx.pending;
+// fired on any successful load (drag-drop import, or opened from the marketplace) — pages that
+// need to react (e.g. navigate once the face is ready) subscribe; others just ignore it
+export const loadDone = createEvent<{ face: Face; label: string }>();
+sample({ clock: loadBufferFx.doneData, target: loadDone });
 
 // which resource indices are accent-tintable: struct.meta[7]===4 (metaInfo's `accent` field)
 // — a real per-widget capability flag, confirmed against 7 real-device test cases including
@@ -151,20 +198,31 @@ function queueAccent(face: Face, color: string | null) {
   return accentQueue;
 }
 
-simPatched.watch(patch => {
-  if (!('accentColor' in patch)) return;
-  const { face } = editor.getState();
-  if (face) queueAccent(face, patch.accentColor ?? null);
+const accentFx = createEffect(({ face, color }: { face: Face; color: string | null }) =>
+  queueAccent(face, color));
+
+sample({
+  clock: simPatched,
+  source: $editor,
+  filter: (s, patch) => 'accentColor' in patch && !!s.face,
+  fn: (s, patch) => ({ face: s.face!, color: patch.accentColor ?? null }),
+  target: accentFx,
 });
-faceLoaded.watch(({ face }) => {
-  const { accentColor } = editor.getState().sim;
-  if (accentColor) queueAccent(face, accentColor);
+sample({
+  clock: faceLoaded,
+  source: $editor,
+  filter: s => !!s.sim.accentColor,
+  fn: (s, { face }) => ({ face, color: s.sim.accentColor! }),
+  target: accentFx,
 });
 // PropsPanel's "tints with device accent color" checkbox flips meta[7] via `patched` — re-run
 // so a live accent preview picks up the change immediately, not just on the next color pick
-patched.watch(() => {
-  const { face, sim } = editor.getState();
-  if (face && sim.accentColor) queueAccent(face, sim.accentColor);
+sample({
+  clock: patched,
+  source: $editor,
+  filter: s => !!(s.face && s.sim.accentColor),
+  fn: s => ({ face: s.face!, color: s.sim.accentColor! }),
+  target: accentFx,
 });
 
 // Figma-style alignment: nudge the selected node so its RENDERED bounding box lands on the
@@ -176,7 +234,7 @@ patched.watch(() => {
 // the format can express, and AUTO (0x8000) children ignore x/y entirely.
 export type AlignDir = 'left' | 'hcenter' | 'right' | 'top' | 'vcenter' | 'bottom';
 export function alignSelected(dir: AlignDir) {
-  const s = editor.getState();
+  const s = $editor.getState();
   if (!s.face || !s.sel) return;
   const sel = s.sel;
   const c = document.createElement('canvas');
@@ -235,7 +293,7 @@ export function alignSelected(dir: AlignDir) {
   if (pass()) pass();
 }
 
-export const newFaceFx = createEffect(async (name: string = 'Custom') => {
+const newFaceFx = createEffect(async (name: string = 'Custom') => {
   const black = (w: number, h: number): Resource => {
     const px = new Uint8ClampedArray(w * h * 4);
     for (let i = 3; i < px.length; i += 4) px[i] = 255;
@@ -262,8 +320,15 @@ export const newFaceFx = createEffect(async (name: string = 'Custom') => {
   return { face, label: 'new', dirty: true };
 });
 
+export const newFaceRequested = createEvent<string | void>();
+sample({ clock: newFaceRequested, target: newFaceFx });
+
 sample({ clock: [loadBufferFx.doneData, newFaceFx.doneData], target: faceLoaded });
-loadBufferFx.fail.watch(({ params, error }) => errored(`${params.label}: ${error.message}`));
+sample({
+  clock: loadBufferFx.fail,
+  fn: ({ params, error }) => `${params.label}: ${error.message}`,
+  target: errored,
+});
 
 // ---- widget operations ----
 function findParent(nodes: FaceNode[], target: FaceNode): FaceNode | null {
@@ -275,8 +340,12 @@ function findParent(nodes: FaceNode[], target: FaceNode): FaceNode | null {
   return null;
 }
 
+// deleteWidget/buildCurrentBin/previewBlob/exportBin below stay as plain functions reading
+// $editor.getState() directly: they're one-shot imperative actions fired straight from a
+// component event handler (not data derived from a clock), so there's no sample() clock to
+// hang them on — the mutations they trigger (checkpoint/treeChanged) still go through events.
 export function deleteWidget() {
-  const s = editor.getState();
+  const s = $editor.getState();
   if (!s.sel || !s.face) return;
   const p = findParent(s.face.screens, s.sel);
   if (!p) return;
@@ -312,9 +381,9 @@ function metaWith(id: number, max: number) {
 }
 
 // kind: image | number (10 digit files 0..9) | hand
-export const addWidgetFx = createEffect(
+const addWidgetFx = createEffect(
   async ({ kind, files }: { kind: 'image' | 'number' | 'hand'; files: File[] }) => {
-    const s = editor.getState();
+    const s = $editor.getState();
     if (!s.face || !files.length) return;
     checkpoint(0);
     const scr = s.face.screens.find(x => x.tag === s.screenTag) || s.face.screens[0];
@@ -345,11 +414,14 @@ export const addWidgetFx = createEffect(
       st.ids = collectIds(st.face!);
     });
   });
-addWidgetFx.fail.watch(({ error }) => errored(`add widget: ${error.message}`));
+sample({ clock: addWidgetFx.fail, fn: ({ error }) => `add widget: ${error.message}`, target: errored });
 
-export const replaceImageFx = createEffect(
+export const addWidgetRequested = createEvent<{ kind: 'image' | 'number' | 'hand'; files: File[] }>();
+sample({ clock: addWidgetRequested, target: addWidgetFx });
+
+const replaceImageFx = createEffect(
   async ({ resIdx, file }: { resIdx: number; file: File }) => {
-    const { face } = editor.getState();
+    const { face } = $editor.getState();
     const r = face!.resources[resIdx];
     if (r.cf === 1) {
       const data = new Uint8Array(await file.arrayBuffer());
@@ -365,8 +437,11 @@ export const replaceImageFx = createEffect(
     enc.bitmap = await bitmapOf(enc);
     treeChanged(() => Object.assign(r, enc));
   });
-editor.on(replaceImageFx.done, s => ({ ...s, dirty: true }));
-replaceImageFx.fail.watch(({ error }) => errored(`image replace: ${error.message}`));
+sample({ clock: replaceImageFx.done, source: $editor, fn: s => ({ ...s, dirty: true }), target: $editor });
+sample({ clock: replaceImageFx.fail, fn: ({ error }) => `image replace: ${error.message}`, target: errored });
+
+export const replaceImageRequested = createEvent<{ resIdx: number; file: File }>();
+sample({ clock: replaceImageRequested, target: replaceImageFx });
 
 // ---- export ----
 function regenPreviews(face: Face, sim: Sim) {
@@ -389,7 +464,7 @@ function regenPreviews(face: Face, sim: Sim) {
 }
 
 export function buildCurrentBin(): Uint8Array {
-  const s = editor.getState();
+  const s = $editor.getState();
   if (s.dirty) regenPreviews(s.face!, s.sim); // embedded 0x28 previews = current render
   const out = buildBin(s.face!);
   parseBin(out); // self-check
@@ -398,7 +473,7 @@ export function buildCurrentBin(): Uint8Array {
 
 // PNG snapshot of the main screen, for marketplace cards
 export function previewBlob(): Promise<Blob> {
-  const { face, sim } = editor.getState();
+  const { face, sim } = $editor.getState();
   const c = document.createElement('canvas');
   c.width = 466; c.height = 466;
   render(c.getContext('2d')!, face!, TAG.main, sim);
@@ -410,7 +485,7 @@ export function exportBin() {
     const out = buildCurrentBin();
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([out as BlobPart]));
-    a.download = `${editor.getState().face!.name || 'watchface'}.bin`;
+    a.download = `${$editor.getState().face!.name || 'watchface'}.bin`;
     a.click();
     URL.revokeObjectURL(a.href);
   } catch (e) {

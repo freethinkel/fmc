@@ -9,9 +9,12 @@ import groupedUrl from "./__fixtures__/Multifunction__368__Function.bin?url";
 
 test("alignSelected lands the rendered bbox on center/bottom", async () => {
   const buf = await fetch(url).then((r) => r.arrayBuffer());
-  await editorModel.loadBufferFx({ buf, label: "align-test" });
+  await new Promise<void>((resolve) => {
+    const unwatch = editorModel.loadDone.watch(() => { unwatch(); resolve(); });
+    editorModel.loadRequested({ buf, label: "align-test" });
+  });
   editorModel.simPatched({ live: false, time: new Date("2026-01-09T10:09:30").getTime() });
-  const s = editorModel.editor.getState();
+  const s = editorModel.$editor.getState();
 
   const c = document.createElement("canvas");
   c.width = c.height = 466;
@@ -29,7 +32,7 @@ test("alignSelected lands the rendered bbox on center/bottom", async () => {
   editorModel.alignSelected("hcenter");
   editorModel.alignSelected("bottom");
 
-  const s2 = editorModel.editor.getState();
+  const s2 = editorModel.$editor.getState();
   const hits2 = render(c.getContext("2d")!, s2.face!, TAG.main, s2.sim);
   const h = hits2.findLast((x) => x.node === h0.node)!;
   expect(h.x).toBe(Math.round((466 - h.w) / 2));
@@ -38,9 +41,12 @@ test("alignSelected lands the rendered bbox on center/bottom", async () => {
 
 test("alignSelected aligns a group child within its parent frame", async () => {
   const buf = await fetch(groupedUrl).then((r) => r.arrayBuffer());
-  await editorModel.loadBufferFx({ buf, label: "align-test-grouped" });
+  await new Promise<void>((resolve) => {
+    const unwatch = editorModel.loadDone.watch(() => { unwatch(); resolve(); });
+    editorModel.loadRequested({ buf, label: "align-test-grouped" });
+  });
   editorModel.simPatched({ live: false, time: new Date("2026-01-09T10:09:30").getTime() });
-  const s = editorModel.editor.getState();
+  const s = editorModel.$editor.getState();
 
   const c = document.createElement("canvas");
   c.width = c.height = 466;
@@ -64,7 +70,7 @@ test("alignSelected aligns a group child within its parent frame", async () => {
   editorModel.select(pair.ch.node);
   editorModel.alignSelected("bottom");
 
-  const s2 = editorModel.editor.getState();
+  const s2 = editorModel.$editor.getState();
   const hits2 = render(c.getContext("2d")!, s2.face!, TAG.main, s2.sim);
   const g = hits2.findLast((x) => x.node === pair.gh.node)!;
   const h = hits2.findLast((x) => x.node === pair.ch.node)!;

@@ -2,16 +2,14 @@
 	import { Button } from '$lib/shared/components/ui/button';
 	import * as Card from '$lib/shared/components/ui/card/index.js';
 	import { Badge } from '$lib/shared/components/ui/badge/index.js';
-	import { Bluetooth, BatteryFull, Cpu, Hash, Zap, Eraser } from '@lucide/svelte';
+	import { Bluetooth, BatteryFull, Cpu, Hash, Eraser } from '@lucide/svelte';
 	import { bleModel } from '../model';
 	import { dialName, dialGroup } from '../lib/catalog-names';
 
-	const { bleStatus, bleInfo, connectFx, forgetFx, dials } = bleModel;
-
-	const connecting = connectFx.pending;
-	const forgetting = forgetFx.pending;
-	// which watchface is actually active, the protocol doesn't report it — we show the last one we flashed
-	const lastFlashed = Number(localStorage.getItem('fmc_last_wfid') || 0);
+	const {
+		$bleStatus: bleStatus, $bleInfo: bleInfo, $dials: dials,
+		connectRequested, forgetRequested, $connecting: connecting, $forgetting: forgetting,
+	} = bleModel;
 </script>
 
 <svelte:head><title>Watch — FMC Watchfaces</title></svelte:head>
@@ -25,10 +23,10 @@
 				<Card.Description>CMF Watch Pro 2 over Web Bluetooth.</Card.Description>
 			</Card.Header>
 			<Card.Content class="flex items-center gap-3">
-				<Button onclick={() => connectFx().catch(() => {})} disabled={$connecting}>
+				<Button onclick={() => connectRequested()} disabled={$connecting}>
 					<Bluetooth class="size-4" /> {$connecting ? 'Connecting…' : 'Connect'}
 				</Button>
-				<Button variant="ghost" size="sm" onclick={() => forgetFx().catch(() => {})} disabled={$forgetting}
+				<Button variant="ghost" size="sm" onclick={() => forgetRequested()} disabled={$forgetting}
 					title="Clear Chrome's device permission and the saved auth key — does not affect pairing state on the watch itself">
 					<Eraser class="size-4" /> {$forgetting ? 'Forgetting…' : 'Forget device'}
 				</Button>
@@ -45,9 +43,6 @@
 				<p class="flex items-center gap-2"><BatteryFull class="size-4 text-emerald-500" /> Battery: {$bleInfo.battery ?? '?'}%</p>
 				<p class="flex items-center gap-2"><Cpu class="size-4 text-muted-foreground" /> Firmware: {$bleInfo.firmware ?? '?'}</p>
 				<p class="flex items-center gap-2"><Hash class="size-4 text-muted-foreground" /> Serial: {$bleInfo.serial ?? '?'}</p>
-				{#if lastFlashed}
-					<p class="flex items-center gap-2"><Zap class="size-4 text-muted-foreground" /> Last flashed by us: <Badge variant="secondary">#{lastFlashed}</Badge></p>
-				{/if}
 			</Card.Content>
 		</Card.Root>
 

@@ -3,7 +3,7 @@
 	import { authModel } from "../model";
 	import { goto } from "$app/navigation";
 
-	const { user } = authModel;
+	const { $user: user } = authModel;
 	// ponytail: already logged in — nothing to see on this page
 	$effect(() => { if ($user) goto("/market"); });
 </script>

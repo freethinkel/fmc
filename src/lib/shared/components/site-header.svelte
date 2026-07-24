@@ -11,7 +11,7 @@
 	import { authModel } from "$lib/modules/auth/model";
 	import { headerSlot } from "./header-slot.svelte.js";
 
-	const { user, logout } = authModel;
+	const { $user: user, logout } = authModel;
 	const titles = { "/market": "Marketplace", "/editor": "Editor", "/my": "My watchfaces", "/watch": "Watch", "/login": "Sign in", "/register": "Sign up" };
 	const title = $derived(titles[page.url.pathname] ?? "");
 	const initials = $derived(($user?.name || $user?.email || "?").slice(0, 2).toUpperCase());

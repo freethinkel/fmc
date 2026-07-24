@@ -5,8 +5,7 @@
 	import * as Field from "$lib/shared/components/ui/field/index.js";
 	import { Input } from "$lib/shared/components/ui/input/index.js";
 	import { authModel } from "../model";
-	const { registerFx } = authModel;
-	import { goto } from "$app/navigation";
+	const { registerRequested, $registerPending: busy, $registerErr: registerErr } = authModel;
 
 	let { class: className, ...restProps } = $props();
 
@@ -14,22 +13,17 @@
 	let email = $state("");
 	let password = $state("");
 	let confirm = $state("");
-	let err = $state("");
-	const busy = registerFx.pending;
+	let mismatchErr = $state("");
+	const err = $derived(mismatchErr || $registerErr);
 
-	async function submit(e) {
+	function submit(e) {
 		e.preventDefault();
 		if (password !== confirm) {
-			err = "Passwords do not match.";
+			mismatchErr = "Passwords do not match.";
 			return;
 		}
-		err = "";
-		try {
-			await registerFx({ email, password, name });
-			goto("/market");
-		} catch (e) {
-			err = e.data?.data?.email?.message || e.data?.data?.password?.message || e.message;
-		}
+		mismatchErr = "";
+		registerRequested({ email, password, name });
 	}
 </script>
 

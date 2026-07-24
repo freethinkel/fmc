@@ -11,35 +11,20 @@
 	import { Input } from "$lib/shared/components/ui/input/index.js";
 	import { cn } from "$lib/shared/helpers";
 	import { authModel } from "../model";
-	const { loginFx, oauthFx } = authModel;
-	import { goto } from "$app/navigation";
+	const { loginRequested, oauthRequested, $loginPending: busy, $loginErr: err } = authModel;
 	let { class: className, ...restProps } = $props();
 
 	const id = $props.id();
 
 	let email = $state("");
 	let password = $state("");
-	let err = $state("");
-	const busy = loginFx.pending;
 
-	async function go() {
-		err = "";
-		try {
-			await loginFx({ email, password });
-			goto("/market");
-		} catch (e) {
-			err = e.data?.data?.email?.message || e.data?.data?.password?.message || e.message;
-		}
+	function go() {
+		loginRequested({ email, password });
 	}
 
-	async function oauth(provider) {
-		err = "";
-		try {
-			await oauthFx(provider);
-			goto("/market");
-		} catch (e) {
-			err = `login: ${e.message}`;
-		}
+	function oauth(provider) {
+		oauthRequested(provider);
 	}
 </script>
 
@@ -74,8 +59,8 @@
 						<FieldLabel for="password-{id}">Password</FieldLabel>
 						<Input id="password-{id}" type="password" required minlength={8} autocomplete="current-password" bind:value={password} />
 					</Field>
-					{#if err}
-						<p class="text-destructive text-sm">{err}</p>
+					{#if $err}
+						<p class="text-destructive text-sm">{$err}</p>
 					{/if}
 					<Field>
 						<Button type="submit" disabled={$busy}>Login</Button>

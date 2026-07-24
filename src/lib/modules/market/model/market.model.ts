@@ -1,79 +1,164 @@
 // Marketplace: effector stores on top of PocketBase.
-import { createEffect, createEvent, createStore, sample } from 'effector';
+import { attach, createEffect, createEvent, createStore, sample } from 'effector';
 import type { RecordModel } from 'pocketbase';
-import { pb } from '$lib/shared/api';
+import { goto } from '$app/navigation';
+import { fileUrl } from '$lib/shared/api';
+import { authModel } from '$lib/modules/auth/model';
 import { bleModel } from '$lib/modules/device/model';
+import { editorModel } from '$lib/modules/editor/model';
+import * as marketApi from './market.api';
 
-const MAX_BIN = 1048576; // .bin limit, duplicated in the PB schema
+export type { SavePayload } from './market.api';
 
-export const loadMarketFx = createEffect(async () => {
-  // ponytail: full list, not paginated — catalog + user publishes are a couple hundred
-  // records, cheap to fetch whole. getList(1, 50, ...) silently hid everything past the
-  // 50 newest (e.g. Creative__312__Disc, ranked #67 by -created) — switch to real
-  // pagination if this grows into the thousands.
-  const [items, lk] = await Promise.all([
-    pb.collection('watchfaces').getFullList({ sort: '-created', expand: 'owner', filter: 'published = true' }),
-    pb.collection('likes').getFullList(),
-  ]);
-  return { items, likes: lk };
-});
+// api effects stay private — components only dispatch the *Requested events below
 
-export const loadMyFx = createEffect((userId: string) =>
-  pb.collection('watchfaces').getFullList({ sort: '-updated', filter: `owner = '${userId}'` }));
+export const marketLoadRequested = createEvent();
+sample({ clock: marketLoadRequested, target: marketApi.loadMarketFx });
+export const $marketLoading = marketApi.loadMarketFx.pending;
 
-export const toggleLikeFx = createEffect(
-  async ({ wf, userId }: { wf: RecordModel; userId: string }) => {
-    const mine = likes.getState().find(l => l.watchface === wf.id && l.user === userId);
-    if (mine) await pb.collection('likes').delete(mine.id);
-    else await pb.collection('likes').create({ user: userId, watchface: wf.id });
-    return pb.collection('likes').getFullList();
-  });
+export const myLoadRequested = createEvent<string>();
+sample({ clock: myLoadRequested, target: marketApi.loadMyFx });
+export const $myLoading = marketApi.loadMyFx.pending;
 
-export const removeFx = createEffect((wf: RecordModel) => pb.collection('watchfaces').delete(wf.id));
-sample({ clock: removeFx.done, target: loadMarketFx });
+export const removeRequested = createEvent<RecordModel>();
+sample({ clock: removeRequested, target: marketApi.removeFx });
+export const $removing = marketApi.removeFx.pending;
+sample({ clock: marketApi.removeFx.done, target: marketApi.loadMarketFx });
+
+export const publishToggleRequested = createEvent<RecordModel>();
+sample({ clock: publishToggleRequested, target: marketApi.togglePublishFx });
 
 // watchface opened in the editor from the market/my pages — Save/Publish update it in place instead of spawning copies
 export const openedWfSet = createEvent<RecordModel | null>();
-export const openedWf = createStore<RecordModel | null>(null).on(openedWfSet, (_, wf) => wf);
+export const $openedWf = createStore<RecordModel | null>(null);
+sample({ clock: openedWfSet, target: $openedWf });
 
-export interface SavePayload {
-  name: string; description?: string; ownerId: string; bin: Uint8Array; preview: Blob; published: boolean;
-}
+// "open in editor" from a market/my card: fetch the .bin, hand it to the editor model, then
+// navigate once it's actually loaded — used by both pages (market.svelte, my.svelte)
+export const editRequested = createEvent<RecordModel>();
+const openInEditorFx = createEffect(async (wf: RecordModel) => {
+  const buf = await (await fetch(fileUrl(wf, 'bin'))).arrayBuffer();
+  return { wf, buf };
+});
+sample({ clock: editRequested, target: openInEditorFx });
+sample({ clock: openInEditorFx.failData, fn: e => e.message, target: editorModel.errored });
 
-// create or update the currently opened own record; returns the record so the next Save targets the same one
-export const saveFx = createEffect(async (p: SavePayload) => {
-  if (p.bin.length > MAX_BIN)
-    throw new Error(`bin is ${(p.bin.length / 1024 / 1024).toFixed(1)} MB — limit is 1 MB`);
-  const fd = new FormData();
-  fd.set('name', p.name);
-  if (p.description !== undefined) fd.set('description', p.description);
-  fd.set('owner', p.ownerId);
-  fd.set('published', p.published ? 'true' : 'false');
-  fd.set('bin', new Blob([p.bin as BlobPart]), `${p.name || 'watchface'}.bin`);
-  fd.set('preview', p.preview, 'preview.png');
-  const opened = openedWf.getState();
-  const col = pb.collection('watchfaces');
-  return opened && opened.owner === p.ownerId ? col.update(opened.id, fd) : col.create(fd);
+sample({
+  clock: openInEditorFx.doneData,
+  source: authModel.$user,
+  fn: (user, { wf }) => (user && wf.owner === user.id ? wf : null),
+  target: openedWfSet,
+});
+sample({
+  clock: openInEditorFx.doneData,
+  fn: ({ wf, buf }) => ({ buf, label: wf.name }),
+  target: editorModel.loadRequested,
+});
+
+// editorModel.loadDone also fires for unrelated loads (drag-drop import on /editor) — only
+// navigate when the load we're waiting on is specifically the one editRequested started
+const $awaitingEdit = createStore(false);
+sample({ clock: openInEditorFx.doneData, fn: () => true, target: $awaitingEdit });
+const navigateToEditorFx = createEffect(() => goto('/editor'));
+sample({ clock: editorModel.loadDone, source: $awaitingEdit, filter: Boolean, target: navigateToEditorFx });
+sample({ clock: editorModel.loadDone, fn: () => false, target: $awaitingEdit });
+
+// resolves openedId from $openedWf so the api layer doesn't need to know about model state
+const saveFx = attach({
+  source: $openedWf,
+  effect: marketApi.saveFx,
+  mapParams: (p: marketApi.SavePayload, opened) => ({
+    ...p, openedId: opened && opened.owner === p.ownerId ? opened.id : undefined,
+  }),
 });
 sample({ clock: saveFx.doneData, target: openedWfSet });
+export const $savePending = saveFx.pending;
 
-export const togglePublishFx = createEffect((wf: RecordModel) =>
-  pb.collection('watchfaces').update(wf.id, { published: !wf.published }));
+// editor.svelte's "Save" and PublishDialog's "Publish" both hit saveFx but need different
+// done/error handling (Publish also navigates + closes the dialog) and are mounted on the same
+// page at the same time — a shared done/err reaction would make one react to the other's call,
+// so each gets its own request event and $saveKind picks out which done/failData was whose. All
+// of the follow-up (dialog open state, navigation, error banner) lives here, not in components.
+export const saveDraftRequested = createEvent<marketApi.SavePayload>();
+export const publishRequested = createEvent<marketApi.SavePayload>();
+sample({ clock: saveDraftRequested, target: saveFx });
+sample({ clock: publishRequested, target: saveFx });
+
+const $saveKind = createStore<'draft' | 'publish' | null>(null);
+sample({ clock: saveDraftRequested, fn: () => 'draft' as const, target: $saveKind });
+sample({ clock: publishRequested, fn: () => 'publish' as const, target: $saveKind });
+
+sample({
+  clock: saveFx.failData, source: $saveKind, filter: k => k === 'draft',
+  fn: (_k, e) => `save: ${e.message}`, target: editorModel.errored,
+});
+
+export const $publishDialogOpen = createStore(false);
+export const publishDialogOpened = createEvent();
+export const publishDialogClosed = createEvent();
+sample({ clock: publishDialogOpened, fn: () => true, target: $publishDialogOpen });
+sample({ clock: publishDialogClosed, fn: () => false, target: $publishDialogOpen });
+sample({
+  clock: saveFx.done, source: $saveKind, filter: k => k === 'publish',
+  fn: () => false, target: $publishDialogOpen,
+});
+sample({
+  clock: saveFx.failData, source: $saveKind, filter: k => k === 'publish',
+  fn: () => false, target: $publishDialogOpen,
+});
+sample({
+  clock: saveFx.failData, source: $saveKind, filter: k => k === 'publish',
+  fn: (_k, e) => `publish: ${e.message}`, target: editorModel.errored,
+});
+const navigateToMarketFx = createEffect(() => goto('/market'));
+sample({ clock: saveFx.done, source: $saveKind, filter: k => k === 'publish', target: navigateToMarketFx });
+
+export const $likes = createStore<RecordModel[]>([]);
+sample({ clock: marketApi.loadMarketFx.doneData, fn: d => d.likes, target: $likes });
+
+// resolves the caller's existing like id from $likes so the api layer doesn't need to know about model state
+const toggleLikeFx = attach({
+  source: $likes,
+  effect: marketApi.toggleLikeFx,
+  mapParams: ({ wf, userId }: { wf: RecordModel; userId: string }, likes) => ({
+    wf, userId, mineId: likes.find(l => l.watchface === wf.id && l.user === userId)?.id,
+  }),
+});
+sample({ clock: toggleLikeFx.doneData, target: $likes });
+
+export const likeToggleRequested = createEvent<{ wf: RecordModel; userId: string }>();
+sample({ clock: likeToggleRequested, target: toggleLikeFx });
+
+export const $items = createStore<RecordModel[]>([]);
+sample({ clock: marketApi.loadMarketFx.doneData, fn: d => d.items, target: $items });
+
+export const $myItems = createStore<RecordModel[]>([]);
+sample({ clock: marketApi.loadMyFx.doneData, target: $myItems });
+sample({
+  clock: marketApi.togglePublishFx.doneData,
+  source: $myItems,
+  fn: (list, r) => list.map(i => (i.id === r.id ? r : i)),
+  target: $myItems,
+});
+sample({
+  clock: marketApi.removeFx.done,
+  source: $myItems,
+  fn: (list, { params }) => list.filter(i => i.id !== params.id),
+  target: $myItems,
+});
+
+export const $marketErr = createStore('').reset(marketApi.loadMarketFx.done);
+sample({
+  clock: [
+    marketApi.loadMarketFx.failData, marketApi.loadMyFx.failData, toggleLikeFx.failData,
+    marketApi.removeFx.failData, marketApi.togglePublishFx.failData,
+  ],
+  fn: e => e.message,
+  target: $marketErr,
+});
 
 // downloads counter also bumps on a successful flash to the watch — no auth check
-export const bumpDownloadsFx = createEffect((wfId: string) =>
-  pb.send(`/api/wf/${wfId}/bump-downloads`, { method: 'POST' }));
-sample({ clock: bleModel.flashFx.done, source: openedWf, filter: Boolean, fn: wf => wf.id, target: bumpDownloadsFx });
-
-export const items = createStore<RecordModel[]>([]).on(loadMarketFx.doneData, (_, d) => d.items);
-export const myItems = createStore<RecordModel[]>([])
-  .on(loadMyFx.doneData, (_, d) => d)
-  .on(togglePublishFx.doneData, (list, r) => list.map(i => (i.id === r.id ? r : i)));
-sample({ clock: removeFx.done, source: myItems, fn: (list, { params }) => list.filter(i => i.id !== params.id), target: myItems });
-
-export const likes = createStore<RecordModel[]>([])
-  .on(loadMarketFx.doneData, (_, d) => d.likes)
-  .on(toggleLikeFx.doneData, (_, l) => l);
-export const marketErr = createStore('')
-  .on([loadMarketFx.failData, loadMyFx.failData, toggleLikeFx.failData, removeFx.failData, togglePublishFx.failData], (_, e) => e.message)
-  .reset(loadMarketFx.done);
+sample({
+  clock: bleModel.flashDone, source: $openedWf, filter: Boolean,
+  fn: wf => wf.id, target: marketApi.bumpDownloadsFx,
+});

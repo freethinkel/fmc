@@ -15,23 +15,23 @@
   import PropsPanel from '../components/PropsPanel.svelte';
   import SimPanel from '../components/SimPanel.svelte';
 
-  const { user } = authModel;
-  const { bleStatus, bleInfo, flashFx } = bleModel;
-  const { saveFx, openedWf, openedWfSet } = marketModel;
-  const { editor, select, screenTagSet, checkpoint, undo, redo, patched,
-    loadBufferFx, newFaceFx, exportBin, buildCurrentBin, previewBlob, errored } = editorModel;
+  const { $user: user } = authModel;
+  const { $bleStatus: bleStatus, $bleInfo: bleInfo, flashRequested, $flashing: flashing } = bleModel;
+  const {
+    $openedWf: openedWf, openedWfSet,
+    saveDraftRequested, $savePending: saving, publishDialogOpened,
+  } = marketModel;
+  const { $editor: editor, select, screenTagSet, checkpoint, undo, redo, patched,
+    loadRequested, newFaceRequested, exportBin, buildCurrentBin, previewBlob,
+    $rightPanel: rightPanel, rightPanelSet } = editorModel;
 
   let canvas = $state(null);
-  let publishOpen = $state(false);
   let mobilePanel = $state(null); // 'tree' | 'props' | 'sim' — bottom sheet on mobile
-  let rightPanel = $state('props'); // 'props' | 'sim' — right panel tabs
   let hits = [];
-  const flashing = flashFx.pending;
-  const saving = saveFx.pending;
 
   function openFile(e) {
     const f = e.target.files?.[0] || e.dataTransfer?.files?.[0];
-    if (f) f.arrayBuffer().then(buf => loadBufferFx({ buf, label: f.name }).catch(() => {}));
+    if (f) f.arrayBuffer().then(buf => loadRequested({ buf, label: f.name }));
     openedWfSet(null);
     e.preventDefault();
     if (e.target.value !== undefined) e.target.value = '';
@@ -39,15 +39,11 @@
 
   // Save: new watchface → draft; already-open own watchface → update, keeping its status
   async function saveDraft() {
-    try {
-      await saveFx({
-        name: $editor.face.name || 'Custom', ownerId: $user.id,
-        published: $openedWf?.published ?? false,
-        bin: buildCurrentBin(), preview: await previewBlob(),
-      });
-    } catch (e) {
-      errored(`save: ${e.message}`);
-    }
+    saveDraftRequested({
+      name: $editor.face.name || 'Custom', ownerId: $user.id,
+      published: $openedWf?.published ?? false,
+      bin: buildCurrentBin(), preview: await previewBlob(),
+    });
   }
 
   // the editor toolbar lives in the shared header while this page is open
@@ -55,13 +51,6 @@
     headerSlot.snippet = toolbar;
     return () => (headerSlot.snippet = null);
   });
-
-  // selecting a node (in the tree or on the canvas) switches the right panel to
-  // Properties — off the select event itself, not a reactive read of $editor.sel:
-  // the store changes on every simPatched (a simulator tweak), and if a node stayed
-  // selected from before, an effect keyed on $editor.sel would fire on every input
-  // and keep resetting the tab back to Properties.
-  $effect(() => select.watch(node => { if (node) rightPanel = 'props'; }));
 
   // ---- rendering ----
   $effect(() => {
@@ -160,10 +149,8 @@
     e.preventDefault();
   }
 
-  async function flashWatch() {
-    try {
-      await flashFx(buildCurrentBin());
-    } catch { /* status is already in bleStatus */ }
+  function flashWatch() {
+    flashRequested(buildCurrentBin());
   }
 
   const hasAOD = $derived($editor.face?.screens.some(s => s.tag === TAG.aod));
@@ -176,7 +163,7 @@
     <label class="flex cursor-pointer items-center gap-1.5"><FolderInput class="size-4" /> <span class="hidden lg:inline">Import bin</span>
       <input type="file" accept=".bin" hidden onchange={openFile} /></label>
   </Button>
-  <Button size="sm" variant="outline" onclick={() => { openedWfSet(null); newFaceFx(); }} title="New">
+  <Button size="sm" variant="outline" onclick={() => { openedWfSet(null); newFaceRequested(); }} title="New">
     <FilePlus2 class="size-4" /> <span class="hidden lg:inline">New</span>
   </Button>
   {#if $editor.face}
@@ -196,7 +183,7 @@
         title={$openedWf ? 'Save changes' : 'Save as draft'}>
         <Save class="size-4" /> <span class="hidden lg:inline">{$saving ? 'Saving…' : 'Save'}</span>
       </Button>
-      <Button size="sm" variant="secondary" onclick={() => (publishOpen = true)} title="Publish">
+      <Button size="sm" variant="secondary" onclick={() => publishDialogOpened()} title="Publish">
         <UploadCloud class="size-4" /> <span class="hidden lg:inline">Publish</span>
       </Button>
     {/if}
@@ -230,7 +217,7 @@
     </section>
 
     <aside class="hidden min-h-0 flex-col border-l md:flex">
-      <Tabs.Root bind:value={rightPanel} class="flex min-h-0 flex-1 flex-col gap-0">
+      <Tabs.Root value={$rightPanel} onValueChange={rightPanelSet} class="flex min-h-0 flex-1 flex-col gap-0">
         <Tabs.List class="m-2 grid grid-cols-2">
           <Tabs.Trigger value="props" class="text-xs">Properties</Tabs.Trigger>
           <Tabs.Trigger value="sim" class="text-xs" disabled={!$editor.face}>Simulator</Tabs.Trigger>
@@ -269,4 +256,4 @@
   </Sheet.Content>
 </Sheet.Root>
 
-<PublishDialog bind:open={publishOpen} />
+<PublishDialog />
