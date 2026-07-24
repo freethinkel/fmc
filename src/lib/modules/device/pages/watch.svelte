@@ -1,8 +1,12 @@
 <script lang="ts">
-  import { Button } from "$lib/shared/components/ui/button";
-  import * as Card from "$lib/shared/components/ui/card";
-  import { Badge } from "$lib/shared/components/ui/badge";
-  import { Bluetooth, BatteryFull, Cpu, Hash, Eraser } from "@lucide/svelte";
+  import { Button } from "$lib/shared/components/button";
+  import { Card } from "$lib/shared/components/card";
+  import { Badge } from "$lib/shared/components/badge";
+  import Bluetooth from "@lucide/svelte/icons/bluetooth";
+  import BatteryFull from "@lucide/svelte/icons/battery-full";
+  import Cpu from "@lucide/svelte/icons/cpu";
+  import Hash from "@lucide/svelte/icons/hash";
+  import Eraser from "@lucide/svelte/icons/eraser";
   import { bleModel } from "../model";
   import { dialName, dialGroup } from "../lib/catalog-names";
 
@@ -15,88 +19,168 @@
     $connecting: connecting,
     $forgetting: forgetting,
   } = bleModel;
+
+  const muted = "oklch(from var(--color-text) l c h / 55%)";
 </script>
 
 <svelte:head><title>Watch — FMC Watchfaces</title></svelte:head>
 
-<main class="flex flex-1 flex-col gap-4 overflow-y-auto p-4 lg:p-6">
+<div class="page">
   <!-- ponytail: don't gate on navigator.bluetooth at render time — the Safari polyfill injects later; the real check is in ble.ts on click -->
   {#if !$bleInfo}
-    <Card.Root class="max-w-md">
-      <Card.Header>
-        <Card.Title>Connect your watch</Card.Title>
-        <Card.Description>CMF Watch Pro 2 over Web Bluetooth.</Card.Description>
-      </Card.Header>
-      <Card.Content class="flex items-center gap-3">
-        <Button onclick={() => connectRequested()} disabled={$connecting}>
-          <Bluetooth class="size-4" />
-          {$connecting ? "Connecting…" : "Connect"}
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onclick={() => forgetRequested()}
-          disabled={$forgetting}
-          title="Clear Chrome's device permission and the saved auth key — does not affect pairing state on the watch itself"
-        >
-          <Eraser class="size-4" />
-          {$forgetting ? "Forgetting…" : "Forget device"}
-        </Button>
-        {#if $bleStatus}<span class="text-xs text-muted-foreground">{$bleStatus}</span>{/if}
-      </Card.Content>
-    </Card.Root>
+    <Card>
+      <div class="content">
+        <div class="header">
+          <h2 class="title">Connect your watch</h2>
+          <p class="desc">CMF Watch Pro 2 over Web Bluetooth.</p>
+        </div>
+        <div class="row">
+          <Button onClick={() => connectRequested()} disabled={$connecting}>
+            <Bluetooth size={16} />
+            {$connecting ? "Connecting…" : "Connect"}
+          </Button>
+          <span
+            title="Clear Chrome's device permission and the saved auth key — does not affect pairing state on the watch itself"
+          >
+            <Button kind="ghost" size="sm" onClick={() => forgetRequested()} disabled={$forgetting}>
+              <Eraser size={16} />
+              {$forgetting ? "Forgetting…" : "Forget device"}
+            </Button>
+          </span>
+          {#if $bleStatus}<span class="status">{$bleStatus}</span>{/if}
+        </div>
+      </div>
+    </Card>
   {:else}
-    <Card.Root class="max-w-md">
-      <Card.Header>
-        <Card.Title>CMF Watch Pro 2</Card.Title>
-        <Card.Description>{$bleStatus}</Card.Description>
-      </Card.Header>
-      <Card.Content class="flex flex-col gap-2 text-sm">
-        <p class="flex items-center gap-2">
-          <BatteryFull class="size-4 text-emerald-500" /> Battery: {$bleInfo.battery ?? "?"}%
-        </p>
-        <p class="flex items-center gap-2">
-          <Cpu class="size-4 text-muted-foreground" /> Firmware: {$bleInfo.firmware ?? "?"}
-        </p>
-        <p class="flex items-center gap-2">
-          <Hash class="size-4 text-muted-foreground" /> Serial: {$bleInfo.serial ?? "?"}
-        </p>
-      </Card.Content>
-    </Card.Root>
+    <Card>
+      <div class="content">
+        <div class="header">
+          <h2 class="title">CMF Watch Pro 2</h2>
+          <p class="desc">{$bleStatus}</p>
+        </div>
+        <div class="info">
+          <p>
+            <BatteryFull size={16} color="var(--color-accent)" /> Battery: {$bleInfo.battery ??
+              "?"}%
+          </p>
+          <p><Cpu size={16} color={muted} /> Firmware: {$bleInfo.firmware ?? "?"}</p>
+          <p><Hash size={16} color={muted} /> Serial: {$bleInfo.serial ?? "?"}</p>
+        </div>
+      </div>
+    </Card>
 
     {#if $dials}
-      <Card.Root class="max-w-md">
-        <Card.Header>
-          <Card.Title>Watchfaces on the watch</Card.Title>
-          <Card.Description>
-            Reported by the watch; side-loaded dials are not listed by the firmware.
-          </Card.Description>
-        </Card.Header>
-        <Card.Content class="flex flex-col gap-4 text-sm">
-          <div>
-            <p class="mb-2 text-xs font-medium uppercase text-muted-foreground">
-              Built-in ({$dials.builtin.length})
+      <Card>
+        <div class="content">
+          <div class="header">
+            <h2 class="title">Watchfaces on the watch</h2>
+            <p class="desc">
+              Reported by the watch; side-loaded dials are not listed by the firmware.
             </p>
-            <div class="flex flex-wrap gap-1.5">
-              {#each $dials.builtin as id (id)}
-                <Badge variant="outline" title={dialGroup(id)}>{dialName(id)}</Badge>
-              {/each}
+          </div>
+          <div class="dials">
+            <div>
+              <p class="group-label">Built-in ({$dials.builtin.length})</p>
+              <div class="badges">
+                {#each $dials.builtin as id (id)}
+                  <span title={dialGroup(id)}><Badge>{dialName(id)}</Badge></span>
+                {/each}
+              </div>
+            </div>
+            <div>
+              <p class="group-label">Downloaded ({$dials.gallery.length})</p>
+              <div class="badges">
+                {#each $dials.gallery as id (id)}
+                  <span title={dialGroup(id)}><Badge>{dialName(id)}</Badge></span>
+                {:else}
+                  <span class="none">none</span>
+                {/each}
+              </div>
             </div>
           </div>
-          <div>
-            <p class="mb-2 text-xs font-medium uppercase text-muted-foreground">
-              Downloaded ({$dials.gallery.length})
-            </p>
-            <div class="flex flex-wrap gap-1.5">
-              {#each $dials.gallery as id (id)}
-                <Badge variant="outline" title={dialGroup(id)}>{dialName(id)}</Badge>
-              {:else}
-                <span class="text-xs text-muted-foreground">none</span>
-              {/each}
-            </div>
-          </div>
-        </Card.Content>
-      </Card.Root>
+        </div>
+      </Card>
     {/if}
   {/if}
-</main>
+</div>
+
+<style>
+  .page {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    max-width: 28rem;
+    height: 100%;
+    overflow-y: auto;
+    padding: 16px;
+
+    @media (min-width: 768px) {
+      padding: 24px;
+    }
+  }
+  .content {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .header {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .title {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+  }
+  .desc {
+    margin: 0;
+    font-size: 0.875rem;
+    color: oklch(from var(--color-text) l c h / 55%);
+  }
+  .row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+  }
+  .status {
+    font-size: 0.75rem;
+    color: oklch(from var(--color-text) l c h / 55%);
+  }
+  .info {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    font-size: 0.875rem;
+
+    p {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0;
+    }
+  }
+  .dials {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    font-size: 0.875rem;
+  }
+  .group-label {
+    margin: 0 0 8px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    color: oklch(from var(--color-text) l c h / 55%);
+  }
+  .badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .none {
+    font-size: 0.75rem;
+    color: oklch(from var(--color-text) l c h / 55%);
+  }
+</style>
