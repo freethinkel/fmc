@@ -18,6 +18,7 @@ import creativeUrl from "./__fixtures__/Creative__312__Disc.bin?url";
 import defaultUrl from "./__fixtures__/Default__273__Activity_Mood.bin?url";
 import diwaliUrl from "./__fixtures__/Diwali__295__Vortex.bin?url";
 import elaborate2Url from "./__fixtures__/Multifunction__304__Elaborate_2.bin?url";
+import dichotomyUrl from "./__fixtures__/Default__276__Dichotomy.bin?url";
 
 // Frozen per-file demo time — the real clock would make hands/digits differ every run.
 // Thresholds are per-file, not one shared bound: the baked preview is a real device
@@ -139,6 +140,25 @@ const CASES = [
     sim: { calories: 156 },
     maxDiffRatio: 0.02,
   },
+  // 8 swipeable metric tiles, same 0x79/0x7a bind-per-slot mechanism as Function, correctly
+  // gated. Two real bugs found here, both from a ring (0x81) sharing its group with a static
+  // "BATT"/"KCAL" text label (tag 0x30): the ring's own bitmap is cf=4 (RGB565, no alpha —
+  // see wf.ts's decodePixels), so its "empty" background bakes as opaque black rather than
+  // transparent. Drawn as a literal rectangle, that opaque black blotted out the text label
+  // sharing its group (drawn earlier in the file, so under it) and clipped into the
+  // background's own baked "10" hour-marker glyph at the ring's edge. Fixed by chroma-keying
+  // near-black to transparent for cf=4 bitmaps specifically, lazily once per bitmap (see
+  // render.ts's ringBmp) — cf=5 images already carry real alpha and are untouched. This also
+  // meaningfully improved Combo/Activity_Mood/Elaborate_2's own ratios above (their thresholds
+  // are untouched here since they're not this case's concern). Remaining gap is the two rings'
+  // fill fraction (battery/steps-goal-relative, defaultSim's guess vs the baked device's actual
+  // unknowable live value — same caveat as every other ring case above).
+  {
+    name: "Default__276__Dichotomy",
+    url: dichotomyUrl,
+    time: "2026-01-09T10:09:30",
+    maxDiffRatio: 0.07,
+  },
 ];
 
 function labeled(canvas: HTMLCanvasElement, label: string): HTMLCanvasElement {
@@ -213,6 +233,7 @@ describe("render() output matches embedded preview", () => {
         threshold: 0.1,
       });
       const ratio = diffPixels / (r.w * r.h);
+      console.log(`RATIO ${name} = ${ratio}`);
 
       const actualCanvas = document.createElement("canvas");
       actualCanvas.width = r.w;

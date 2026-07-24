@@ -183,7 +183,7 @@ export function parseArcSpec(node: FaceNode): ArcSpec | null {
   };
 }
 
-function sectorImage(ctx: Ctx, b: ImageBitmap, x: number, y: number, spec: ArcSpec, frac: number) {
+function sectorImage(ctx: Ctx, b: ImageBitmap | OffscreenCanvas, x: number, y: number, spec: ArcSpec, frac: number) {
   const cx = x + b.width / 2, cy = y + b.height / 2;
   // ponytail: image-backed arcs (0x5b) start at 12 o'clock, not the 3-o'clock/LVGL convention
   // documented for procedural arcs (0x5a) near parseArcSpec — measured against Function's
@@ -308,6 +308,34 @@ function crossOffset(align: number, avail: number, size: number): number {
 
 // accentBitmap (if set — see editor.model.ts's applyAccent) takes priority over the baked bitmap
 const bmp = (res: Resource[], i: number) => res[i]?.accentBitmap ?? res[i]?.bitmap;
+
+// cf=4 (RGB565, no alpha channel — see wf.ts's decodePixels) ring/arc fill images bake their
+// "empty" background as opaque black, which is fine for a genuine full-bleed background image
+// but wrong for a ring meant to sit transparently over other content: confirmed on Dichotomy,
+// where this exact bitmap — drawn as a literal opaque rectangle by sectorImage/the 0x80 bar
+// path — blotted out a "BATT" text label sharing its group, and clipped into the background's
+// own baked "10" hour-marker glyph at the ring's edge. Chroma-key near-black to transparent,
+// lazily once per bitmap (keyed on the bitmap itself, not the resource, so an accent-recolored
+// swap naturally invalidates it). Only cf=4 is touched — cf=5 already carries real alpha.
+const ringMaskCache = new WeakMap<ImageBitmap, OffscreenCanvas>();
+function ringBmp(res: Resource[], i: number): ImageBitmap | OffscreenCanvas | undefined {
+  const b = bmp(res, i);
+  if (!b || res[i]?.cf !== 4) return b;
+  let masked = ringMaskCache.get(b);
+  if (!masked) {
+    masked = new OffscreenCanvas(b.width, b.height);
+    const mctx = masked.getContext('2d')!;
+    mctx.drawImage(b, 0, 0);
+    const px = mctx.getImageData(0, 0, b.width, b.height);
+    const d = px.data;
+    for (let k = 0; k < d.length; k += 4) {
+      if (d[k] < 12 && d[k + 1] < 12 && d[k + 2] < 12) d[k + 3] = 0;
+    }
+    mctx.putImageData(px, 0, 0);
+    ringMaskCache.set(b, masked);
+  }
+  return masked;
+}
 
 // goal-relative ids (steps/calories "slot" aliases) read as a raw count everywhere, EXCEPT
 // when a NUMBER shares the screen with a progress ring bound to the same id — there it must
@@ -434,7 +462,7 @@ function drawWidget(
   if (node.tag === 0x81) {
     const spec = parseArcSpec(node);
     if (!spec) return null;
-    const b = bmp(res, imgs[0]);
+    const b = ringBmp(res, imgs[0]);
     const { id, w } = metaInfo(struct);
     const frac = progressFrac(id, sim, t, spec);
     if (!b) return drawProceduralArc(ctx, spec, x, y, frac, hits, node, w, ringRGB(struct) ?? hexRGB(sim.accentColor));
@@ -448,7 +476,7 @@ function drawWidget(
   if (node.tag === 0x80) {
     const spec = parseArcSpec(node);
     if (!spec) return null;
-    const b = bmp(res, imgs[0]);
+    const b = ringBmp(res, imgs[0]);
     const { id, w } = metaInfo(struct);
     const frac = progressFrac(id, sim, t, spec);
     if (b && b.height > 3 * b.width) { // vertical bar
@@ -682,8 +710,13 @@ function drawGroup(
         // where a non-auto child sits at cross-axis 0 on purpose without wanting centering.
         // Applies to nested Group children too (e.g. the temperature tile's icon+digits+degree
         // row sitting beside a standalone degree-symbol sibling) via localOrigin's frame.x/y.
+        // Requires a second boxedOrigins candidate to compare against — a solitary non-auto,
+        // non-ring child (Dichotomy's ring-group label, alone beside an excluded ring) has
+        // nothing to pack/stack with, so boxedVertical's fallback-to-`vertical` default was
+        // centering it vertically across the whole 284px ring frame instead of leaving its
+        // authored (0,0) corner position alone.
         const origin2 = !isRing ? localOrigin(k) : null;
-        const boxed = origin2 && (boxedVertical ? !origin2.x : !origin2.y);
+        const boxed = origin2 && boxedOrigins.length > 1 && (boxedVertical ? !origin2.x : !origin2.y);
         const measured = boxed ? drawWidget(null, k, res, sim, t, 0, 0, { x: 0, y: 0 }, null, arcsById) : null;
         const pos = ringPos ?? (measured
           ? (boxedVertical
