@@ -95,20 +95,18 @@
     v[7] = on ? 4 : 0;
     set(st, { meta: hex(v) });
   }
-  // Second hands come in two firmware flavors, chosen by the data source id (corpus
-  // survey): 0x0f/0x12 tick once per second, 0x71/0x72 sweep smoothly. HANDS ONLY: a ring
-  // (0x80/0x81) switched to a smooth id renders as a static full bitmap on the real device
-  // (BOTH 0x72 and 0x71 verified on Wavy Seconds — the firmware only animates hands; ring
-  // widgets redraw at 1 Hz, period). For rings the toggle only appears on an already-smooth
-  // id so it can be switched back to its native ticking 0x0f.
-  const SECOND_IDS = [0x0f, 0x12, 0x71, 0x72];
+  // There is NO smooth second animation in this firmware, on any widget. Device-verified:
+  // a factory 0x72 hand (Sundial) ticks once per second exactly like 0x12; 0x71 (Disc_2's
+  // disc) doesn't animate at all; rings on 0x71/0x72 freeze as a static bitmap. The
+  // 0x12/0x71/0x72 ids are just alternate second sources with identical 1 Hz behavior —
+  // a smooth-sweep toggle lived here briefly and was removed as false advertising. This
+  // vestige only lets a ring that was switched to 0x71/0x72 go back to its native 0x0f.
   const isSecondWidget = $derived(
-    ($editor.sel?.tag === TAG.hand && SECOND_IDS.includes(meta?.id)) ||
-    ([0x80, 0x81].includes($editor.sel?.tag) && [0x71, 0x72].includes(meta?.id)),
+    [0x80, 0x81].includes($editor.sel?.tag) && [0x71, 0x72].includes(meta?.id),
   );
-  function setSmooth(on) {
+  function setSmooth() {
     const v = unhex(st.meta);
-    v[9] = on ? 0x72 : $editor.sel.tag === TAG.hand ? 0x12 : 0x0f;
+    v[9] = 0x0f;
     set(st, { meta: hex(v) });
   }
   function thumbURL(r) {
@@ -201,10 +199,10 @@
       </div>
     {/if}
     {#if isSecondWidget}
-      <div class="flex items-center gap-2">
-        <Checkbox checked={meta.id === 0x71 || meta.id === 0x72} onCheckedChange={v => setSmooth(v)} id="smooth" />
-        <Label for="smooth">smooth sweep (moves continuously, not once per second)</Label>
-      </div>
+      <button type="button" class="text-muted-foreground hover:text-foreground rounded-lg border px-2 py-1 text-xs"
+        onclick={setSmooth}>
+        broken second source (0x{meta.id.toString(16)}) — restore ticking 0x0f
+      </button>
     {/if}
     {#if st?.meta}
       <div>
