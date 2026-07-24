@@ -1,6 +1,7 @@
 # fmc_frontend — project rules
 
-SvelteKit (Svelte 5 runes) + Tailwind 4 + shadcn-svelte, static SPA build
+SvelteKit (Svelte 5 runes) + hand-written components with token-based scoped CSS
+(no Tailwind, no shadcn/bits-ui), static SPA build
 (`@sveltejs/adapter-static`, `fallback: 'index.html'`). Backend — the sibling repo
 `fmc_pocketbase` (PocketBase); the address comes from `VITE_PB_URL` (set in dev via `.env`,
 pointing straight at PocketBase — no vite dev-server proxy involved), and falls back to
@@ -18,8 +19,9 @@ Modular structure like in gymmate — all code in TypeScript:
 src/lib/
   shared/
     api/          # PocketBase client (pb, fileUrl, downloadUrl)
-    helpers/      # cn() + shadcn type helpers (WithElementRef, etc.)
-    components/   # app-sidebar, nav-user, site-header + ui/ (shadcn)
+    styles/       # tokens.css — design tokens, the only source of colors/type/motion
+    components/   # one folder per component (button/, input/, dialog/, …) + barrel index.ts;
+                  # app chrome: app-header/, bottom-nav.svelte
   modules/<feature>/   # auth, market, editor, device
     model/        # <feature>.model.ts + index.ts (export * as fooModel)
     lib/          # module domain libraries (editor: wf, render, facer; device: ble)
@@ -49,18 +51,24 @@ src/routes/       # thin: import a page from the module and render it
 
 ## UI
 
-- shadcn-svelte: components in `lib/shared/components/ui`, semantic tokens
-  (`bg-background`, `text-muted-foreground`), no manual `dark:` color overrides.
-- Theme is automatic: `dark:` works via `prefers-color-scheme` (Tailwind 4 default),
-  dark tokens in `@media (prefers-color-scheme: dark)` in `app.css`. Don't add a `.dark`
-  class on `<html>`, don't bring back `@custom-variant dark`.
+- Design tokens in `lib/styles/tokens.css`: `--color-accent` (#ff5c00), `--color-text`,
+  `--color-background`, `--color-error`, `--border-radius`, `--font-family`,
+  `--font-display` (Unbounded, display headings only), `--font-mono`,
+  `--spring-transition`. Never hardcode a hex in a component — derive every shade via
+  relative color: `oklch(from var(--color-text) l c h / 55%)` (muted text), `/ 12%`
+  (borders), `/ 6%` (tinted surfaces).
+- Components: Svelte 5 runes, typed `interface Props` + `$props()`, `Snippet` children
+  via `{@render}`, callback props (`onClick`, `onChange`), `$bindable()` for form values;
+  no event dispatchers. Scoped `<style>` with native `&`-nesting (Lightning CSS via Vite
+  `css.transformer` handles targets/minify — no PostCSS, no Tailwind).
+- Overlays are native-platform: `dialog/` wraps `<dialog>` (modal + `side` drawer),
+  `select/` wraps native `<select>`, `menu/` is absolute-positioned in a relative parent —
+  no portal/floating-ui deps. Button & co. don't forward arbitrary attrs; for `title`
+  tooltips wrap in a `<span title>` (see `tool-slot` in editor.svelte).
+- Theme is automatic via `prefers-color-scheme` (dark overrides in tokens.css). Don't add
+  a `.dark` class on `<html>`.
 - The catalog dialog in the editor was removed intentionally — don't restore it. Catalog
   watchfaces are visible in the shared marketplace.
-- bits-ui sets the `data-state="checked|unchecked|active|..."` attribute, not
-  `data-checked`/`data-active` — the mapping is done via custom Tailwind variants in
-  `app.css` (`@custom-variant data-checked (&[data-state="checked"])` etc.). If you add a
-  new shadcn component with `data-active:`/`data-checked:` in its classes, it won't work
-  until the variant is set up the same way.
 
 ## Bluetooth (device/lib/ble.ts)
 
