@@ -1,13 +1,10 @@
 <script lang="ts">
-  import { cn } from "$lib/shared/helpers";
-  import { Button } from "$lib/shared/components/ui/button";
-  import * as Card from "$lib/shared/components/ui/card";
-  import * as Field from "$lib/shared/components/ui/field";
-  import { Input } from "$lib/shared/components/ui/input";
+  import { Button } from "$lib/shared/components/button";
+  import { Field } from "$lib/shared/components/field";
+  import { Input } from "$lib/shared/components/input";
   import { authModel } from "../model";
-  const { registerRequested, $registerPending: busy, $registerErr: registerErr } = authModel;
 
-  let { class: className, ...restProps } = $props();
+  const { registerRequested, $registerPending: busy, $registerErr: registerErr } = authModel;
 
   let name = $state("");
   let email = $state("");
@@ -27,75 +24,51 @@
   }
 </script>
 
-<div class={cn("flex flex-col gap-6", className)} {...restProps}>
-  <Card.Root>
-    <Card.Header class="text-center">
-      <Card.Title class="text-xl">Create your account</Card.Title>
-      <Card.Description>Enter your email below to create your account</Card.Description>
-    </Card.Header>
-    <Card.Content>
-      <form onsubmit={submit}>
-        <Field.Group>
-          <Field.Field>
-            <Field.Label for="name">Full Name</Field.Label>
-            <Input
-              id="name"
-              type="text"
-              placeholder="John Doe"
-              required
-              autocomplete="name"
-              bind:value={name}
-            />
-          </Field.Field>
-          <Field.Field>
-            <Field.Label for="email">Email</Field.Label>
-            <Input
-              id="email"
-              type="email"
-              placeholder="m@example.com"
-              required
-              autocomplete="email"
-              bind:value={email}
-            />
-          </Field.Field>
-          <Field.Field>
-            <Field.Field class="grid grid-cols-2 gap-4">
-              <Field.Field>
-                <Field.Label for="password">Password</Field.Label>
-                <Input
-                  id="password"
-                  type="password"
-                  required
-                  minlength={8}
-                  autocomplete="new-password"
-                  bind:value={password}
-                />
-              </Field.Field>
-              <Field.Field>
-                <Field.Label for="confirm-password">Confirm Password</Field.Label>
-                <Input
-                  id="confirm-password"
-                  type="password"
-                  required
-                  minlength={8}
-                  autocomplete="new-password"
-                  bind:value={confirm}
-                />
-              </Field.Field>
-            </Field.Field>
-            <Field.Description>Must be at least 8 characters long.</Field.Description>
-          </Field.Field>
-          {#if err}
-            <p class="text-destructive text-sm">{err}</p>
-          {/if}
-          <Field.Field>
-            <Button type="submit" disabled={$busy}>Create Account</Button>
-            <Field.Description class="text-center">
-              Already have an account? <a href="/login">Sign in</a>
-            </Field.Description>
-          </Field.Field>
-        </Field.Group>
-      </form>
-    </Card.Content>
-  </Card.Root>
-</div>
+<form onsubmit={submit}>
+  <Field label="Full Name">
+    <Input type="text" placeholder="John Doe" required autocomplete="name" bind:value={name} />
+  </Field>
+  <Field label="Email">
+    <Input
+      type="email"
+      placeholder="m@example.com"
+      required
+      autocomplete="email"
+      bind:value={email}
+    />
+  </Field>
+  <Field label="Password">
+    <Input type="password" required autocomplete="new-password" bind:value={password} />
+  </Field>
+  <Field label="Confirm Password">
+    <Input type="password" required autocomplete="new-password" bind:value={confirm} />
+  </Field>
+  {#if err}
+    <p class="error">{err}</p>
+  {/if}
+  <Button type="submit" kind="primary" disabled={$busy}>Create Account</Button>
+  <p class="link">Already have an account? <a href="/login">Sign in</a></p>
+</form>
+
+<style>
+  form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .error {
+    margin: 0;
+    font-size: 0.875rem;
+    color: var(--color-error);
+  }
+  .link {
+    margin: 0;
+    text-align: center;
+    font-size: 0.875rem;
+    color: oklch(from var(--color-text) l c h / 55%);
+
+    a {
+      color: var(--color-accent);
+    }
+  }
+</style>

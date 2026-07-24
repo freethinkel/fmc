@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Card } from "$lib/shared/components/card";
   import LoginForm from "../components/login-form.svelte";
   import { authModel } from "../model";
   import { goto } from "$app/navigation";
@@ -12,6 +13,32 @@
 
 <svelte:head><title>Sign in — FMC Watchfaces</title></svelte:head>
 
-<div class="bg-muted flex flex-1 items-center justify-center overflow-y-auto p-6 md:p-10">
-  <LoginForm class="w-full max-w-sm" />
+<div class="wrapper">
+  <div class="panel">
+    <h1>Welcome back</h1>
+    <Card>
+      <LoginForm />
+    </Card>
+  </div>
 </div>
+
+<style>
+  .wrapper {
+    display: grid;
+    place-items: center;
+    height: 100%;
+  }
+  .panel {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    width: 100%;
+    max-width: 380px;
+  }
+  h1 {
+    margin: 0;
+    text-align: center;
+    font-family: var(--font-display);
+    font-size: 1.5rem;
+  }
+</style>
