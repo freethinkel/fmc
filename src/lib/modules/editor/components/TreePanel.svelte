@@ -1,25 +1,7 @@
 <script lang="ts">
   import { SvelteSet } from "svelte/reactivity";
   import { Button } from "$lib/shared/components/button";
-  import ImagePlus from "@lucide/svelte/icons/image-plus";
-  import Hash from "@lucide/svelte/icons/hash";
-  import Clock3 from "@lucide/svelte/icons/clock-3";
-  import Trash2 from "@lucide/svelte/icons/trash-2";
-  import Monitor from "@lucide/svelte/icons/monitor";
-  import Moon from "@lucide/svelte/icons/moon";
-  import Type from "@lucide/svelte/icons/type";
-  import Eye from "@lucide/svelte/icons/eye";
-  import Image from "@lucide/svelte/icons/image";
-  import Folder from "@lucide/svelte/icons/folder";
-  import Braces from "@lucide/svelte/icons/braces";
-  import GitBranch from "@lucide/svelte/icons/git-branch";
-  import Crosshair from "@lucide/svelte/icons/crosshair";
-  import Film from "@lucide/svelte/icons/film";
-  import Circle from "@lucide/svelte/icons/circle";
-  import LoaderCircle from "@lucide/svelte/icons/loader-circle";
-  import SquareDashed from "@lucide/svelte/icons/square-dashed";
-  import Box from "@lucide/svelte/icons/box";
-  import ChevronRight from "@lucide/svelte/icons/chevron-right";
+  import { Icon, type IconName } from "$lib/shared/components/icon";
   import { TAG, unhex, type FaceNode } from "../lib/wf";
   import { metaInfo, ID_LABELS } from "../lib/render";
   import { editorModel } from "../model";
@@ -47,25 +29,25 @@
     0x85: "Widget slot",
   };
 
-  const tagIcons = {
-    [TAG.main]: Monitor,
-    [TAG.aod]: Moon,
-    [TAG.name]: Type,
-    [TAG.preview]: Eye,
-    [TAG.image]: Image,
-    [TAG.number]: Hash,
-    [TAG.group]: Folder,
-    [TAG.hand]: Clock3,
-    [TAG.struct]: Braces,
-    [TAG.bind]: GitBranch,
-    [TAG.pivot]: Crosshair,
-    [TAG.fmt]: Braces,
-    [TAG.frame]: Film,
-    [TAG.pvStruct]: Eye,
-    0x80: Circle,
-    0x81: LoaderCircle,
-    0x82: Circle,
-    0x85: SquareDashed,
+  const tagIcons: Record<number, IconName> = {
+    [TAG.main]: "monitor",
+    [TAG.aod]: "moon",
+    [TAG.name]: "type",
+    [TAG.preview]: "eye",
+    [TAG.image]: "image",
+    [TAG.number]: "hash",
+    [TAG.group]: "folder",
+    [TAG.hand]: "clock-3",
+    [TAG.struct]: "braces",
+    [TAG.bind]: "git-branch",
+    [TAG.pivot]: "crosshair",
+    [TAG.fmt]: "braces",
+    [TAG.frame]: "film",
+    [TAG.pvStruct]: "eye",
+    0x80: "circle",
+    0x81: "loader",
+    0x82: "circle",
+    0x85: "square-dashed",
   };
 
   export function nodeLabel(n: FaceNode) {
@@ -111,7 +93,7 @@
     <span class="tool-slot" title="Add image widget">
       <Button kind="secondary" size="sm" disabled={!$editor.face}>
         <label class="file-label">
-          <ImagePlus size={16} />
+          <Icon name="image-plus" size={16} />
           <input
             type="file"
             accept="image/*"
@@ -125,7 +107,7 @@
     <span class="tool-slot" title="Add number widget — select 10 digit images (0…9)">
       <Button kind="secondary" size="sm" disabled={!$editor.face}>
         <label class="file-label">
-          <Hash size={16} />
+          <Icon name="hash" size={16} />
           <input
             type="file"
             accept="image/*"
@@ -140,7 +122,7 @@
     <span class="tool-slot" title="Add hand widget">
       <Button kind="secondary" size="sm" disabled={!$editor.face}>
         <label class="file-label">
-          <Clock3 size={16} />
+          <Icon name="clock-3" size={16} />
           <input
             type="file"
             accept="image/*"
@@ -154,7 +136,7 @@
     <div class="spacer"></div>
     <span class="tool-slot" title="Delete selected widget">
       <Button kind="ghost" size="sm" disabled={!$editor.sel} onClick={deleteWidget}>
-        <Trash2 size={16} color="var(--color-error)" />
+        <Icon name="trash" size={16} color="var(--color-error)" />
       </Button>
     </span>
   </div>
@@ -170,7 +152,7 @@
 </div>
 
 {#snippet treeNode(n: FaceNode, depth: number)}
-  {@const Icon = tagIcons[n.tag as keyof typeof tagIcons] || Box}
+  {@const nodeIcon = tagIcons[n.tag] || "box"}
   {@const kids = depth < 4 ? (n.subs || []).filter((c) => c.subs || c.tag === TAG.struct) : []}
   <button
     type="button"
@@ -180,7 +162,8 @@
     onclick={() => select(n)}
   >
     {#if kids.length}
-      <ChevronRight
+      <Icon
+        name="chevron-right"
         size={12}
         class={openNodes.has(n) ? "chevron open" : "chevron"}
         onclick={(e: MouseEvent) => toggleOpen(n, e)}
@@ -188,7 +171,7 @@
     {:else}
       <span class="chevron-spacer"></span>
     {/if}
-    <Icon size={14} class="node-icon" />
+    <Icon name={nodeIcon} size={14} class="node-icon" />
     <span class="label">{nodeLabel(n)}</span>
   </button>
   {#if kids.length && openNodes.has(n)}

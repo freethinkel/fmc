@@ -23,10 +23,10 @@
     "pocketbase": "^0.27.0"
   },
   "devDependencies": {
-    "@lucide/svelte": "^1.25.0",
     "@sveltejs/adapter-static": "^3.0.10",
     "@sveltejs/kit": "^2.63.0",
     "@sveltejs/vite-plugin-svelte": "^7.1.2",
+    "@tabler/icons-svelte": "^3.45.0",
     "@types/node": "^26.1.1",
     "@types/web-bluetooth": "^0.0.21",
     "@vitejs/plugin-basic-ssl": "^2.3.0",

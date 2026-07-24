@@ -1,17 +1,14 @@
 <script lang="ts">
-  import Store from "@lucide/svelte/icons/store";
-  import Pencil from "@lucide/svelte/icons/pencil";
-  import WatchIcon from "@lucide/svelte/icons/watch";
-  import FolderHeart from "@lucide/svelte/icons/folder-heart";
   import { page } from "$app/state";
   import { authModel } from "$lib/modules/auth/model";
+  import { Icon, type IconName } from "$lib/shared/components/icon";
 
   const { $user: user } = authModel;
-  const nav = $derived([
-    { title: "Market", url: "/market", icon: Store },
-    { title: "Editor", url: "/editor", icon: Pencil },
-    ...($user ? [{ title: "My", url: "/my", icon: FolderHeart }] : []),
-    { title: "Watch", url: "/watch", icon: WatchIcon },
+  const nav = $derived<{ title: string; url: string; icon: IconName }[]>([
+    { title: "Market", url: "/market", icon: "store" },
+    { title: "Editor", url: "/editor", icon: "pencil" },
+    ...($user ? [{ title: "My", url: "/my", icon: "folder-heart" as const }] : []),
+    { title: "Watch", url: "/watch", icon: "watch" },
   ]);
 </script>
 
@@ -19,7 +16,7 @@
 <nav>
   {#each nav as item (item.url)}
     <a href={item.url} class:active={page.url.pathname.startsWith(item.url)}>
-      <item.icon size={20} />
+      <Icon name={item.icon} size={20} />
       {item.title}
     </a>
   {/each}

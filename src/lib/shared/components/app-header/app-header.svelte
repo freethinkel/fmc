@@ -1,6 +1,6 @@
 <script lang="ts">
   import { page } from "$app/state";
-  import LogOut from "@lucide/svelte/icons/log-out";
+  import { Icon } from "$lib/shared/components/icon";
   import { authModel } from "$lib/modules/auth/model";
   import { Avatar } from "$lib/shared/components/avatar";
   import { Menu, MenuItem } from "$lib/shared/components/menu";
@@ -32,7 +32,7 @@
           </button>
         {/snippet}
         <MenuItem danger onClick={() => logout()}>
-          <LogOut size={16} />
+          <Icon name="log-out" size={16} />
           Log out
         </MenuItem>
       </Menu>
@@ -53,7 +53,7 @@
   }
   .logo {
     font-family: var(--font-display);
-    font-weight: 600;
+    font-weight: 400;
     text-decoration: none;
     color: var(--color-accent);
   }

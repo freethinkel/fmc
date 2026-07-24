@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Check from "@lucide/svelte/icons/check";
+  import { Icon } from "$lib/shared/components/icon";
   interface Props {
     checked?: boolean;
     disabled?: boolean;
@@ -10,7 +10,7 @@
 
 <label class="root">
   <input type="checkbox" bind:checked {disabled} onchange={() => onChange?.(checked)} />
-  <span class="box"><Check size={14} strokeWidth={3} /></span>
+  <span class="box"><Icon name="check" size={14} /></span>
 </label>
 
 <style>

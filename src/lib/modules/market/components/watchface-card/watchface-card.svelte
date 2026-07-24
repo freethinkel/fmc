@@ -2,9 +2,7 @@
   import { Badge } from "$lib/shared/components/badge";
   import { Button } from "$lib/shared/components/button";
   import { Card } from "$lib/shared/components/card";
-  import Heart from "@lucide/svelte/icons/heart";
-  import Download from "@lucide/svelte/icons/download";
-  import Trash2 from "@lucide/svelte/icons/trash-2";
+  import { Icon } from "$lib/shared/components/icon";
   import { fileUrl, downloadUrl } from "$lib/shared/api";
   import type { RecordModel } from "pocketbase";
 
@@ -31,13 +29,13 @@
   }: Props = $props();
 </script>
 
-<Card>
+<Card onClick={onOpen}>
   <div class="content">
-    <button class="preview" onclick={onOpen} title="Open in editor">
+    <div class="preview" title="Open in editor">
       <img src={fileUrl(wf, "preview")} alt={wf.name} loading="lazy" />
-    </button>
+    </div>
     <div class="title-row">
-      <span class="name">{wf.name}</span>
+      <h3 class="name">{wf.name}</h3>
       {#if wf.type}<Badge>{wf.type}</Badge>{/if}
     </div>
     {#if wf.owner}
@@ -49,7 +47,8 @@
     <div class="actions">
       <span class="action-slot" title={canLike ? "Like" : "Sign in to like"}>
         <Button kind="ghost" size="sm" disabled={!canLike} onClick={onLike}>
-          <Heart
+          <Icon
+            name="heart"
             size={16}
             color={liked ? "var(--color-error)" : undefined}
             fill={liked ? "var(--color-error)" : "none"}
@@ -58,13 +57,13 @@
         </Button>
       </span>
       <a class="link-action" href={downloadUrl(wf)} title="Download .bin">
-        <Download size={16} />
+        <Icon name="download" size={16} />
         <span class="count">{wf.downloads || 0}</span>
       </a>
       {#if canRemove}
         <span class="action-slot remove-slot" title="Delete">
           <Button kind="ghost" size="sm" onClick={onRemove}>
-            <Trash2 size={16} color="var(--color-error)" />
+            <Icon name="trash" size={16} color="var(--color-error)" />
           </Button>
         </span>
       {/if}
@@ -76,7 +75,7 @@
   .content {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 4px;
     height: 100%;
   }
   .preview {
@@ -87,7 +86,7 @@
     border: none;
     overflow: hidden;
     cursor: pointer;
-    border-radius: var(--border-radius);
+    border-radius: 10000px;
     background: oklch(0 0 0);
 
     img {
@@ -104,12 +103,12 @@
     gap: 8px;
   }
   .name {
+    margin: 0;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 0.875rem;
-    font-weight: 500;
+    font-size: 1.25rem;
   }
   .author {
     font-size: 0.75rem;
@@ -118,8 +117,8 @@
   .desc {
     margin: 0;
     display: -webkit-box;
-    -webkit-line-clamp: 2;
-    line-clamp: 2;
+    -webkit-line-clamp: 1;
+    line-clamp: 1;
     -webkit-box-orient: vertical;
     overflow: hidden;
     font-size: 0.75rem;

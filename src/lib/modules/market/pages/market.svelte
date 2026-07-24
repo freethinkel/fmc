@@ -3,7 +3,7 @@
   import { Tabs } from "$lib/shared/components/tabs";
   import { Select } from "$lib/shared/components/select";
   import { Skeleton } from "$lib/shared/components/skeleton";
-  import Search from "@lucide/svelte/icons/search";
+  import { Icon } from "$lib/shared/components/icon";
   import type { RecordModel } from "pocketbase";
   import { authModel } from "$lib/modules/auth/model";
   import { marketModel } from "../model";
@@ -129,7 +129,7 @@
       onChange={(v) => (tab = v)}
     />
     <div class="search">
-      <Search size={14} />
+      <Icon name="search" size={14} />
       <Input bind:value={query} placeholder="Search…" />
     </div>
     <div class="sort">

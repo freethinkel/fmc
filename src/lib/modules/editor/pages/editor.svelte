@@ -2,17 +2,7 @@
   import { Button } from "$lib/shared/components/button";
   import { Tabs } from "$lib/shared/components/tabs";
   import { Dialog } from "$lib/shared/components/dialog";
-  import Undo2 from "@lucide/svelte/icons/undo-2";
-  import Redo2 from "@lucide/svelte/icons/redo-2";
-  import FolderInput from "@lucide/svelte/icons/folder-input";
-  import FilePlus2 from "@lucide/svelte/icons/file-plus-2";
-  import Download from "@lucide/svelte/icons/download";
-  import UploadCloud from "@lucide/svelte/icons/upload-cloud";
-  import Zap from "@lucide/svelte/icons/zap";
-  import ListTree from "@lucide/svelte/icons/list-tree";
-  import SlidersHorizontal from "@lucide/svelte/icons/sliders-horizontal";
-  import Play from "@lucide/svelte/icons/play";
-  import Save from "@lucide/svelte/icons/save";
+  import { Icon } from "$lib/shared/components/icon";
   import { authModel } from "$lib/modules/auth/model";
   import { marketModel } from "$lib/modules/market/model";
   import PublishDialog from "../components/PublishDialog.svelte";
@@ -259,7 +249,7 @@
   <div class="toolbar">
     <Button kind="secondary" size="sm">
       <label class="file-label">
-        <FolderInput size={16} /> <span class="btn-label">Import bin</span>
+        <Icon name="folder-input" size={16} /> <span class="btn-label">Import bin</span>
         <input type="file" accept=".bin" hidden onchange={openFile} />
       </label>
     </Button>
@@ -272,7 +262,7 @@
           newFaceRequested();
         }}
       >
-        <FilePlus2 size={16} /> <span class="btn-label">New</span>
+        <Icon name="file-plus" size={16} /> <span class="btn-label">New</span>
       </Button>
     </span>
     {#if $editor.face}
@@ -284,28 +274,28 @@
       />
       <span class="tool-slot" title="Undo (⌘Z)">
         <Button kind="ghost" size="sm" disabled={!$editor.undoN} onClick={() => undo()}>
-          <Undo2 size={16} />
+          <Icon name="undo" size={16} />
         </Button>
       </span>
       <span class="tool-slot" title="Redo (⇧⌘Z)">
         <Button kind="ghost" size="sm" disabled={!$editor.redoN} onClick={() => redo()}>
-          <Redo2 size={16} />
+          <Icon name="redo" size={16} />
         </Button>
       </span>
       <span class="tool-slot" title="Export .bin">
         <Button kind="primary" size="sm" onClick={exportBin}>
-          <Download size={16} /> <span class="btn-label">Export .bin</span>
+          <Icon name="download" size={16} /> <span class="btn-label">Export .bin</span>
         </Button>
       </span>
       {#if $user}
         <span class="tool-slot" title={$openedWf ? "Save changes" : "Save as draft"}>
           <Button kind="ghost" size="sm" onClick={saveDraft} disabled={$saving}>
-            <Save size={16} /> <span class="btn-label">{$saving ? "Saving…" : "Save"}</span>
+            <Icon name="save" size={16} /> <span class="btn-label">{$saving ? "Saving…" : "Save"}</span>
           </Button>
         </span>
         <span class="tool-slot" title="Publish">
           <Button kind="secondary" size="sm" onClick={() => publishDialogOpened()}>
-            <UploadCloud size={16} /> <span class="btn-label">Publish</span>
+            <Icon name="upload-cloud" size={16} /> <span class="btn-label">Publish</span>
           </Button>
         </span>
       {/if}
@@ -313,7 +303,7 @@
     {#if $bleInfo && $editor.face}
       <span class="tool-slot" title="Upload to the watch">
         <Button kind="primary" size="sm" onClick={flashWatch} disabled={$flashing}>
-          <Zap size={16} />
+          <Icon name="zap" size={16} />
           {$flashing ? "Flashing…" : "Flash"}
         </Button>
       </span>
@@ -366,13 +356,13 @@
     {#if $editor.face}
       <div class="mobile-actions">
         <Button kind="secondary" onClick={() => (mobilePanel = "tree")}>
-          <ListTree size={16} /> Tree
+          <Icon name="list-tree" size={16} /> Tree
         </Button>
         <Button kind="secondary" onClick={() => (mobilePanel = "props")}>
-          <SlidersHorizontal size={16} /> Props
+          <Icon name="sliders-horizontal" size={16} /> Props
         </Button>
         <Button kind="secondary" onClick={() => (mobilePanel = "sim")}>
-          <Play size={16} /> Sim
+          <Icon name="play" size={16} /> Sim
         </Button>
       </div>
     {/if}

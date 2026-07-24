@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
-  import X from "@lucide/svelte/icons/x";
+  import { Icon } from "$lib/shared/components/icon";
 
   interface Props {
     open?: boolean;
@@ -31,7 +31,7 @@
   <header>
     {#if title}<h2>{title}</h2>{/if}
     <button class="close" aria-label="Close" onclick={() => el?.close()}>
-      <X size={18} />
+      <Icon name="x" size={18} />
     </button>
   </header>
   <div class="body">{@render children?.()}</div>

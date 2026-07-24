@@ -2,11 +2,7 @@
   import { Button } from "$lib/shared/components/button";
   import { Card } from "$lib/shared/components/card";
   import { Badge } from "$lib/shared/components/badge";
-  import Bluetooth from "@lucide/svelte/icons/bluetooth";
-  import BatteryFull from "@lucide/svelte/icons/battery-full";
-  import Cpu from "@lucide/svelte/icons/cpu";
-  import Hash from "@lucide/svelte/icons/hash";
-  import Eraser from "@lucide/svelte/icons/eraser";
+  import { Icon } from "$lib/shared/components/icon";
   import { bleModel } from "../model";
   import { dialName, dialGroup } from "../lib/catalog-names";
 
@@ -36,14 +32,14 @@
         </div>
         <div class="row">
           <Button onClick={() => connectRequested()} disabled={$connecting}>
-            <Bluetooth size={16} />
+            <Icon name="bluetooth" size={16} />
             {$connecting ? "Connecting…" : "Connect"}
           </Button>
           <span
             title="Clear Chrome's device permission and the saved auth key — does not affect pairing state on the watch itself"
           >
             <Button kind="ghost" size="sm" onClick={() => forgetRequested()} disabled={$forgetting}>
-              <Eraser size={16} />
+              <Icon name="eraser" size={16} />
               {$forgetting ? "Forgetting…" : "Forget device"}
             </Button>
           </span>
@@ -60,11 +56,11 @@
         </div>
         <div class="info">
           <p>
-            <BatteryFull size={16} color="var(--color-accent)" /> Battery: {$bleInfo.battery ??
+            <Icon name="battery-full" size={16} color="var(--color-accent)" /> Battery: {$bleInfo.battery ??
               "?"}%
           </p>
-          <p><Cpu size={16} color={muted} /> Firmware: {$bleInfo.firmware ?? "?"}</p>
-          <p><Hash size={16} color={muted} /> Serial: {$bleInfo.serial ?? "?"}</p>
+          <p><Icon name="cpu" size={16} color={muted} /> Firmware: {$bleInfo.firmware ?? "?"}</p>
+          <p><Icon name="hash" size={16} color={muted} /> Serial: {$bleInfo.serial ?? "?"}</p>
         </div>
       </div>
     </Card>

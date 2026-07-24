@@ -2,12 +2,7 @@
   import { Badge } from "$lib/shared/components/badge";
   import { Button } from "$lib/shared/components/button";
   import { Card } from "$lib/shared/components/card";
-  import Heart from "@lucide/svelte/icons/heart";
-  import Download from "@lucide/svelte/icons/download";
-  import Trash2 from "@lucide/svelte/icons/trash-2";
-  import Pencil from "@lucide/svelte/icons/pencil";
-  import Globe from "@lucide/svelte/icons/globe";
-  import GlobeLock from "@lucide/svelte/icons/globe-lock";
+  import { Icon } from "$lib/shared/components/icon";
   import { fileUrl } from "$lib/shared/api";
   import type { RecordModel } from "pocketbase";
   import { goto } from "$app/navigation";
@@ -57,26 +52,29 @@
           <div class="actions">
             {#if wf.published}
               <span class="stats">
-                <Heart size={14} />
+                <Icon name="heart" size={14} />
                 {likeCount(wf.id)}
-                <Download size={14} />
+                <Icon name="download" size={14} />
                 {wf.downloads || 0}
               </span>
             {/if}
             <div class="buttons">
               <span class="action-slot" title="Edit">
                 <Button kind="ghost" size="sm" onClick={() => editRequested(wf)}>
-                  <Pencil size={16} />
+                  <Icon name="pencil" size={16} />
                 </Button>
               </span>
               <span class="action-slot" title={wf.published ? "Unpublish" : "Publish"}>
                 <Button kind="ghost" size="sm" onClick={() => publishToggleRequested(wf)}>
-                  {#if wf.published}<GlobeLock size={16} />{:else}<Globe size={16} />{/if}
+                  {#if wf.published}<Icon name="globe-lock" size={16} />{:else}<Icon
+                      name="globe"
+                      size={16}
+                    />{/if}
                 </Button>
               </span>
               <span class="action-slot" title="Delete">
                 <Button kind="ghost" size="sm" onClick={() => remove(wf)}>
-                  <Trash2 size={16} color="var(--color-error)" />
+                  <Icon name="trash" size={16} color="var(--color-error)" />
                 </Button>
               </span>
             </div>
@@ -108,6 +106,7 @@
   .grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    align-items: start;
     gap: 16px;
     padding: 16px;
   }

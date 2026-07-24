@@ -2,15 +2,7 @@
   import { Input } from "$lib/shared/components/input";
   import { Select } from "$lib/shared/components/select";
   import { Checkbox } from "$lib/shared/components/checkbox";
-  import Download from "@lucide/svelte/icons/download";
-  import AlignStartVertical from "@lucide/svelte/icons/align-start-vertical";
-  import AlignCenterVertical from "@lucide/svelte/icons/align-center-vertical";
-  import AlignEndVertical from "@lucide/svelte/icons/align-end-vertical";
-  import AlignStartHorizontal from "@lucide/svelte/icons/align-start-horizontal";
-  import AlignCenterHorizontal from "@lucide/svelte/icons/align-center-horizontal";
-  import AlignEndHorizontal from "@lucide/svelte/icons/align-end-horizontal";
-  import type { Component } from "svelte";
-  import type { LucideProps } from "@lucide/svelte";
+  import { Icon, type IconName } from "$lib/shared/components/icon";
   import { TAG, unhex, hex, type FaceNode, type Resource } from "../lib/wf";
   import { metaInfo, ID_LABELS, parseFrame, type Frame } from "../lib/render";
   import { editorModel } from "../model";
@@ -24,15 +16,15 @@
   } = editorModel;
 
   // Figma-style position buttons: [dir, icon, title] — two groups of three
-  const alignH: [AlignDir, Component<LucideProps>, string][] = [
-    ["left", AlignStartVertical, "Align left"],
-    ["hcenter", AlignCenterVertical, "Align horizontal centers"],
-    ["right", AlignEndVertical, "Align right"],
+  const alignH: [AlignDir, IconName, string][] = [
+    ["left", "align-left", "Align left"],
+    ["hcenter", "align-center", "Align horizontal centers"],
+    ["right", "align-right", "Align right"],
   ];
-  const alignV: [AlignDir, Component<LucideProps>, string][] = [
-    ["top", AlignStartHorizontal, "Align top"],
-    ["vcenter", AlignCenterHorizontal, "Align vertical centers"],
-    ["bottom", AlignEndHorizontal, "Align bottom"],
+  const alignV: [AlignDir, IconName, string][] = [
+    ["top", "align-top", "Align top"],
+    ["vcenter", "align-middle", "Align vertical centers"],
+    ["bottom", "align-bottom", "Align bottom"],
   ];
 
   const selStruct = (n: FaceNode | null) =>
@@ -104,17 +96,17 @@
       autos.length > 1 && spread(autos.map((s) => s.y || 0)) > spread(autos.map((s) => s.x || 0))
     );
   });
-  const frameAlignBtns: [number, Component<LucideProps>, string][] = $derived(
+  const frameAlignBtns: [number, IconName, string][] = $derived(
     groupVertical
       ? [
-          [1, AlignStartVertical, "Children left"],
-          [0, AlignCenterVertical, "Children centered"],
-          [2, AlignEndVertical, "Children right"],
+          [1, "align-left", "Children left"],
+          [0, "align-center", "Children centered"],
+          [2, "align-right", "Children right"],
         ]
       : [
-          [1, AlignStartHorizontal, "Children top"],
-          [0, AlignCenterHorizontal, "Children middle"],
-          [2, AlignEndHorizontal, "Children bottom"],
+          [1, "align-top", "Children top"],
+          [0, "align-middle", "Children middle"],
+          [2, "align-bottom", "Children bottom"],
         ],
   );
 
@@ -213,9 +205,9 @@
       <div class="row">
         {#each [alignH, alignV] as group}
           <div class="btn-group">
-            {#each group as [dir, Icon, title] (dir)}
+            {#each group as [dir, iconName, title] (dir)}
               <button type="button" {title} class="icon-btn" onclick={() => alignSelected(dir)}>
-                <Icon size={16} />
+                <Icon name={iconName} size={16} />
               </button>
             {/each}
           </div>
@@ -250,7 +242,7 @@
       <div class="row">
         <span class="field-label w-md">align</span>
         <div class="btn-group">
-          {#each frameAlignBtns as [v, Icon, title] (v)}
+          {#each frameAlignBtns as [v, iconName, title] (v)}
             <button
               type="button"
               {title}
@@ -258,7 +250,7 @@
               class:active={frame.align === v}
               onclick={() => setFrame({ align: v })}
             >
-              <Icon size={16} />
+              <Icon name={iconName} size={16} />
             </button>
           {/each}
         </div>
@@ -390,7 +382,7 @@
               />
             </label>
             <button title="Download PNG" onclick={() => downloadRes(ri)} class="dl-btn">
-              <Download size={14} />
+              <Icon name="download" size={14} />
             </button>
           </div>
         {/each}
