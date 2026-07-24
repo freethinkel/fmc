@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
   import { Button } from "$lib/shared/components/ui/button";
   import * as Tabs from "$lib/shared/components/ui/tabs";
   import * as Sheet from "$lib/shared/components/ui/sheet";
@@ -19,8 +19,8 @@
   import { marketModel } from "$lib/modules/market/model";
   import PublishDialog from "../components/PublishDialog.svelte";
   import { bleModel } from "$lib/modules/device/model";
-  import { TAG, unhex, hex } from "../lib/wf";
-  import { render, parseFrame } from "../lib/render";
+  import { TAG, unhex, hex, type FaceNode } from "../lib/wf";
+  import { render, parseFrame, type Hit } from "../lib/render";
   import { editorModel } from "../model";
   import TreePanel from "../components/TreePanel.svelte";
   import { headerSlot } from "$lib/shared/components/header-slot.svelte.js";
@@ -58,23 +58,30 @@
     rightPanelSet,
   } = editorModel;
 
-  let canvas = $state(null);
-  let mobilePanel = $state(null); // 'tree' | 'props' | 'sim' — bottom sheet on mobile
-  let hits = [];
+  let canvas = $state<HTMLCanvasElement | null>(null);
+  let mobilePanel = $state<"tree" | "props" | "sim" | null>(null); // bottom sheet on mobile
+  let hits: Hit[] = [];
 
-  function openFile(e) {
-    const f = e.target.files?.[0] || e.dataTransfer?.files?.[0];
+  function openFile(e: Event) {
+    const t = e.target;
+    const f =
+      (t instanceof HTMLInputElement ? t.files?.[0] : undefined) ||
+      (e as DragEvent).dataTransfer?.files?.[0];
+
     if (f) f.arrayBuffer().then((buf) => loadRequested({ buf, label: f.name }));
     openedWfSet(null);
     e.preventDefault();
-    if (e.target.value !== undefined) e.target.value = "";
+    if (t instanceof HTMLInputElement) t.value = "";
   }
 
   // Save: new watchface → draft; already-open own watchface → update, keeping its status
   async function saveDraft() {
+    const u = $user;
+
+    if (!u) return;
     saveDraftRequested({
-      name: $editor.face.name || "Custom",
-      ownerId: $user.id,
+      name: $editor.face?.name || "Custom",
+      ownerId: u.id,
       published: $openedWf?.published ?? false,
       bin: buildCurrentBin(),
       preview: await previewBlob(),
@@ -91,9 +98,12 @@
   $effect(() => {
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
-    let raf;
+
+    if (!ctx) return;
+    let raf = 0;
     const loop = () => {
       const s = editor.getState();
+
       if (s.face) {
         hits = render(ctx, s.face, s.screenTag, s.sim);
         drawSelection(ctx, s.sel);
@@ -102,12 +112,15 @@
       }
       raf = requestAnimationFrame(loop);
     };
+
     loop();
     return () => cancelAnimationFrame(raf);
   });
 
-  function drawSelection(ctx, sel) {
+  function drawSelection(ctx: CanvasRenderingContext2D, sel: FaceNode | null) {
+    if (!sel) return;
     const h = hits.findLast((h) => h.node === sel || h.node.subs?.includes(sel));
+
     if (!h) return;
     ctx.save();
     ctx.strokeStyle = "#4af";
@@ -116,9 +129,11 @@
     ctx.strokeRect(h.x - 1, h.y - 1, h.w + 2, h.h + 2);
     const pv = h.node.subs?.find((s) => s.tag === TAG.pivot);
     const st = h.node.subs?.find((s) => s.tag === TAG.struct);
+
     if (pv && st) {
-      const px = st.x + pv.pivotX,
-        py = st.y + pv.pivotY;
+      const px = st.x! + pv.pivotX!,
+        py = st.y! + pv.pivotY!;
+
       ctx.setLineDash([]);
       ctx.beginPath();
       ctx.moveTo(px - 8, py);
@@ -131,16 +146,23 @@
   }
 
   // ---- selection and drag ----
-  let drag = null;
-  const canvasXY = (e) => {
-    const r = canvas.getBoundingClientRect();
+  type XY = { x: number; y: number };
+  type Drag =
+    | { p: XY; x0: number; y0: number; moved: boolean; st: FaceNode; fr?: undefined }
+    | { p: XY; x0: number; y0: number; moved: boolean; fr: FaceNode; st?: undefined };
+  let drag: Drag | null = null;
+  const canvasXY = (e: PointerEvent): XY => {
+    const r = canvas!.getBoundingClientRect();
+
     return { x: ((e.clientX - r.left) * 466) / r.width, y: ((e.clientY - r.top) * 466) / r.height };
   };
-  const selStruct = (n) => (n?.tag === TAG.struct ? n : n?.subs?.find((s) => s.tag === TAG.struct));
+  const selStruct = (n: FaceNode | null) =>
+    n?.tag === TAG.struct ? n : n?.subs?.find((s) => s.tag === TAG.struct);
 
-  function setFrameXY(groupNode, x, y) {
-    const f = groupNode.subs.find((s) => s.tag === TAG.frame);
-    const v = unhex(f.hex);
+  function setFrameXY(groupNode: FaceNode, x: number, y: number) {
+    const f = groupNode.subs!.find((s) => s.tag === TAG.frame)!;
+    const v = unhex(f.hex!);
+
     v[0] = x;
     v[1] = x >> 8;
     v[2] = y;
@@ -148,40 +170,45 @@
     patched({ node: f, patch: { hex: hex(v) } });
   }
 
-  function onDown(e) {
+  function onDown(e: PointerEvent) {
     if (!$editor.face) return;
     const p = canvasXY(e);
     const h = hits.findLast((h) => p.x >= h.x && p.x < h.x + h.w && p.y >= h.y && p.y < h.y + h.h);
+
     select(h?.node || null);
     if (!h?.node) return;
     const st = selStruct(h.node);
     const fr = h.node.tag === TAG.group ? parseFrame(h.node) : null;
+
     if (fr) drag = { p, fr: h.node, x0: fr.x, y0: fr.y, moved: false };
-    else if (st && st.x != null) drag = { p, st, x0: st.x, y0: st.y, moved: false };
-    canvas.setPointerCapture(e.pointerId);
+    else if (st && st.x != null) drag = { p, st, x0: st.x, y0: st.y!, moved: false };
+    canvas?.setPointerCapture(e.pointerId);
   }
-  function onMove(e) {
-    if (!drag) return;
-    if (!drag.moved) {
+  function onMove(e: PointerEvent) {
+    const d = drag;
+
+    if (!d) return;
+    if (!d.moved) {
       checkpoint(0);
-      drag.moved = true;
+      d.moved = true;
     }
     const p = canvasXY(e);
-    const dx = Math.round(p.x - drag.p.x),
-      dy = Math.round(p.y - drag.p.y);
-    if (drag.st)
+    const dx = Math.round(p.x - d.p.x),
+      dy = Math.round(p.y - d.p.y);
+
+    if (d.st)
       patched({
-        node: drag.st,
-        patch: { x: Math.max(0, drag.x0 + dx), y: Math.max(0, drag.y0 + dy) },
+        node: d.st,
+        patch: { x: Math.max(0, d.x0 + dx), y: Math.max(0, d.y0 + dy) },
       });
-    else setFrameXY(drag.fr, Math.max(0, drag.x0 + dx), Math.max(0, drag.y0 + dy));
+    else setFrameXY(d.fr, Math.max(0, d.x0 + dx), Math.max(0, d.y0 + dy));
   }
   function onUp() {
     drag = null;
   }
 
-  function onKey(e) {
-    if (["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName)) return;
+  function onKey(e: KeyboardEvent) {
+    if (["INPUT", "TEXTAREA", "SELECT"].includes((e.target as HTMLElement).tagName)) return;
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
       if (e.shiftKey) redo();
       else undo();
@@ -189,18 +216,25 @@
       return;
     }
     const sel = $editor.sel;
+
     if (!sel) return;
     const d = e.shiftKey ? 10 : 1;
-    const mv = { ArrowLeft: [-d, 0], ArrowRight: [d, 0], ArrowUp: [0, -d], ArrowDown: [0, d] }[
-      e.key
-    ];
+    const moves: Record<string, [number, number]> = {
+      ArrowLeft: [-d, 0],
+      ArrowRight: [d, 0],
+      ArrowUp: [0, -d],
+      ArrowDown: [0, d],
+    };
+    const mv = moves[e.key];
+
     if (!mv) return;
     checkpoint();
     const st = selStruct(sel);
     const fr = sel.tag === TAG.group ? parseFrame(sel) : null;
+
     if (fr) setFrameXY(sel, Math.max(0, fr.x + mv[0]), Math.max(0, fr.y + mv[1]));
     else if (st && st.x != null)
-      patched({ node: st, patch: { x: Math.max(0, st.x + mv[0]), y: Math.max(0, st.y + mv[1]) } });
+      patched({ node: st, patch: { x: Math.max(0, st.x + mv[0]), y: Math.max(0, st.y! + mv[1]) } });
     e.preventDefault();
   }
 
@@ -326,7 +360,7 @@
     <aside class="hidden min-h-0 flex-col border-l md:flex">
       <Tabs.Root
         value={$rightPanel}
-        onValueChange={rightPanelSet}
+        onValueChange={(v) => rightPanelSet(v as "props" | "sim")}
         class="flex min-h-0 flex-1 flex-col gap-0"
       >
         <Tabs.List class="m-2 grid grid-cols-2">

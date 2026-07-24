@@ -72,13 +72,16 @@ const u32 = (d: Uint8Array, o: number) =>
 
 // ---- CRC32 "raw": IEEE reflected, init=0, NO final inversion ----
 const CRC_T = new Uint32Array(256);
+
 for (let i = 0; i < 256; i++) {
   let c = i;
+
   for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
   CRC_T[i] = c >>> 0;
 }
 export function rawCRC32(d: Uint8Array): number {
   let c = 0;
+
   for (let i = 0; i < d.length; i++) c = CRC_T[(c ^ d[i]) & 0xff] ^ (c >>> 8);
   return c >>> 0;
 }
@@ -87,13 +90,16 @@ export function rawCRC32(d: Uint8Array): number {
 function parseTLV(data: Uint8Array, depth: number): TLVNode[] | null {
   const nodes: TLVNode[] = [];
   let off = 0;
+
   while (off < data.length) {
     if (off + 3 > data.length) return null;
     const tag = data[off];
     const ln = u16(data, off + 1);
+
     if (off + 3 + ln > data.length) return null;
     const val = data.subarray(off + 3, off + 3 + ln);
     const n: TLVNode = { tag, raw: val, children: null };
+
     if (ln >= 3 && depth < 12) n.children = parseTLV(val, depth + 1);
     nodes.push(n);
     off += 3 + ln;
@@ -122,11 +128,14 @@ function parseRefTail(
   const typ = v[off];
   const count = u16(v, off + 1);
   let p = off + 3;
+
   if (p + 4 > v.length) return null;
   const ref = u32(v, p);
+
   p += 4;
   if (!resOffset.has(ref)) return null;
   const idx = resOffset.get(ref)!;
+
   if (typ === 0x01) {
     if (p !== v.length) return null;
     return { refType: typ, images: [idx] };
@@ -135,15 +144,18 @@ function parseRefTail(
     if (p + 2 * count !== v.length || count === 0) return null;
     const images: number[] = [];
     let cur = ref;
+
     for (let k = 0; k < count; k++) {
       if (!resOffset.has(cur)) return null;
       const i = resOffset.get(cur)!;
+
       images.push(i);
       // the stored block size only locates the NEXT frame — the trailing one's value is
       // unused and unvalidated elsewhere, so a writer can put anything there (seen in the wild:
       // count=1 with a mismatched value) without it being an actually-broken reference.
       if (k < count - 1) {
         const blk = resources[i].data.length + 8;
+
         if (blk !== u16(v, p + 2 * k)) return null;
         cur += blk;
       }
@@ -166,8 +178,10 @@ function nodeToJSON(
 ): FaceNode {
   const j: FaceNode = { tag: n.tag };
   const v = n.raw;
+
   if (n.tag === TAG.name && v.length === 64) {
     let e = 0;
+
     while (e < v.length && v[e]) e++;
     if (e < v.length && allZero(v.subarray(e))) {
       j.text = new TextDecoder().decode(v.subarray(0, e));
@@ -182,6 +196,7 @@ function nodeToJSON(
     j.meta = hex(v.subarray(4, 18));
     if (parentTag === TAG.hand && handKinds[v[13]]) j._kind = handKinds[v[13]];
     const rt = v.length >= 25 ? parseRefTail(v, 18, resources, resOffset) : null;
+
     if (rt) {
       j.refType = rt.refType;
       j.images = rt.images;
@@ -192,6 +207,7 @@ function nodeToJSON(
   }
   if (n.tag === TAG.pvStruct && v.length >= 12) {
     const rt = parseRefTail(v, 5, resources, resOffset);
+
     if (rt) {
       j.prefix = hex(v.subarray(0, 5));
       j.refType = rt.refType;
@@ -216,31 +232,38 @@ function nodeToJSON(
 // parseBin: ArrayBuffer/Uint8Array -> {name, screens, resources:[{cf,w,h,data}]}
 export function parseBin(buf: ArrayBuffer | Uint8Array): Face {
   const d = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+
   if (d.length < 2 * HDR + 3) throw new Error(`file too small: ${d.length} bytes`);
   if (!(d[4] === 1 && d[5] === 0 && d[6] === 0 && (d[7] === 0 || d[7] === 2)))
     throw new Error("no watchface magic in header");
   for (let i = 0; i < HDR; i++)
     if (d[i] !== d[d.length - HDR + i]) throw new Error("footer differs from header");
   let e = 8;
+
   while (e < 0x18 && d[e]) e++;
   const name = new TextDecoder().decode(d.subarray(8, e));
   // after the NUL in the 16-byte name field there can be a non-zero tail (byte 0x17 = 0x08/0x0a,
   // meaning unknown) — keep the whole field for an exact round-trip
   const nameRaw = hex(d.subarray(8, 0x18));
   const body = d.subarray(HDR, d.length - HDR);
+
   if (body[0] !== TAG.root) throw new Error(`root tag 0x${body[0].toString(16)}, expected 0x20`);
   const rootLen = u16(body, 1);
+
   if (3 + rootLen > body.length) throw new Error("tree length exceeds body");
   const rawTree = parseTLV(body.subarray(3, 3 + rootLen), 0);
+
   if (!rawTree) throw new Error("TLV tree does not parse");
 
   const resources: Resource[] = [];
   const resOffset = new Map<number, number>();
   let off = 3 + rootLen;
+
   while (off < body.length) {
     if (off + 8 > body.length) throw new Error(`truncated resource @body+0x${off.toString(16)}`);
     const h = u32(body, off);
     const size = u32(body, off + 4);
+
     if (off + 8 + size > body.length)
       throw new Error(`resource @body+0x${off.toString(16)} exceeds body`);
     resOffset.set(off + HDR, resources.length);
@@ -253,6 +276,7 @@ export function parseBin(buf: ArrayBuffer | Uint8Array): Face {
     off += 8 + size;
   }
   const screens = rawTree.map((n) => nodeToJSON(n, resources, resOffset, TAG.root));
+
   return { name, nameRaw, screens, resources };
 }
 
@@ -261,6 +285,7 @@ function concat(parts: Uint8Array[]): Uint8Array {
   const total = parts.reduce((s, p) => s + p.length, 0);
   const out = new Uint8Array(total);
   let o = 0;
+
   for (const p of parts) {
     out.set(p, o);
     o += p.length;
@@ -270,22 +295,27 @@ function concat(parts: Uint8Array[]): Uint8Array {
 
 function nodeBytes(j: FaceNode, resources: Resource[], offsets: number[]): Uint8Array {
   let val: Uint8Array;
+
   if (j.text) {
     val = new Uint8Array(64);
     val.set(new TextEncoder().encode(j.text).subarray(0, 63));
   } else if (j.images) {
     const parts: Uint8Array[] = [];
+
     if (j.x != null) {
       const head = new Uint8Array(4);
+
       head[0] = j.x;
       head[1] = j.x >> 8;
       head[2] = j.y!;
       head[3] = j.y! >> 8;
       const meta = unhex(j.meta!);
+
       if (meta.length !== 14) throw new Error(`tag ${j.tag}: meta must be 14 bytes`);
       parts.push(head, meta);
     } else {
       const pfx = unhex(j.prefix!);
+
       if (pfx.length !== 5) throw new Error(`tag ${j.tag}: prefix must be 5 bytes`);
       parts.push(pfx);
     }
@@ -294,11 +324,13 @@ function nodeBytes(j: FaceNode, resources: Resource[], offsets: number[]): Uint8
   } else if (j.x != null && j.tag === TAG.struct) {
     // short struct: x/y + meta, no image ref (e.g. imageless progress ring)
     const head = new Uint8Array(4);
+
     head[0] = j.x;
     head[1] = j.x >> 8;
     head[2] = j.y!;
     head[3] = j.y! >> 8;
     const meta = unhex(j.meta!);
+
     if (meta.length !== 14) throw new Error(`tag ${j.tag}: meta must be 14 bytes`);
     val = concat([head, meta, unhex(j.tail || "")]);
   } else if (j.pivotX != null) {
@@ -314,6 +346,7 @@ function nodeBytes(j: FaceNode, resources: Resource[], offsets: number[]): Uint8
     val = unhex(j.hex || "");
   }
   const out = new Uint8Array(3 + val.length);
+
   out[0] = j.tag;
   out[1] = val.length;
   out[2] = val.length >> 8;
@@ -323,8 +356,10 @@ function nodeBytes(j: FaceNode, resources: Resource[], offsets: number[]): Uint8
 
 function refTailBytes(j: FaceNode, resources: Resource[], offsets: number[]): Uint8Array {
   const images = j.images!;
+
   for (let k = 0; k < images.length; k++) {
     const idx = images[k];
+
     if (idx < 0 || idx >= resources.length)
       throw new Error(`tag ${j.tag}: resource ${idx} out of range`);
     if (k > 0 && idx !== images[k - 1] + 1)
@@ -332,6 +367,7 @@ function refTailBytes(j: FaceNode, resources: Resource[], offsets: number[]): Ui
   }
   const b = [j.refType!, images.length & 0xff, images.length >> 8];
   const off = offsets[images[0]];
+
   b.push(off & 0xff, (off >> 8) & 0xff, (off >> 16) & 0xff, (off >> 24) & 0xff);
   if (j.refType === 0x01) {
     if (images.length !== 1)
@@ -344,6 +380,7 @@ function refTailBytes(j: FaceNode, resources: Resource[], offsets: number[]): Ui
     throw new Error(`tag ${j.tag}: unknown refType 0x${j.refType!.toString(16)}`);
   for (const idx of images) {
     const blk = resources[idx].data.length + 8;
+
     b.push(blk & 0xff, blk >> 8);
   }
   return new Uint8Array(b);
@@ -355,6 +392,7 @@ export function buildBin(face: Face): Uint8Array {
   const build = () => concat(face.screens.map((s) => nodeBytes(s, res, offsets)));
   let tb = build();
   let off = HDR + 3 + tb.length;
+
   for (let i = 0; i < res.length; i++) {
     offsets[i] = off;
     off += res[i].data.length + 8;
@@ -367,6 +405,7 @@ export function buildBin(face: Face): Uint8Array {
     res.flatMap((r) => {
       const h = (r.cf & 0x1f) | ((r.w & 0x7ff) << 10) | ((r.h & 0x7ff) << 21);
       const hd = new Uint8Array(8);
+
       hd[0] = h;
       hd[1] = h >> 8;
       hd[2] = h >> 16;
@@ -381,6 +420,7 @@ export function buildBin(face: Face): Uint8Array {
 
   const total = HDR + treeSec.length + rb.length + HDR;
   const hdr = new Uint8Array(HDR);
+
   hdr[4] = 1;
   if (face.nameRaw) hdr.set(unhex(face.nameRaw).subarray(0, 16), 8);
   else hdr.set(new TextEncoder().encode(face.name).subarray(0, 15), 8);
@@ -390,6 +430,7 @@ export function buildBin(face: Face): Uint8Array {
     hdr[o + 2] = v >> 16;
     hdr[o + 3] = v >>> 24;
   };
+
   putU32(0x18, total - HDR);
   putU32(0x1c, rb.length);
   putU32(0x20, rawCRC32(rb));
@@ -402,11 +443,14 @@ export function lz4Decompress(src: Uint8Array, outSize: number): Uint8Array {
   const dst = new Uint8Array(outSize);
   let d = 0,
     i = 0;
+
   while (i < src.length) {
     const token = src[i++];
     let litLen = token >> 4;
+
     if (litLen === 15) {
       let b;
+
       do {
         b = src[i++];
         litLen += b;
@@ -417,10 +461,13 @@ export function lz4Decompress(src: Uint8Array, outSize: number): Uint8Array {
     i += litLen;
     if (i >= src.length) break;
     const off = src[i] | (src[i + 1] << 8);
+
     i += 2;
     let mLen = (token & 15) + 4;
+
     if ((token & 15) === 15) {
       let b;
+
       do {
         b = src[i++];
         mLen += b;
@@ -428,6 +475,7 @@ export function lz4Decompress(src: Uint8Array, outSize: number): Uint8Array {
     }
     if (off === 0 || off > d) throw new Error(`lz4: offset ${off} out of window`);
     const pos = d - off;
+
     for (let k = 0; k < mLen; k++) dst[d++] = dst[pos + k];
   }
   return d === outSize ? dst : dst.subarray(0, d);
@@ -436,10 +484,12 @@ export function lz4Decompress(src: Uint8Array, outSize: number): Uint8Array {
 // ponytail: greedy encoder as in Go — the watch accepts any valid stream
 export function lz4Compress(src: Uint8Array): Uint8Array {
   const dst: number[] = [];
+
   function writeSeq(litStart: number, litEnd: number, off: number, mLen: number) {
     const litLen = litEnd - litStart;
     const ml = off > 0 ? mLen - 4 : 0;
     let tok = litLen >= 15 ? 0xf0 : litLen << 4;
+
     if (off > 0) tok |= ml >= 15 ? 15 : ml;
     dst.push(tok);
     for (let l = litLen - 15; litLen >= 15 && l >= 0; l -= 255) {
@@ -462,6 +512,7 @@ export function lz4Compress(src: Uint8Array): Uint8Array {
     }
   }
   const n = src.length;
+
   if (n < 13) {
     writeSeq(0, n, 0, 0);
     return new Uint8Array(dst);
@@ -471,12 +522,15 @@ export function lz4Compress(src: Uint8Array): Uint8Array {
   let litStart = 0,
     i = 0;
   const limit = n - 5;
+
   while (i < n - 12) {
     const h = (Math.imul(rd(i), 2654435761) >>> 18) & 0x3fff;
     const cand = table[h];
+
     table[h] = i;
     if (cand >= 0 && i - cand <= 65535 && rd(cand) === rd(i)) {
       let mLen = 4;
+
       while (i + mLen < limit && src[cand + mLen] === src[i + mLen]) mLen++;
       writeSeq(litStart, i, i - cand, mLen);
       i += mLen;
@@ -493,18 +547,22 @@ export function lz4Compress(src: Uint8Array): Uint8Array {
 // decodePixels: resource -> RGBA Uint8ClampedArray (null for cf=1 — that's raw JPEG)
 export function decodePixels(r: Resource): Uint8ClampedArray<ArrayBuffer> | null {
   const { cf, w, h } = r;
+
   if (cf === 1) return null;
   const bpp = ({ 4: 2, 5: 3, 24: 4 } as Record<number, number>)[cf];
   const want = cf === 13 ? (w * h + 1) >> 1 : w * h * bpp;
   const raw = lz4Decompress(r.data, want);
+
   if (raw.length !== want)
     throw new Error(`cf=${cf} ${w}x${h}: decompressed ${raw.length}, expected ${want}`);
   const px = new Uint8ClampedArray(w * h * 4);
   const e5 = (v: number) => ((v * 255) / 31) | 0,
     e6 = (v: number) => ((v * 255) / 63) | 0;
+
   for (let i = 0; i < w * h; i++) {
     let c: number;
     const o = i * 4;
+
     switch (cf) {
       case 4:
         c = u16(raw, i * 2);
@@ -523,6 +581,7 @@ export function decodePixels(r: Resource): Uint8ClampedArray<ArrayBuffer> | null
       case 13: {
         const nib = raw[i >> 1];
         const a = i % 2 ? nib & 15 : nib >> 4;
+
         px[o] = px[o + 1] = px[o + 2] = 255;
         px[o + 3] = a * 17;
         break;
@@ -545,6 +604,7 @@ export function encodePixels(px: Uint8ClampedArray, w: number, h: number, cf: nu
   if (w > 2047 || h > 2047) throw new Error(`image ${w}x${h} does not fit 11-bit fields`);
   const r565 = (r: number, g: number, b: number) => ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
   let raw: Uint8Array;
+
   switch (cf) {
     case 4:
       raw = new Uint8Array(w * h * 2);
@@ -566,15 +626,18 @@ export function encodePixels(px: Uint8ClampedArray, w: number, h: number, cf: nu
       g = px[i * 4 + 1],
       b = px[i * 4 + 2],
       a = px[i * 4 + 3];
+
     switch (cf) {
       case 4: {
         const c = r565(r, g, b);
+
         raw[i * 2] = c;
         raw[i * 2 + 1] = c >> 8;
         break;
       }
       case 5: {
         const c = r565(r, g, b);
+
         raw[i * 3] = c;
         raw[i * 3 + 1] = c >> 8;
         raw[i * 3 + 2] = a;

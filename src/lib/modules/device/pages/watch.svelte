@@ -42,9 +42,7 @@
           <Eraser class="size-4" />
           {$forgetting ? "Forgetting…" : "Forget device"}
         </Button>
-        {#if $bleStatus}<span class="text-xs text-muted-foreground"
-            >{$bleStatus}</span
-          >{/if}
+        {#if $bleStatus}<span class="text-xs text-muted-foreground">{$bleStatus}</span>{/if}
       </Card.Content>
     </Card.Root>
   {:else}
@@ -55,16 +53,13 @@
       </Card.Header>
       <Card.Content class="flex flex-col gap-2 text-sm">
         <p class="flex items-center gap-2">
-          <BatteryFull class="size-4 text-emerald-500" /> Battery: {$bleInfo.battery ??
-            "?"}%
+          <BatteryFull class="size-4 text-emerald-500" /> Battery: {$bleInfo.battery ?? "?"}%
         </p>
         <p class="flex items-center gap-2">
-          <Cpu class="size-4 text-muted-foreground" /> Firmware: {$bleInfo.firmware ??
-            "?"}
+          <Cpu class="size-4 text-muted-foreground" /> Firmware: {$bleInfo.firmware ?? "?"}
         </p>
         <p class="flex items-center gap-2">
-          <Hash class="size-4 text-muted-foreground" /> Serial: {$bleInfo.serial ??
-            "?"}
+          <Hash class="size-4 text-muted-foreground" /> Serial: {$bleInfo.serial ?? "?"}
         </p>
       </Card.Content>
     </Card.Root>
@@ -74,8 +69,7 @@
         <Card.Header>
           <Card.Title>Watchfaces on the watch</Card.Title>
           <Card.Description>
-            Reported by the watch; side-loaded dials are not listed by the
-            firmware.
+            Reported by the watch; side-loaded dials are not listed by the firmware.
           </Card.Description>
         </Card.Header>
         <Card.Content class="flex flex-col gap-4 text-sm">
@@ -85,9 +79,7 @@
             </p>
             <div class="flex flex-wrap gap-1.5">
               {#each $dials.builtin as id (id)}
-                <Badge variant="outline" title={dialGroup(id)}
-                  >{dialName(id)}</Badge
-                >
+                <Badge variant="outline" title={dialGroup(id)}>{dialName(id)}</Badge>
               {/each}
             </div>
           </div>
@@ -97,9 +89,7 @@
             </p>
             <div class="flex flex-wrap gap-1.5">
               {#each $dials.gallery as id (id)}
-                <Badge variant="outline" title={dialGroup(id)}
-                  >{dialName(id)}</Badge
-                >
+                <Badge variant="outline" title={dialGroup(id)}>{dialName(id)}</Badge>
               {:else}
                 <span class="text-xs text-muted-foreground">none</span>
               {/each}

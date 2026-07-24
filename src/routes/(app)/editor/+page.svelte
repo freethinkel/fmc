@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
   import { EditorPage } from "$lib/modules/editor/pages";
   import { editorModel } from "$lib/modules/editor/model";
 

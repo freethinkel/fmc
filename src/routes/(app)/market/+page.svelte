@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
   import { MarketPage } from "$lib/modules/market/pages";
 </script>
 

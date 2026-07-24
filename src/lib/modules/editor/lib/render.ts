@@ -120,6 +120,7 @@ export function defaultSim(): Sim {
 
 export function timeParts(sim: Sim): TimeParts {
   const d = sim.live ? new Date() : new Date(sim.time);
+
   return {
     h: d.getHours(),
     m: d.getMinutes(),
@@ -134,8 +135,9 @@ const h12 = (h: number) => ((h + 11) % 12) + 1;
 
 // idValue: value of data source id for the simulation
 export function idValue(id: number, sim: Sim, t: TimeParts): number {
-  if (sim.overrides[id] !== undefined && sim.overrides[id] !== "") return +sim.overrides[id];
+  if (sim.overrides[id] !== undefined && sim.overrides[id] !== "") return Number(sim.overrides[id]);
   const dh = sim.is24h ? t.h : h12(t.h);
+
   switch (id) {
     case 0x01:
       return dh;
@@ -214,6 +216,7 @@ export function idValue(id: number, sim: Sim, t: TimeParts): number {
 
 export function metaInfo(node: FaceNode) {
   const m = unhex(node.meta || "");
+
   if (m.length < 14) return { w: 0, h: 0, id: 0, sub: 0, max: 0, accent: false };
   return {
     w: m[0] | (m[1] << 8),
@@ -236,11 +239,14 @@ export function metaInfo(node: FaceNode) {
 // op 0x01 = show on equality (OR), 0x02 = hide on equality.
 export function parseBind(hexStr?: string) {
   const v = unhex(hexStr || "");
+
   if (!v.length) return [];
   const out: { id: number; op: number; val: number }[] = [];
+
   for (let k = 0; k < v[0] && 1 + 5 * k + 5 <= v.length; k++) {
     const e = v.subarray(1 + 5 * k, 6 + 5 * k);
     let val = e[2] | (e[3] << 8) | (e[4] << 16);
+
     if (val & 0x800000) val -= 0x1000000;
     out.push({ id: e[0], op: e[1], val });
   }
@@ -249,23 +255,27 @@ export function parseBind(hexStr?: string) {
 
 function visible(node: FaceNode, sim: Sim, t: TimeParts): boolean {
   const bind = node.subs?.find((s) => s.tag === TAG.bind);
+
   if (!bind) return true;
   const eq: { id: number; val: number }[] = [],
     neq: { id: number; val: number }[] = [];
   const ge: { id: number; val: number }[] = [],
     le: { id: number; val: number }[] = [];
+
   for (const e of parseBind(bind.hex)) {
     // bit 0x80 in op shows up on exclusive variants (0x81) — semantically the same equality.
     // op 0x03 = "value == no-data marker" (e.g. heart rate 1000), also equality.
     // op 0x05/0x06 = inclusive range bounds (>=/<=) — seen paired on minute-bucket highlights
     // (e.g. Digital__281__Metaball's metaball chain, each node lit for its 5-minute window).
     const op = e.op & 0x7f;
+
     if (op === 0x01 || op === 0x03) eq.push(e);
     else if (op === 0x02) neq.push(e);
     else if (op === 0x05) ge.push(e);
     else if (op === 0x06) le.push(e);
   }
   let ok = true;
+
   if (eq.length) ok = eq.some((e) => idValue(e.id, sim, t) === e.val);
   if (ok && neq.length) ok = neq.every((e) => idValue(e.id, sim, t) !== e.val);
   if (ok && ge.length) ok = ge.every((e) => idValue(e.id, sim, t) >= e.val);
@@ -287,14 +297,18 @@ export interface ArcSpec {
 }
 export function parseArcSpec(node: FaceNode): ArcSpec | null {
   const sp = node.subs?.find((n) => n.tag === 0x5a || n.tag === 0x5b);
+
   if (!sp) return null;
   const v = unhex(sp.hex || "");
+
   if (v.length < 14) return null;
   const i32 = (o: number) => v[o] | (v[o + 1] << 8) | (v[o + 2] << 16) | (v[o + 3] << 24);
   const i16 = (o: number) => {
     const x = v[o] | (v[o + 1] << 8);
+
     return x & 0x8000 ? x - 0x10000 : x;
   };
+
   return {
     kind: sp.tag,
     min: i32(0),
@@ -335,6 +349,7 @@ function sectorImage(
   // Only verified on this one ring; revisit if another 0x5b face disagrees.
   const a0 = ((spec.start - 90) * Math.PI) / 180;
   const sweep = ((spec.end - spec.start) * Math.PI) / 180;
+
   ctx.save();
   if (frac < 0.999 || Math.abs(sweep) < 2 * Math.PI - 0.01) {
     ctx.beginPath();
@@ -353,6 +368,7 @@ function sectorImage(
 // across all three independent files (id 0x26 -> fb471f, id 0x6c -> e3e1e6).
 function ringRGB(struct: FaceNode): [number, number, number] | null {
   const m = unhex(struct.meta || "");
+
   return m.length >= 14 && m[7] === 1 ? [m[4], m[5], m[6]] : null;
 }
 
@@ -364,6 +380,7 @@ function ringRGB(struct: FaceNode): [number, number, number] | null {
 function hexRGB(hex: string | null): [number, number, number] | null {
   if (!hex) return null;
   const n = parseInt(hex.slice(1), 16);
+
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
@@ -400,6 +417,7 @@ function drawProceduralArc(
   // radius (meta.w/2), making the ring visibly bigger than its bounding box. Inset so the
   // OUTER edge lands on r instead, matching the baked preview's ring size.
   const ringR = r - lw / 2;
+
   if (ctx) {
     ctx.save();
     ctx.lineWidth = lw;
@@ -424,6 +442,7 @@ function drawProceduralArc(
 
 function progressFrac(id: number, sim: Sim, t: TimeParts, spec: ArcSpec): number {
   let v = idValue(id, sim, t);
+
   if (spec.max <= 100 && v > spec.max) {
     // goal rings count as percent of the goal (steps/kcal), firmware divides on its own
     const goal = (
@@ -436,10 +455,12 @@ function progressFrac(id: number, sim: Sim, t: TimeParts, spec: ArcSpec): number
         0x48: sim.calGoal,
       } as Record<number, SimValue>
     )[id];
+
     if (goal) v = (v / Number(goal)) * 100;
   }
   if (spec.max === 3600) v *= 60; // scales in seconds of the hour
   const d = spec.max - spec.min || 1;
+
   return Math.max(0, Math.min(1, (v - spec.min) / d));
 }
 
@@ -459,8 +480,10 @@ export interface Frame {
 }
 export function parseFrame(node: FaceNode): Frame | null {
   const f = node.subs?.find((s) => s.tag === TAG.frame);
+
   if (!f) return null;
   const v = unhex(f.hex || "");
+
   if (v.length < 9) return null;
   return {
     x: v[0] | (v[1] << 8),
@@ -491,16 +514,21 @@ const bmp = (res: Resource[], i: number) => res[i]?.accentBitmap ?? res[i]?.bitm
 // lazily once per bitmap (keyed on the bitmap itself, not the resource, so an accent-recolored
 // swap naturally invalidates it). Only cf=4 is touched — cf=5 already carries real alpha.
 const ringMaskCache = new WeakMap<ImageBitmap, OffscreenCanvas>();
+
 function ringBmp(res: Resource[], i: number): ImageBitmap | OffscreenCanvas | undefined {
   const b = bmp(res, i);
+
   if (!b || res[i]?.cf !== 4) return b;
   let masked = ringMaskCache.get(b);
+
   if (!masked) {
     masked = new OffscreenCanvas(b.width, b.height);
     const mctx = masked.getContext("2d")!;
+
     mctx.drawImage(b, 0, 0);
     const px = mctx.getImageData(0, 0, b.width, b.height);
     const d = px.data;
+
     for (let k = 0; k < d.length; k += 4) {
       if (d[k] < 12 && d[k + 1] < 12 && d[k + 2] < 12) d[k + 3] = 0;
     }
@@ -522,10 +550,12 @@ function collectArcsById(nodes: FaceNode[]): Map<number, FaceNode> {
     if (n.tag === 0x80 || n.tag === 0x81) {
       const struct = n.subs?.find((s) => s.tag === TAG.struct);
       const { id } = struct ? metaInfo(struct) : { id: 0 };
+
       if (id && !out.has(id)) out.set(id, n);
     }
     n.subs?.forEach(walk);
   };
+
   nodes.forEach(walk);
   return out;
 }
@@ -542,10 +572,12 @@ function withSlotOverrides(nodes: FaceNode[], sim: Sim): Sim {
     if (n.tag === 0x85) {
       const sf = n.subs?.find((s) => s.tag === 0x5f);
       const v = sf ? unhex(sf.hex || "") : null;
+
       if (v && v.length >= 3) extra[0x79 + v[0]] = v[2]; // v[0]=slotIndex, v[2]=activeIdx
     }
     n.subs?.forEach(walk);
   };
+
   nodes.forEach(walk);
   return Object.keys(extra).length ? { ...sim, overrides: { ...extra, ...sim.overrides } } : sim;
 }
@@ -567,6 +599,7 @@ function numberString(
     ? Math.round(progressFrac(id, sim, t, arcSpec) * 100)
     : Math.round(idValue(id, sim, t));
   let s = String(Math.abs(value));
+
   if (pad && digits) s = s.padStart(digits, "0");
   return s;
 }
@@ -596,6 +629,7 @@ function drawWidget(
   const struct = node.subs?.find((s) => s.tag === TAG.struct);
   // progress rings (0x80/0x81) can be procedural — a short struct form carries no image ref at all
   const isArc = node.tag === 0x80 || node.tag === 0x81;
+
   if (!struct || (!struct.images && !isArc)) return null;
   const imgs = struct.images ?? [];
   const x = origin ? origin.x : ox + (struct.x || 0);
@@ -604,6 +638,7 @@ function drawWidget(
   if (node.tag === TAG.hand) {
     const pivot = node.subs!.find((s) => s.tag === TAG.pivot);
     const b = bmp(res, imgs[0]);
+
     if (!b || !pivot || !ctx) return null;
     const { id, max } = metaInfo(struct);
     // hands on 0x0f/0x12 sweep smoothly on the real device (Elegant_Sweep vs Sundial,
@@ -613,6 +648,7 @@ function drawWidget(
     const angle = (v / (max || 60)) * 2 * Math.PI;
     const px0 = pivot.pivotX!,
       py0 = pivot.pivotY!;
+
     ctx.save();
     ctx.translate(x + px0, y + py0);
     ctx.rotate(angle);
@@ -630,6 +666,7 @@ function drawWidget(
       ].map(([px, py]) => [(px - px0) * cs - (py - py0) * sn, (px - px0) * sn + (py - py0) * cs]);
       const xs = pts.map((p) => p[0]),
         ys = pts.map((p) => p[1]);
+
       hits.push({
         node,
         x: x + px0 + Math.min(...xs),
@@ -645,8 +682,10 @@ function drawWidget(
     const str = numberString(node, sim, t, arcsById);
     let w = 0,
       h = 0;
+
     for (const ch of str) {
-      const b = bmp(res, imgs[+ch] ?? imgs[0]);
+      const b = bmp(res, imgs[Number(ch)] ?? imgs[0]);
+
       if (b) {
         w += b.width;
         h = Math.max(h, b.height);
@@ -654,8 +693,10 @@ function drawWidget(
     }
     if (ctx) {
       let cx = x;
+
       for (const ch of str) {
-        const b = bmp(res, imgs[+ch] ?? imgs[0]);
+        const b = bmp(res, imgs[Number(ch)] ?? imgs[0]);
+
         if (b) {
           ctx.drawImage(b, cx, y);
           cx += b.width;
@@ -669,10 +710,12 @@ function drawWidget(
   // 0x81: progress ring — ring image clipped to a sector by value, procedural arc if imageless
   if (node.tag === 0x81) {
     const spec = parseArcSpec(node);
+
     if (!spec) return null;
     const b = ringBmp(res, imgs[0]);
     const { id, w, h } = metaInfo(struct);
     const frac = progressFrac(id, sim, t, spec);
+
     if (!b)
       return drawProceduralArc(
         ctx,
@@ -694,10 +737,12 @@ function drawWidget(
   // vertical bars fill by height, rings by sector, no image — procedural arc
   if (node.tag === 0x80) {
     const spec = parseArcSpec(node);
+
     if (!spec) return null;
     const b = ringBmp(res, imgs[0]);
     const { id, w, h } = metaInfo(struct);
     const frac = progressFrac(id, sim, t, spec);
+
     if (b && b.height > 3 * b.width) {
       // vertical bar
       if (ctx && frac > 0.002) {
@@ -747,6 +792,7 @@ function drawWidget(
   if (node.tag === 0x85) {
     if (!sim.showSlotPlaceholders) return null;
     const b = bmp(res, imgs[0]);
+
     if (!b) return null;
     if (ctx) {
       ctx.drawImage(b, x, y);
@@ -764,18 +810,22 @@ function drawWidget(
   // single-image widget) — treated the same as sub===4 since that's what both real bakes show.
   {
     const { id, sub } = metaInfo(struct);
+
     if ((sub === 4 || sub === 3) && imgs.length === 1 && idValue(id, sim, t) >= 0) return null;
   }
 
   // 0x30 and others: a single image or a pick by value (7 days / 12 months / 2 AM-PM)
   let idx = 0;
+
   if (imgs.length > 1) {
     const { id } = metaInfo(struct);
     // index = value % frame count: lists start at "zero" (months [DEC,JAN..NOV], days [31,1..30])
     const v = Math.floor(idValue(id, sim, t));
+
     idx = ((v % imgs.length) + imgs.length) % imgs.length;
   }
   const b = bmp(res, imgs[idx]);
+
   if (!b) return null;
   if (ctx) {
     ctx.drawImage(b, x, y);
@@ -811,13 +861,15 @@ function drawGroup(
   arcsById: Map<number, FaceNode>,
 ): Size | null {
   const fr = parseFrame(node);
+
   if (!fr) return null;
   const x = origin ? origin.x : ox + fr.x;
   const y = origin ? origin.y : oy + fr.y;
   const kids = (node.subs || []).filter((s) => s.tag !== TAG.frame && s.tag !== TAG.bind);
   const isTrueAuto = (k: FaceNode) => {
     const st = k.subs?.find((s) => s.tag === TAG.struct);
-    return !!st && metaInfo(st).w === 0x8000;
+
+    return st != null && metaInfo(st).w === 0x8000;
   };
   // a NUMBER's rendered width is inherently dynamic (digit count varies), so it doesn't carry
   // its own 0x8000 marker — but it still needs to pack into the same auto row as a genuine
@@ -835,12 +887,13 @@ function drawGroup(
     if (isTrueAuto(k)) return true;
     if (!hasTrueAutoSibling || k.tag !== TAG.number) return false;
     const st = k.subs?.find((s) => s.tag === TAG.struct);
-    return !!st && !st.x;
+
+    return st != null && !st.x;
   };
   const sizes = kids.map((k) =>
     isAuto(k) ? drawWidget(null, k, res, sim, t, 0, 0, { x: 0, y: 0 }, null, arcsById) : null,
   );
-  const shown = sizes.filter((z): z is Size => !!z);
+  const shown = sizes.filter((z): z is Size => Boolean(z));
 
   // only genuinely 0x8000-flagged structs feed direction inference — a hugged NUMBER's own
   // y (see isAuto above) may be real placement data (Elaborate_2) or may not even be read by
@@ -849,7 +902,7 @@ function drawGroup(
   // (NUMBER y=46 vs "%" y=0 spread > 0).
   const autoStructs = kids
     .map((k, i) => (sizes[i] && isTrueAuto(k) ? k.subs?.find((s) => s.tag === TAG.struct) : null))
-    .filter((s): s is FaceNode => !!s);
+    .filter((s): s is FaceNode => Boolean(s));
   const spread = (vals: number[]) => (vals.length ? Math.max(...vals) - Math.min(...vals) : 0);
   const vertical =
     autoStructs.length > 1 &&
@@ -862,7 +915,7 @@ function drawGroup(
   // own confirmed case has this NUMBER at y=0, so it's naturally skipped (falsy) and keeps its
   // prior (already-correct) frame-centered behavior untouched.
   const numberRowStruct = kids
-    .find((k, i) => !!sizes[i] && !isTrueAuto(k) && k.tag === TAG.number)
+    .find((k, i) => Boolean(sizes[i]) && !isTrueAuto(k) && k.tag === TAG.number)
     ?.subs?.find((s) => s.tag === TAG.struct);
   const rowCross = !vertical && numberRowStruct?.y ? y + numberRowStruct.y : null;
 
@@ -872,9 +925,11 @@ function drawGroup(
   // one is below.
   const localOrigin = (k: FaceNode): { x: number; y: number } | null => {
     const st = k.subs?.find((s) => s.tag === TAG.struct);
+
     if (st) return { x: st.x || 0, y: st.y || 0 };
     if (k.tag === TAG.group) {
       const kfr = parseFrame(k);
+
       return kfr ? { x: kfr.x, y: kfr.y } : null;
     }
     return null;
@@ -887,6 +942,7 @@ function drawGroup(
   const gapAfter = (posInShown: number) => {
     const a = shownIdx[posInShown],
       b = shownIdx[posInShown + 1];
+
     if (b === undefined) return 0;
     return kids[a].tag === TAG.number || kids[b].tag === TAG.number ? 0 : fr.gap;
   };
@@ -898,14 +954,18 @@ function drawGroup(
   // frame origin instead of drifting negative.
   const mainAvail = Math.max(vertical ? fr.h : fr.w, total);
   let c = (vertical ? y : x) + (mainAvail - total) / 2;
+
   if (ctx) {
     let shownPos = 0;
+
     kids.forEach((k, i) => {
       const z = sizes[i];
+
       if (z) {
         const pos = vertical
           ? { x: x + crossOffset(fr.align, fr.w, z.w), y: c }
           : { x: c, y: rowCross ?? y + crossOffset(fr.align, fr.h, z.h) };
+
         drawWidget(ctx, k, res, sim, t, 0, 0, pos, hits, arcsById);
         c += (vertical ? z.h : z.w) + gapAfter(shownPos);
         shownPos++;
@@ -944,6 +1004,7 @@ function drawGroup(
         const pos =
           ringPos ??
           (measured ? { x: x + crossOffset(fr.align, fr.w, measured.w), y: y + o!.y } : null);
+
         drawWidget(ctx, k, res, sim, t, isRing ? 0 : x, isRing ? 0 : y, pos, hits, arcsById);
       }
     });
@@ -961,11 +1022,13 @@ function drawGroup(
 export function render(ctx: Ctx, face: Face, screenTag: number, sim: Sim): Hit[] {
   const t = timeParts(sim);
   const hits: Hit[] = [];
+
   ctx.clearRect(0, 0, 466, 466);
   const scr = face.screens.find((s) => s.tag === screenTag) || face.screens[0];
   const top = scr?.subs || [];
   const arcsById = collectArcsById(top);
   const effSim = withSlotOverrides(top, sim);
+
   for (const w of top) drawWidget(ctx, w, face.resources, effSim, t, 0, 0, null, hits, arcsById);
   return hits;
 }
@@ -976,12 +1039,14 @@ export function collectIds(face: Face): { id: number; max: number }[] {
   const walk = (n: FaceNode) => {
     if (n.tag === TAG.struct && n.meta) {
       const { id, max } = metaInfo(n);
+
       if (id) ids.set(id, max || ids.get(id) || 0);
     }
     if (n.tag === TAG.bind)
       for (const e of parseBind(n.hex)) if (e.id) ids.set(e.id, ids.get(e.id) || 0);
     n.subs?.forEach(walk);
   };
+
   face.screens.forEach(walk);
   return [...ids.entries()].map(([id, max]) => ({ id, max })).sort((a, b) => a.id - b.id);
 }

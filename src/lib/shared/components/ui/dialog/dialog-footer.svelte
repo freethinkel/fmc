@@ -1,5 +1,6 @@
-<script>
-  import { cn } from "$lib/shared/helpers";
+<script lang="ts">
+  import { cn, type WithElementRef } from "$lib/shared/helpers";
+  import type { HTMLAttributes } from "svelte/elements";
   import { Dialog as DialogPrimitive } from "bits-ui";
   import { Button } from "$lib/shared/components/ui/button/index.js";
 
@@ -9,6 +10,8 @@
     children,
     showCloseButton = false,
     ...restProps
+  }: WithElementRef<HTMLAttributes<HTMLDivElement>> & {
+    showCloseButton?: boolean;
   } = $props();
 </script>
 

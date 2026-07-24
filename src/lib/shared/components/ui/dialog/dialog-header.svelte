@@ -1,7 +1,13 @@
-<script>
-  import { cn } from "$lib/shared/helpers";
+<script lang="ts">
+  import { cn, type WithElementRef } from "$lib/shared/helpers";
+  import type { HTMLAttributes } from "svelte/elements";
 
-  let { ref = $bindable(null), class: className, children, ...restProps } = $props();
+  let {
+    ref = $bindable(null),
+    class: className,
+    children,
+    ...restProps
+  }: WithElementRef<HTMLAttributes<HTMLDivElement>> = $props();
 </script>
 
 <div

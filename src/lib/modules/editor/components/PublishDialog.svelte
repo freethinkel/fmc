@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
   import * as Dialog from "$lib/shared/components/ui/dialog";
   import { Button } from "$lib/shared/components/ui/button";
   import { Input } from "$lib/shared/components/ui/input";
@@ -25,6 +25,7 @@
   });
 
   async function publish() {
+    if (!$user) return;
     publishRequested({
       name,
       description,
@@ -38,7 +39,7 @@
 
 <Dialog.Root
   open={$open}
-  onOpenChange={(o) => {
+  onOpenChange={(o: boolean) => {
     if (!o) publishDialogClosed();
   }}
 >

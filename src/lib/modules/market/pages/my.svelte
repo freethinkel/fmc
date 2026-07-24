@@ -1,8 +1,9 @@
-<script>
+<script lang="ts">
   import { Button } from "$lib/shared/components/ui/button";
   import { Badge } from "$lib/shared/components/ui/badge/index.js";
   import { Heart, Download, Trash2, Pencil, Globe, GlobeLock } from "@lucide/svelte";
   import { fileUrl } from "$lib/shared/api";
+  import type { RecordModel } from "pocketbase";
   import { goto } from "$app/navigation";
   import { authModel } from "$lib/modules/auth/model";
   import { marketModel } from "../model";
@@ -23,9 +24,9 @@
     else goto("/login");
   });
 
-  const likeCount = (id) => $likes.filter((l) => l.watchface === id).length;
+  const likeCount = (id: string) => $likes.filter((l) => l.watchface === id).length;
 
-  function remove(wf) {
+  function remove(wf: RecordModel) {
     if (!confirm(`Delete "${wf.name}"?`)) return;
     removeRequested(wf);
   }

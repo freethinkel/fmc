@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
   import * as Avatar from "$lib/shared/components/ui/avatar/index.js";
   import * as DropdownMenu from "$lib/shared/components/ui/dropdown-menu/index.js";
   import * as Sidebar from "$lib/shared/components/ui/sidebar/index.js";

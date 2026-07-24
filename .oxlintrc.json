@@ -4,7 +4,12 @@
   "categories": {
     "correctness": "error"
   },
-  "rules": {},
+  "jsPlugins": ["./config/oxlint-plugin-effector.js", "./config/oxlint-plugin-style.js"],
+  "rules": {
+    "effector/sample-multiline": "warn",
+    "style/blank-line-after-vars": "warn",
+    "no-implicit-coercion": ["warn", { "string": false }]
+  },
   "env": {
     "builtin": true
   }

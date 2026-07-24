@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
   import { Separator } from "$lib/shared/components/ui/separator/index.js";
   import * as Breadcrumb from "$lib/shared/components/ui/breadcrumb/index.js";
   import * as Sidebar from "$lib/shared/components/ui/sidebar/index.js";
@@ -20,7 +20,7 @@
     "/login": "Sign in",
     "/register": "Sign up",
   };
-  const title = $derived(titles[page.url.pathname] ?? "");
+  const title = $derived(titles[page.url.pathname as keyof typeof titles] ?? "");
   const initials = $derived(($user?.name || $user?.email || "?").slice(0, 2).toUpperCase());
 </script>
 

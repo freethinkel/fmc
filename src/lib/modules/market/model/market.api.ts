@@ -16,6 +16,7 @@ export const loadMarketFx = createEffect(async () => {
       .getFullList({ sort: "-created", expand: "owner", filter: "published = true" }),
     pb.collection("likes").getFullList(),
   ]);
+
   return { items, likes };
 });
 
@@ -51,6 +52,7 @@ export const saveFx = createEffect(async (p: SavePayload & { openedId?: string }
   if (p.bin.length > MAX_BIN)
     throw new Error(`bin is ${(p.bin.length / 1024 / 1024).toFixed(1)} MB — limit is 1 MB`);
   const fd = new FormData();
+
   fd.set("name", p.name);
   if (p.description !== undefined) fd.set("description", p.description);
   fd.set("owner", p.ownerId);
@@ -58,6 +60,7 @@ export const saveFx = createEffect(async (p: SavePayload & { openedId?: string }
   fd.set("bin", new Blob([p.bin as BlobPart]), `${p.name || "watchface"}.bin`);
   fd.set("preview", p.preview, "preview.png");
   const col = pb.collection("watchfaces");
+
   return p.openedId ? col.update(p.openedId, fd) : col.create(fd);
 });
 

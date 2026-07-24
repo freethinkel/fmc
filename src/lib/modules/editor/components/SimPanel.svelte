@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
   import { Input } from "$lib/shared/components/ui/input";
   import { Label } from "$lib/shared/components/ui/label";
   import { Switch } from "$lib/shared/components/ui/switch";
@@ -11,7 +11,18 @@
   // sentinel") — just shown in the picker until the user picks their own
   const ACCENT_DEFAULT = "#ff2c00";
 
-  const fields = [
+  type NumField =
+    | "steps"
+    | "hr"
+    | "battery"
+    | "calories"
+    | "temp"
+    | "distance"
+    | "stepsGoal"
+    | "calGoal"
+    | "stands";
+
+  const fields: [NumField, string][] = [
     ["steps", "steps"],
     ["hr", "heart rate"],
     ["battery", "battery"],
@@ -23,7 +34,7 @@
     ["stands", "stand hrs"],
   ];
 
-  function localISO(t) {
+  function localISO(t: number) {
     return new Date(t - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 19);
   }
 </script>
@@ -32,7 +43,7 @@
   <div class="flex items-center gap-2">
     <Switch
       checked={$editor.sim.live}
-      onCheckedChange={(v) => simPatched({ live: v })}
+      onCheckedChange={(v: boolean) => simPatched({ live: v })}
       id="live"
     /><Label for="live">live time</Label>
   </div>
@@ -42,20 +53,20 @@
       type="datetime-local"
       step="1"
       value={localISO($editor.sim.time)}
-      oninput={(e) => simPatched({ time: new Date(e.target.value).getTime() })}
+      oninput={(e) => simPatched({ time: new Date(e.currentTarget.value).getTime() })}
     />
   {/if}
   <div class="flex items-center gap-2">
     <Switch
       checked={$editor.sim.is24h}
-      onCheckedChange={(v) => simPatched({ is24h: v })}
+      onCheckedChange={(v: boolean) => simPatched({ is24h: v })}
       id="h24"
     /><Label for="h24">24-hour format</Label>
   </div>
   <div class="flex items-center gap-2">
     <Switch
       checked={$editor.sim.showSlotPlaceholders}
-      onCheckedChange={(v) => simPatched({ showSlotPlaceholders: v })}
+      onCheckedChange={(v: boolean) => simPatched({ showSlotPlaceholders: v })}
       id="slotph"
     />
     <Label for="slotph">widget-slot placeholders</Label>
@@ -67,7 +78,7 @@
         type="color"
         class="h-8 w-12 cursor-pointer rounded border"
         value={$editor.sim.accentColor || ACCENT_DEFAULT}
-        oninput={(e) => simPatched({ accentColor: e.target.value })}
+        oninput={(e) => simPatched({ accentColor: e.currentTarget.value })}
         title="Watch accent color (recolors widgets flagged via meta[7]===4, see metaInfo in lib/render.ts)"
       />
       {#if $editor.sim.accentColor}
@@ -88,7 +99,8 @@
           class="mt-0.5 h-8"
           type="number"
           value={$editor.sim[key]}
-          oninput={(e) => simPatched({ [key]: e.target.value === "" ? "" : +e.target.value })}
+          oninput={(e) =>
+            simPatched({ [key]: e.currentTarget.value === "" ? "" : +e.currentTarget.value })}
         />
       </div>
     {/each}
@@ -109,7 +121,7 @@
             type="number"
             placeholder="auto"
             value={$editor.sim.overrides[id] ?? ""}
-            oninput={(e) => overrideSet({ id, value: e.target.value })}
+            oninput={(e) => overrideSet({ id, value: e.currentTarget.value })}
           />
           {#if max}<span class="text-xs text-muted-foreground">/{max}</span>{/if}
         </div>

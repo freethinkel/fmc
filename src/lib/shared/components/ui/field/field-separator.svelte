@@ -13,7 +13,7 @@
     children?: Snippet;
   } = $props();
 
-  const hasContent = $derived(!!children);
+  const hasContent = $derived(Boolean(children));
 </script>
 
 <div

@@ -32,13 +32,25 @@ export const oauthRequested = createEvent<string>();
 // business logic
 pb.authStore.onChange(() => userChanged(pb.authStore.record));
 
-sample({ clock: userChanged, target: $user });
+sample({
+  clock: userChanged,
+  target: $user,
+});
 
-sample({ clock: logout, target: authApi.logoutFx });
+sample({
+  clock: logout,
+  target: authApi.logoutFx,
+});
 
-sample({ clock: loginRequested, target: authApi.loginFx });
+sample({
+  clock: loginRequested,
+  target: authApi.loginFx,
+});
 
-sample({ clock: oauthRequested, target: authApi.oauthFx });
+sample({
+  clock: oauthRequested,
+  target: authApi.oauthFx,
+});
 
 sample({
   clock: authApi.loginFx.failData,
@@ -51,7 +63,10 @@ sample({
   target: $loginErr,
 });
 
-sample({ clock: registerRequested, target: authApi.registerFx });
+sample({
+  clock: registerRequested,
+  target: authApi.registerFx,
+});
 
 sample({
   clock: authApi.registerFx.failData,

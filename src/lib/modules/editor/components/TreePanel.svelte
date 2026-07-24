@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
   import { SvelteSet } from "svelte/reactivity";
   import { Button } from "$lib/shared/components/ui/button";
   import {
@@ -22,7 +22,7 @@
     Box,
     ChevronRight,
   } from "@lucide/svelte";
-  import { TAG, unhex } from "../lib/wf";
+  import { TAG, unhex, type FaceNode } from "../lib/wf";
   import { metaInfo, ID_LABELS } from "../lib/render";
   import { editorModel } from "../model";
   const { $editor: editor, select, addWidgetRequested, deleteWidget } = editorModel;
@@ -70,11 +70,13 @@
     0x85: SquareDashed,
   };
 
-  export function nodeLabel(n) {
-    let s = tagNames[n.tag] || `0x${n.tag.toString(16)}`;
+  export function nodeLabel(n: FaceNode) {
+    let s = tagNames[n.tag as keyof typeof tagNames] || `0x${n.tag.toString(16)}`;
     const st = n.tag === TAG.struct ? n : n.subs?.find((c) => c.tag === TAG.struct);
+
     if (st?.meta) {
       const { id } = metaInfo(st);
+
       if (id) s += ` · ${ID_LABELS[id] || "id 0x" + id.toString(16)}`;
     }
     if (n.tag === 0x85) {
@@ -82,20 +84,24 @@
       const sf = n.subs?.find((c) => c.tag === 0x5f);
       const v = sf?.hex ? unhex(sf.hex) : null;
       const activeId = v && v.length >= 3 ? v[3 + v[2]] : undefined;
+
       if (activeId != null) s += ` · ${ID_LABELS[activeId] || "0x" + activeId.toString(16)}`;
     }
     if (n._kind) s += ` · ${n._kind}`;
     return s;
   }
 
-  function onAdd(kind, e) {
-    const files = e.target.files;
+  function onAdd(kind: "image" | "number" | "hand", e: Event) {
+    const t = e.target as HTMLInputElement;
+    const files = t.files;
+
     if (files?.length) addWidgetRequested({ kind, files: [...files] });
-    e.target.value = "";
+    t.value = "";
   }
 
   const openNodes = new SvelteSet(); // accordion: closed by default, keyed by the node itself (tree is mutable, refs are stable)
-  function toggleOpen(n, e) {
+
+  function toggleOpen(n: FaceNode, e: Event) {
     e.stopPropagation();
     if (openNodes.has(n)) openNodes.delete(n);
     else openNodes.add(n);
@@ -155,8 +161,8 @@
   </div>
 </div>
 
-{#snippet treeNode(n, depth)}
-  {@const Icon = tagIcons[n.tag] || Box}
+{#snippet treeNode(n: FaceNode, depth: number)}
+  {@const Icon = tagIcons[n.tag as keyof typeof tagIcons] || Box}
   {@const kids = depth < 4 ? (n.subs || []).filter((c) => c.subs || c.tag === TAG.struct) : []}
   <button
     class="flex w-full items-center gap-1.5 px-2 py-0.5 text-left hover:bg-accent {$editor.sel === n

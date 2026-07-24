@@ -33,7 +33,7 @@ src/routes/       # thin: import a page from the module and render it
   top, subscribe via `$store`. Don't put business logic or data loading in components.
 - Domain types: `Face`, `FaceNode`, `Resource` — in `modules/editor/lib/wf.ts`;
   `Sim`, `Hit` — in `modules/editor/lib/render.ts`.
-- `checkJs` is off: strict TS for `.ts`, `<script>` in Svelte components is plain JS.
+- All Svelte components use `<script lang="ts">` — TypeScript everywhere, no plain-JS `<script>`.
 - Cross-module imports — through barrels: `$lib/modules/auth/model`, `$lib/modules/device/model`.
 
 ## Effector conventions

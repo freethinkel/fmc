@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
   import { ScrollArea as ScrollAreaPrimitive } from "bits-ui";
   import { cn } from "$lib/shared/helpers";
 
@@ -8,7 +8,7 @@
     orientation = "vertical",
     children,
     ...restProps
-  } = $props();
+  }: ScrollAreaPrimitive.ScrollbarProps = $props();
 </script>
 
 <ScrollAreaPrimitive.Scrollbar

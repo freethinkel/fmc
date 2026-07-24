@@ -1,8 +1,12 @@
-<script>
+<script lang="ts">
   import { Dialog as DialogPrimitive } from "bits-ui";
   import { cn } from "$lib/shared/helpers";
 
-  let { ref = $bindable(null), class: className, ...restProps } = $props();
+  let {
+    ref = $bindable(null),
+    class: className,
+    ...restProps
+  }: DialogPrimitive.DescriptionProps = $props();
 </script>
 
 <DialogPrimitive.Description

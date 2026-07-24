@@ -88,19 +88,23 @@ const AES_IV = new Uint8Array([
 
 // ---- crypto / checksum helpers ----
 const CRC_T = new Uint32Array(256);
+
 for (let i = 0; i < 256; i++) {
   let c = i;
+
   for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
   CRC_T[i] = c >>> 0;
 }
 // standard IEEE CRC32 (init/xor 0xFFFFFFFF) — matches Go's crc32.ChecksumIEEE
 function crc32(d: Uint8Array): number {
   let c = 0xffffffff;
+
   for (let i = 0; i < d.length; i++) c = CRC_T[(c ^ d[i]) & 0xff] ^ (c >>> 8);
   return (c ^ 0xffffffff) >>> 0;
 }
 const crcLE = (d: Uint8Array) => {
   const b = new Uint8Array(4);
+
   new DataView(b.buffer).setUint32(0, crc32(d), true);
   return b;
 };
@@ -108,6 +112,7 @@ const cat = (...arrs: Uint8Array[]) => {
   const n = arrs.reduce((s, a) => s + a.length, 0);
   const o = new Uint8Array(n);
   let p = 0;
+
   for (const a of arrs) {
     o.set(a, p);
     p += a.length;
@@ -119,6 +124,7 @@ const eqBytes = (a: Uint8Array, b: Uint8Array) =>
   a.length === b.length && a.every((x, i) => x === b[i]);
 const toHex = (d: Uint8Array) => [...d].map((b) => b.toString(16).padStart(2, "0")).join("");
 const fromHex = (s: string) => new Uint8Array((s.match(/../g) || []).map((b) => parseInt(b, 16)));
+
 async function sha256(d: Uint8Array): Promise<Uint8Array> {
   return new Uint8Array(await crypto.subtle.digest("SHA-256", d as BufferSource));
 }
@@ -166,10 +172,13 @@ class Codec {
   }
   async encode(key: number, payload: Uint8Array): Promise<Uint8Array[]> {
     let chunks: Uint8Array[] = [];
+
     if (PLAINTEXT.has(key)) {
       const size = this.mtu - 20;
+
       for (let i = 0; i < payload.length; i += size) {
         const ch = payload.slice(i, i + size);
+
         chunks.push(cat(ch, crcLE(ch)));
       }
     } else if (payload.length === 0) {
@@ -177,16 +186,20 @@ class Codec {
     } else {
       const maxEnc = Math.floor((this.mtu - 11) / 16) * 16,
         maxPay = maxEnc - 5;
+
       for (let i = 0; i < payload.length; i += maxPay) {
         const ch = payload.slice(i, i + maxPay);
+
         chunks.push(await this.encrypt(cat(ch, crcLE(ch))));
       }
     }
     const c1 = (key >>> 16) & 0xffff,
       c2 = key & 0xffff;
+
     return chunks.map((ch, i) => {
       const f = new Uint8Array(11 + ch.length),
         dv = new DataView(f.buffer);
+
       f[0] = 0xf5;
       dv.setUint16(1, ch.length);
       dv.setUint16(3, c1);
@@ -206,6 +219,7 @@ class Codec {
     const count = dv.getUint16(5),
       index = dv.getUint16(7);
     let payload = new Uint8Array(0);
+
     if (plen > 0) {
       if (PLAINTEXT.has(key)) {
         payload = frame.slice(11);
@@ -214,6 +228,7 @@ class Codec {
         const dec = await this.decrypt(frame.slice(11, 11 + plen)).catch((e) => {
           throw new Error(`${cmdName(key)} (${plen}B): ${(e as Error).message}`);
         });
+
         if (dec.length < 4) throw new Error("payload too short for crc");
         payload = dec.slice(0, -4);
         if (crc32(payload) !== new DataView(dec.buffer).getUint32(dec.length - 4, true))
@@ -222,6 +237,7 @@ class Codec {
     }
     if (count <= 1) return { key, payload };
     let b = this.bufs.get(key);
+
     if (!b) {
       b = { expected: 1, data: new Uint8Array(0) };
       this.bufs.set(key, b);
@@ -242,6 +258,7 @@ class Codec {
 const KEY_STORE = "fmc_authkey";
 const loadKey = (): Uint8Array | null => {
   const h = localStorage.getItem(KEY_STORE);
+
   return h && h.length === 32 ? fromHex(h) : null;
 };
 const saveKey = (k: Uint8Array) => localStorage.setItem(KEY_STORE, toHex(k));
@@ -253,6 +270,7 @@ export async function forgetKnownDevices(): Promise<number> {
   localStorage.removeItem(KEY_STORE);
   if (!navigator.bluetooth?.getDevices) return 0;
   const devices = await navigator.bluetooth.getDevices();
+
   await Promise.all(devices.map((d) => d.forget()));
   return devices.length;
 }
@@ -292,6 +310,7 @@ export class Watch {
         ],
         optionalServices: SERVICES,
       });
+
       dbg("device chosen:", d.name, d.id);
       d.addEventListener("gattserverdisconnected", () => {
         dbg("gattserverdisconnected");
@@ -300,6 +319,7 @@ export class Watch {
       return d;
     };
     let device = await pick();
+
     (window as unknown as { __wf?: BluetoothDevice }).__wf = device; // ponytail: dev console hook, remove after debugging
     this.status("connecting…");
     // gatt.connect() hangs forever if the watch is already holding a connection with someone else
@@ -319,6 +339,7 @@ export class Watch {
       this.chars = {};
       dbg("gatt.connect()…");
       const server = await device.gatt!.connect();
+
       dbg("gatt connected, discovering services…");
       // full (undirected) discovery: CoreBluetooth sometimes fails to find a service via a
       // targeted getPrimaryService(uuid) right after connecting, even though it's there — compared to
@@ -326,9 +347,11 @@ export class Watch {
       // reliably. The outer Promise.race(…, timeout(15000)) in connectOrRepick guards
       // against the very hang that previously led to picking the targeted variant.
       const svcs = await server.getPrimaryServices();
+
       for (const svc of svcs) {
         try {
           const cc = await svc.getCharacteristics();
+
           dbg(
             "service",
             svc.uuid,
@@ -345,7 +368,7 @@ export class Watch {
         Object.fromEntries(
           (
             ["cmdRead", "cmdWrite", "dataRead", "dataWrite", "shellRead", "shellWrite"] as const
-          ).map((k) => [k, !!this.chars[UUID[k]]]),
+          ).map((k) => [k, Boolean(this.chars[UUID[k]])]),
         ),
       );
     };
@@ -361,6 +384,7 @@ export class Watch {
         await Promise.race([discover(), timeout(15000, what)]);
       }
     };
+
     try {
       await connectOrRepick("connection");
       // the shell (pairing) service sometimes shows up only on a fresh connection
@@ -391,14 +415,17 @@ export class Watch {
         await ch.startNotifications();
         ch.addEventListener("characteristicvaluechanged", (e) => {
           const value = (e.target as BluetoothRemoteGATTCharacteristic).value!;
+
           this.onNotify(ch.uuid, new Uint8Array(value.buffer, value.byteOffset, value.byteLength));
         });
       }
     };
+
     try {
       await subscribe();
-      dbg("subscriptions done, key saved:", !!loadKey());
+      dbg("subscriptions done, key saved:", Boolean(loadKey()));
       const k = loadKey();
+
       if (k) {
         try {
           await this.authenticate(k);
@@ -438,6 +465,7 @@ export class Watch {
   async onNotify(uuid: string, bytes: Uint8Array) {
     if (uuid === UUID.shellRead) {
       const s = new TextDecoder().decode(bytes);
+
       dbg("shell:", s.trim());
       if (this.shellWaiter && s.includes("GETSECRET:")) {
         this.shellWaiter(s);
@@ -447,6 +475,7 @@ export class Watch {
     }
     if (uuid !== UUID.cmdRead && uuid !== UUID.dataRead) return;
     let res;
+
     try {
       res = await this.codec.decode(bytes);
     } catch (e) {
@@ -460,11 +489,14 @@ export class Watch {
     if (res.key === CMD.wfInstalled) {
       // built-ins ‖ 0xFFFFFFFF ‖ gallery ids (§9.5g)
       const p = res.payload;
+
       this.galleryWf = [];
       this.builtinWf = [];
       let sentinel = false;
+
       for (let off = 4; off + 4 <= p.length; off += 4) {
         const id = new DataView(p.buffer, p.byteOffset + off).getUint32(0, true);
+
         if (id === 0xffffffff) sentinel = true;
         else (sentinel ? this.galleryWf : this.builtinWf).push(id);
       }
@@ -472,11 +504,13 @@ export class Watch {
       this.onDials?.({ builtin: [...this.builtinWf], gallery: [...this.galleryWf] });
     }
     const w = this.waiters.get(res.key);
+
     if (w) {
       this.waiters.delete(res.key);
       w(res.payload);
     }
     const h = this.handlers.get(res.key);
+
     if (h) h(res.payload);
   }
 
@@ -486,6 +520,7 @@ export class Watch {
         this.waiters.delete(cmdKey);
         reject(new Error(`timeout waiting for 0x${(cmdKey & 0xffff).toString(16)}`));
       }, ms);
+
       this.waiters.set(cmdKey, (p) => {
         clearTimeout(t);
         resolve(p);
@@ -496,6 +531,7 @@ export class Watch {
     if (cmdKey !== CMD.wfChunkWrite || verbose())
       dbg("send", cmdName(cmdKey), "len", payload?.length ?? 0);
     const ch = this.chars[UUID.cmdWrite];
+
     for (const f of await this.codec.encode(cmdKey, payload || new Uint8Array(0)))
       await ch.writeValueWithoutResponse(f as BufferSource);
   }
@@ -504,6 +540,7 @@ export class Watch {
     if (cmdKey !== CMD.wfChunkWrite || verbose())
       dbg("sendData", cmdName(cmdKey), "len", payload?.length ?? 0);
     const ch = this.chars[UUID.dataWrite];
+
     for (const f of await this.codec.encode(cmdKey, payload || new Uint8Array(0)))
       await ch.writeValueWithoutResponse(f as BufferSource);
   }
@@ -517,13 +554,16 @@ export class Watch {
       data[5] === 0 &&
       data[6] === 0 &&
       (data[7] === 0 || data[7] === 2);
+
     if (!magicOk) throw new Error("not a watchface: no 01 00 00 0x magic at offset 4");
     const nul = (off: number) => {
       const e = data.indexOf(0, off);
+
       return e < 0 ? null : new TextDecoder().decode(data.slice(off, e));
     };
     const name = nul(8),
       trailer = nul(data.length - 28);
+
     if (!name || name !== trailer) throw new Error("trailer name mismatch — corrupted file?");
 
     const id = crypto.getRandomValues(new Uint32Array(1))[0];
@@ -545,18 +585,21 @@ export class Watch {
       this.status(`uploading “${name}”…`);
       await this.sendData(CMD.wfInit1Req, new Uint8Array([MARKER]));
       const r1 = await this.waitFor(CMD.wfInit1Rep);
+
       if (!r1.length || r1[0] !== 1)
         throw new Error(`watch rejected the upload (init1: ${toHex(r1)})`);
 
       // §9.5e: 13 bytes, little-endian, no marker: ctr_type(3) ‖ old_wf_id ‖ new_wf_id ‖ size
       const init2 = new Uint8Array(13),
         dv2 = new DataView(init2.buffer);
+
       init2[0] = 3;
       dv2.setUint32(1, oldId, true);
       dv2.setUint32(5, id, true);
       dv2.setUint32(9, data.length, true);
       await this.sendData(CMD.wfInit2Req, init2);
       const r2 = await this.waitFor(CMD.wfInit2Rep);
+
       if (!r2.length || r2[0] !== 1)
         throw new Error(`watch rejected the upload (init2: ${toHex(r2)})`);
 
@@ -576,6 +619,7 @@ export class Watch {
             clearTimeout(watchdog);
             watchdog = setTimeout(() => fail(new Error("upload stalled")), 30000);
           };
+
           kick();
           this.handlers.set(CMD.wfChunkReq, async (p) => {
             if (p.length < 9) return fail(new Error(`short chunk request: ${toHex(p)}`));
@@ -583,6 +627,7 @@ export class Watch {
             const dv = new DataView(p.buffer, p.byteOffset);
             const off = dv.getUint32(0),
               len = dv.getUint32(4);
+
             if (off + len > data.length)
               return fail(new Error(`chunk request out of bounds: ${off}+${len}`));
             onProgress(p[8]);
@@ -630,19 +675,24 @@ export class Watch {
     this.status("pairing — confirm on the watch");
     await this.codec.setKey(null);
     const gotSecret = new Promise<string>((res) => (this.shellWaiter = res));
+
     await this.chars[UUID.shellWrite].writeValue(utf8("AT GETSECRET") as BufferSource);
     const str = (await gotSecret).trim();
+
     if (!str.endsWith(",OK") || str.length < 42) throw new Error(`pairing rejected: ${str}`);
     const secret = fromHex(str.slice(10, 42));
     const random1 = crypto.getRandomValues(new Uint8Array(16));
     const sig = await sha256(cat(random1, secret));
+
     await this.send(CMD.authPairReq, cat(random1, sig));
     const rep = await this.waitFor(CMD.authPairRep);
     const random2 = rep.slice(0, 16),
       sig2 = rep.slice(16, 48);
+
     if (!eqBytes(sig2, await sha256(cat(random2, secret))))
       throw new Error("watch signature mismatch");
     const k1 = (await sha256(cat(random1, random2, secret))).slice(0, 16);
+
     saveKey(k1);
     await this.authenticate(k1);
   }
@@ -654,13 +704,16 @@ export class Watch {
     const failed = new Promise<never>((_, rej) =>
       this.waiters.set(CMD.authFailed, () => rej(new Error("watch rejected the auth key"))),
     );
+
     failed.catch(() => {}); // the race might not manage to subscribe in time — suppress the unhandled rejection
     const wait = (key: number) => Promise.race([this.waitFor(key), failed]);
+
     try {
       await this.send(CMD.authName, cat(new Uint8Array([MARKER]), utf8("fmc")));
       await wait(CMD.authMac);
       await this.send(CMD.authNonceReq, new Uint8Array([MARKER]));
       const nonce = await wait(CMD.authNonceRep);
+
       await this.codec.setKey((await sha256(cat(nonce, k1))).slice(0, 16));
       await this.send(CMD.authConfirmReq, new Uint8Array([MARKER]));
       await wait(CMD.authConfirmRep);
@@ -674,6 +727,7 @@ export class Watch {
       tz = -new Date().getTimezoneOffset() * 60;
     const t = new Uint8Array(8),
       dv = new DataView(t.buffer);
+
     dv.setUint32(0, now);
     dv.setUint32(4, (tz * 1000) >>> 0);
     await this.send(CMD.time, t);
@@ -686,6 +740,7 @@ export class Watch {
     await this.send(CMD.serialGet, new Uint8Array(0));
     try {
       const p = await this.waitFor(CMD.serialRet, 4000);
+
       if (p.length > 1 && p[0] <= p.length - 1)
         this.serial = new TextDecoder().decode(p.slice(1, 1 + p[0]));
     } catch {

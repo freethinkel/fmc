@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
   import Store from "@lucide/svelte/icons/store";
   import Pencil from "@lucide/svelte/icons/pencil";
   import WatchIcon from "@lucide/svelte/icons/watch";

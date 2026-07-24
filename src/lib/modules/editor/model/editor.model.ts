@@ -37,11 +37,21 @@ export const screenTagSet = createEvent<number>();
 export const checkpoint = createEvent<number | void>(); // payload: coalesce ms (default 600)
 export const undo = createEvent();
 export const redo = createEvent();
-export const patched = createEvent<{ node: FaceNode; patch: Partial<FaceNode> }>();
+export const patched = createEvent<{
+  node: FaceNode;
+  patch: Partial<FaceNode>;
+}>();
 export const simPatched = createEvent<Partial<Sim>>();
-export const overrideSet = createEvent<{ id: number; value: number | string }>();
+export const overrideSet = createEvent<{
+  id: number;
+  value: number | string;
+}>();
 export const errored = createEvent<string>();
-const faceLoaded = createEvent<{ face: Face; label: string; dirty?: boolean }>();
+const faceLoaded = createEvent<{
+  face: Face;
+  label: string;
+  dirty?: boolean;
+}>();
 const treeChanged = createEvent<(s: EditorState) => void>(); // tree mutation after checkpoint
 
 // ---- undo/redo live outside the store (only counters in the store; tree only, resources are out of history) ----
@@ -85,7 +95,12 @@ sample({
   },
   target: $editor,
 });
-sample({ clock: select, source: $editor, fn: (s, sel) => ({ ...s, sel }), target: $editor });
+sample({
+  clock: select,
+  source: $editor,
+  fn: (s, sel) => ({ ...s, sel }),
+  target: $editor,
+});
 sample({
   clock: screenTagSet,
   source: $editor,
@@ -98,6 +113,7 @@ sample({
   fn: (s, coalesce) => {
     if (!s.face) return s;
     const now = Date.now();
+
     if (now - lastCp < (coalesce ?? 600)) return s;
     lastCp = now;
     undoStack.push(snap(s));
@@ -115,7 +131,12 @@ sample({
     redoStack.push(snap(s));
     s.face.screens = JSON.parse(undoStack.pop()!);
     lastCp = 0;
-    return { ...s, sel: null, undoN: undoStack.length, redoN: redoStack.length };
+    return {
+      ...s,
+      sel: null,
+      undoN: undoStack.length,
+      redoN: redoStack.length,
+    };
   },
   target: $editor,
 });
@@ -127,7 +148,12 @@ sample({
     undoStack.push(snap(s));
     s.face.screens = JSON.parse(redoStack.pop()!);
     lastCp = 0;
-    return { ...s, sel: null, undoN: undoStack.length, redoN: redoStack.length };
+    return {
+      ...s,
+      sel: null,
+      undoN: undoStack.length,
+      redoN: redoStack.length,
+    };
   },
   target: $editor,
 });
@@ -164,7 +190,12 @@ sample({
   }),
   target: $editor,
 });
-sample({ clock: errored, source: $editor, fn: (s, err) => ({ ...s, err }), target: $editor });
+sample({
+  clock: errored,
+  source: $editor,
+  fn: (s, err) => ({ ...s, err }),
+  target: $editor,
+});
 
 // right-side panel tab (Properties/Simulator) — UI state, but driven by a model event (select),
 // not a reactive read of $editor.sel: $editor changes on every simPatched (a simulator tweak),
@@ -172,12 +203,22 @@ sample({ clock: errored, source: $editor, fn: (s, err) => ({ ...s, err }), targe
 // to Properties on every input. Keyed off the select event itself instead.
 export const $rightPanel = createStore<"props" | "sim">("props");
 export const rightPanelSet = createEvent<"props" | "sim">();
-sample({ clock: rightPanelSet, target: $rightPanel });
-sample({ clock: select, filter: Boolean, fn: () => "props" as const, target: $rightPanel });
+
+sample({
+  clock: rightPanelSet,
+  target: $rightPanel,
+});
+sample({
+  clock: select,
+  filter: Boolean,
+  fn: () => "props" as const,
+  target: $rightPanel,
+});
 
 // ---- loading ----
 export async function bitmapOf(r: Resource): Promise<ImageBitmap> {
   const px = decodePixels(r);
+
   return px
     ? createImageBitmap(new ImageData(px, r.w, r.h))
     : createImageBitmap(new Blob([r.data as BlobPart], { type: "image/jpeg" }));
@@ -186,18 +227,30 @@ export async function bitmapOf(r: Resource): Promise<ImageBitmap> {
 const loadBufferFx = createEffect(
   async ({ buf, label }: { buf: ArrayBuffer | Uint8Array; label: string }) => {
     const face = parseBin(buf);
+
     for (const r of face.resources) r.bitmap = await bitmapOf(r);
     return { face, label };
   },
 );
 
-export const loadRequested = createEvent<{ buf: ArrayBuffer | Uint8Array; label: string }>();
-sample({ clock: loadRequested, target: loadBufferFx });
+export const loadRequested = createEvent<{
+  buf: ArrayBuffer | Uint8Array;
+  label: string;
+}>();
+
+sample({
+  clock: loadRequested,
+  target: loadBufferFx,
+});
 export const $loading = loadBufferFx.pending;
 // fired on any successful load (drag-drop import, or opened from the marketplace) — pages that
 // need to react (e.g. navigate once the face is ready) subscribe; others just ignore it
 export const loadDone = createEvent<{ face: Face; label: string }>();
-sample({ clock: loadBufferFx.doneData, target: loadDone });
+
+sample({
+  clock: loadBufferFx.doneData,
+  target: loadDone,
+});
 
 // which resource indices are accent-tintable: struct.meta[7]===4 (metaInfo's `accent` field)
 // — a real per-widget capability flag, confirmed against 7 real-device test cases including
@@ -211,6 +264,7 @@ function accentFlaggedResources(face: Face): Set<number> {
     }
     n.subs?.forEach(walk);
   };
+
   face.screens.forEach(walk);
   return flagged;
 }
@@ -222,12 +276,14 @@ function accentFlaggedResources(face: Face): Set<number> {
 // substitute its own accent color.
 async function accentBitmapFor(r: Resource, colorHex: string): Promise<ImageBitmap | undefined> {
   const px = decodePixels(r);
+
   if (!px) return undefined; // cf=1 (JPEG) — no per-pixel recolor
   const n = parseInt(colorHex.slice(1), 16);
   const cr = (n >> 16) & 255,
     cg = (n >> 8) & 255,
     cb = n & 255;
   let changed = false;
+
   for (let i = 0; i < px.length; i += 4) {
     if (px[i + 3] > 0) {
       px[i] = cr;
@@ -243,8 +299,10 @@ async function accentBitmapFor(r: Resource, colorHex: string): Promise<ImageBitm
 // simPatched({accentColor}) can fire back-to-back; without a queue whichever promise
 // resolves last wins, regardless of call order
 let accentQueue = Promise.resolve();
-function queueAccent(face: Face, color: string | null) {
+
+const accentFx = createEffect(({ face, color }: { face: Face; color: string | null }) => {
   const flagged = color ? accentFlaggedResources(face) : null;
+
   accentQueue = accentQueue
     .then(() =>
       Promise.all(
@@ -255,23 +313,19 @@ function queueAccent(face: Face, color: string | null) {
     )
     .then(() => {});
   return accentQueue;
-}
-
-const accentFx = createEffect(({ face, color }: { face: Face; color: string | null }) =>
-  queueAccent(face, color),
-);
+});
 
 sample({
   clock: simPatched,
   source: $editor,
-  filter: (s, patch) => "accentColor" in patch && !!s.face,
+  filter: (s, patch) => "accentColor" in patch && Boolean(s.face),
   fn: (s, patch) => ({ face: s.face!, color: patch.accentColor ?? null }),
   target: accentFx,
 });
 sample({
   clock: faceLoaded,
   source: $editor,
-  filter: (s) => !!s.sim.accentColor,
+  filter: (s) => Boolean(s.sim.accentColor),
   fn: (s, { face }) => ({ face, color: s.sim.accentColor! }),
   target: accentFx,
 });
@@ -280,7 +334,7 @@ sample({
 sample({
   clock: patched,
   source: $editor,
-  filter: (s) => !!(s.face && s.sim.accentColor),
+  filter: (s) => Boolean(s.face && s.sim.accentColor),
   fn: (s) => ({ face: s.face!, color: s.sim.accentColor! }),
   target: accentFx,
 });
@@ -295,22 +349,27 @@ sample({
 export type AlignDir = "left" | "hcenter" | "right" | "top" | "vcenter" | "bottom";
 export function alignSelected(dir: AlignDir) {
   const s = $editor.getState();
+
   if (!s.face || !s.sel) return;
   const sel = s.sel;
   const c = document.createElement("canvas");
+
   c.width = c.height = 466;
   let parent: FaceNode | null = null;
   const walk = (n: FaceNode) => {
     if (n.tag === TAG.group && n.subs?.includes(sel)) parent = n;
     n.subs?.forEach(walk);
   };
+
   for (const scr of s.face.screens) walk(scr);
 
   const pass = (): boolean => {
     const hits = render(c.getContext("2d")!, s.face!, s.screenTag, s.sim);
     const h = hits.findLast((h) => h.node === sel);
+
     if (!h) return false;
     let cont = { x: 0, y: 0, w: 466, h: 466 };
+
     if (parent) {
       const ph = hits.findLast((x) => x.node === parent);
       // auto-sized frames report w/h 0 — fall back to the screen for those
@@ -336,6 +395,7 @@ export function alignSelected(dir: AlignDir) {
     // center", not "AABB centered" (which would drift with the current second)
     const pivot = sel.subs?.find((n) => n.tag === TAG.pivot);
     const pst = pivot && sel.subs?.find((n) => n.tag === TAG.struct);
+
     if (pivot && pst) {
       if (dir === "hcenter") dx = Math.round(cont.x + cont.w / 2) - pivot.pivotX! - pst.x!;
       if (dir === "vcenter") dy = Math.round(cont.y + cont.h / 2) - pivot.pivotY! - pst.y!;
@@ -346,6 +406,7 @@ export function alignSelected(dir: AlignDir) {
       const v = unhex(f.hex!);
       const fx = Math.max(0, (v[0] | (v[1] << 8)) + dx),
         fy = Math.max(0, (v[2] | (v[3] << 8)) + dy);
+
       v[0] = fx;
       v[1] = fx >> 8;
       v[2] = fy;
@@ -353,8 +414,12 @@ export function alignSelected(dir: AlignDir) {
       patched({ node: f, patch: { hex: hex(v) } });
     } else {
       const st = sel.subs?.find((n) => n.tag === TAG.struct);
+
       if (!st || st.x == null) return false;
-      patched({ node: st, patch: { x: Math.max(0, st.x + dx), y: Math.max(0, (st.y || 0) + dy) } });
+      patched({
+        node: st,
+        patch: { x: Math.max(0, st.x + dx), y: Math.max(0, (st.y || 0) + dy) },
+      });
     }
     return true;
   };
@@ -370,14 +435,17 @@ export function alignSelected(dir: AlignDir) {
 const newFaceFx = createEffect(async (name: string = "Custom") => {
   const black = (w: number, h: number): Resource => {
     const px = new Uint8ClampedArray(w * h * 4);
+
     for (let i = 3; i < px.length; i += 4) px[i] = 255;
     return encodePixels(px, w, h, 4);
   };
   const preview = black(270, 270);
   const bg = black(466, 466);
+
   preview.bitmap = await bitmapOf(preview);
   bg.bitmap = await bitmapOf(bg);
   const nameRaw = new Uint8Array(16);
+
   new TextEncoder().encodeInto(name.slice(0, 14), nameRaw);
   nameRaw[15] = 0x0a; // same as CDN files, byte meaning not figured out
   const face: Face = {
@@ -390,7 +458,14 @@ const newFaceFx = createEffect(async (name: string = "Custom") => {
           { tag: TAG.name, text: name },
           {
             tag: TAG.preview,
-            subs: [{ tag: TAG.pvStruct, prefix: "0000000000", refType: 0x61, images: [0] }],
+            subs: [
+              {
+                tag: TAG.pvStruct,
+                prefix: "0000000000",
+                refType: 0x61,
+                images: [0],
+              },
+            ],
           },
           {
             tag: 0x30,
@@ -410,13 +485,21 @@ const newFaceFx = createEffect(async (name: string = "Custom") => {
     ],
     resources: [preview, bg],
   };
+
   return { face, label: "new", dirty: true };
 });
 
 export const newFaceRequested = createEvent<string | void>();
-sample({ clock: newFaceRequested, target: newFaceFx });
 
-sample({ clock: [loadBufferFx.doneData, newFaceFx.doneData], target: faceLoaded });
+sample({
+  clock: newFaceRequested,
+  target: newFaceFx,
+});
+
+sample({
+  clock: [loadBufferFx.doneData, newFaceFx.doneData],
+  target: faceLoaded,
+});
 sample({
   clock: loadBufferFx.fail,
   fn: ({ params, error }) => `${params.label}: ${error.message}`,
@@ -428,6 +511,7 @@ function findParent(nodes: FaceNode[], target: FaceNode): FaceNode | null {
   for (const n of nodes) {
     if (n.subs?.includes(target)) return n;
     const p = n.subs && findParent(n.subs, target);
+
     if (p) return p;
   }
   return null;
@@ -439,8 +523,10 @@ function findParent(nodes: FaceNode[], target: FaceNode): FaceNode | null {
 // hang them on — the mutations they trigger (checkpoint/treeChanged) still go through events.
 export function deleteWidget() {
   const s = $editor.getState();
+
   if (!s.sel || !s.face) return;
   const p = findParent(s.face.screens, s.sel);
+
   if (!p) return;
   checkpoint(0);
   treeChanged((st) => {
@@ -450,45 +536,47 @@ export function deleteWidget() {
   });
 }
 
-async function addResources(face: Face, files: File[], cf: number) {
-  const idxs: number[] = [];
-  for (const file of files) {
-    const img = await createImageBitmap(file);
-    const c = new OffscreenCanvas(img.width, img.height);
-    const cx = c.getContext("2d")!;
-    cx.drawImage(img, 0, 0);
-    const enc: Resource = encodePixels(
-      cx.getImageData(0, 0, img.width, img.height).data,
-      img.width,
-      img.height,
-      cf,
-    );
-    enc.bitmap = await bitmapOf(enc);
-    idxs.push(face.resources.length);
-    face.resources.push(enc);
-  }
-  return idxs;
-}
-
-const META0 = "0000000000000000000000000000";
-function metaWith(id: number, max: number) {
-  const v = unhex(META0);
-  v[9] = id;
-  v[11] = max;
-  v[12] = max >> 8;
-  v[13] = max >> 16;
-  return hex(v);
-}
-
 // kind: image | number (10 digit files 0..9) | hand
 const addWidgetFx = createEffect(
   async ({ kind, files }: { kind: "image" | "number" | "hand"; files: File[] }) => {
     const s = $editor.getState();
+
     if (!s.face || !files.length) return;
     checkpoint(0);
     const scr = s.face.screens.find((x) => x.tag === s.screenTag) || s.face.screens[0];
-    const imgs = await addResources(s.face, [...files], 5);
+    const face = s.face;
+    const imgs: number[] = [];
+
+    for (const file of files) {
+      const img = await createImageBitmap(file);
+      const c = new OffscreenCanvas(img.width, img.height);
+      const cx = c.getContext("2d")!;
+
+      cx.drawImage(img, 0, 0);
+      const enc: Resource = encodePixels(
+        cx.getImageData(0, 0, img.width, img.height).data,
+        img.width,
+        img.height,
+        5,
+      );
+
+      enc.bitmap = await bitmapOf(enc);
+      imgs.push(face.resources.length);
+      face.resources.push(enc);
+    }
+
+    const META0 = "0000000000000000000000000000";
+    const metaWith = (id: number, max: number) => {
+      const v = unhex(META0);
+
+      v[9] = id;
+      v[11] = max;
+      v[12] = max >> 8;
+      v[13] = max >> 16;
+      return hex(v);
+    };
     let node: FaceNode;
+
     if (kind === "image") {
       node = {
         tag: 0x30,
@@ -498,7 +586,14 @@ const addWidgetFx = createEffect(
       node = {
         tag: 0x60,
         subs: [
-          { tag: 1, x: 183, y: 217, meta: metaWith(0x19, 100000), refType: 0x61, images: imgs },
+          {
+            tag: 1,
+            x: 183,
+            y: 217,
+            meta: metaWith(0x19, 100000),
+            refType: 0x61,
+            images: imgs,
+          },
           { tag: 0x40, hex: "82" },
         ],
       };
@@ -506,6 +601,7 @@ const addWidgetFx = createEffect(
       const r = s.face.resources[imgs[0]];
       const px = r.w >> 1,
         py = Math.round(r.h * 0.9);
+
       node = {
         tag: 0x70,
         subs: [
@@ -529,6 +625,7 @@ const addWidgetFx = createEffect(
     });
   },
 );
+
 sample({
   clock: addWidgetFx.fail,
   fn: ({ error }) => `add widget: ${error.message}`,
@@ -539,20 +636,27 @@ export const addWidgetRequested = createEvent<{
   kind: "image" | "number" | "hand";
   files: File[];
 }>();
-sample({ clock: addWidgetRequested, target: addWidgetFx });
+
+sample({
+  clock: addWidgetRequested,
+  target: addWidgetFx,
+});
 
 const replaceImageFx = createEffect(async ({ resIdx, file }: { resIdx: number; file: File }) => {
   const { face } = $editor.getState();
   const r = face!.resources[resIdx];
+
   if (r.cf === 1) {
     const data = new Uint8Array(await file.arrayBuffer());
     const b = await createImageBitmap(new Blob([data], { type: "image/jpeg" }));
+
     treeChanged(() => Object.assign(r, { data, w: b.width, h: b.height, bitmap: b }));
     return;
   }
   const img = await createImageBitmap(file);
   const c = new OffscreenCanvas(img.width, img.height);
   const cx = c.getContext("2d")!;
+
   cx.drawImage(img, 0, 0);
   const enc: Resource = encodePixels(
     cx.getImageData(0, 0, img.width, img.height).data,
@@ -560,9 +664,11 @@ const replaceImageFx = createEffect(async ({ resIdx, file }: { resIdx: number; f
     img.height,
     r.cf,
   );
+
   enc.bitmap = await bitmapOf(enc);
   treeChanged(() => Object.assign(r, enc));
 });
+
 sample({
   clock: replaceImageFx.done,
   source: $editor,
@@ -575,8 +681,15 @@ sample({
   target: errored,
 });
 
-export const replaceImageRequested = createEvent<{ resIdx: number; file: File }>();
-sample({ clock: replaceImageRequested, target: replaceImageFx });
+export const replaceImageRequested = createEvent<{
+  resIdx: number;
+  file: File;
+}>();
+
+sample({
+  clock: replaceImageRequested,
+  target: replaceImageFx,
+});
 
 // ---- export ----
 function regenPreviews(face: Face, sim: Sim) {
@@ -585,17 +698,22 @@ function regenPreviews(face: Face, sim: Sim) {
       ?.find((s) => s.tag === TAG.preview)
       ?.subs?.find((s) => s.tag === TAG.pvStruct);
     const ri = pv?.images?.[0];
+
     if (ri == null) continue;
     const r = face.resources[ri];
+
     if (r.cf === 1) continue; // don't re-encode JPEG previews
     const c = document.createElement("canvas");
+
     c.width = 466;
     c.height = 466;
     render(c.getContext("2d")!, face, scr.tag, sim);
     const c2 = document.createElement("canvas");
+
     c2.width = r.w;
     c2.height = r.h;
     const cx2 = c2.getContext("2d")!;
+
     cx2.drawImage(c, 0, 0, r.w, r.h);
     Object.assign(r, encodePixels(cx2.getImageData(0, 0, r.w, r.h).data, r.w, r.h, r.cf));
     bitmapOf(r).then((b) => (r.bitmap = b));
@@ -604,8 +722,10 @@ function regenPreviews(face: Face, sim: Sim) {
 
 export function buildCurrentBin(): Uint8Array {
   const s = $editor.getState();
+
   if (s.dirty) regenPreviews(s.face!, s.sim); // embedded 0x28 previews = current render
   const out = buildBin(s.face!);
+
   parseBin(out); // self-check
   return out;
 }
@@ -614,6 +734,7 @@ export function buildCurrentBin(): Uint8Array {
 export function previewBlob(): Promise<Blob> {
   const { face, sim } = $editor.getState();
   const c = document.createElement("canvas");
+
   c.width = 466;
   c.height = 466;
   render(c.getContext("2d")!, face!, TAG.main, sim);
@@ -624,6 +745,7 @@ export function exportBin() {
   try {
     const out = buildCurrentBin();
     const a = document.createElement("a");
+
     a.href = URL.createObjectURL(new Blob([out as BlobPart]));
     a.download = `${$editor.getState().face!.name || "watchface"}.bin`;
     a.click();

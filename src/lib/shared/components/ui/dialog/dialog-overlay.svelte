@@ -1,8 +1,12 @@
-<script>
+<script lang="ts">
   import { Dialog as DialogPrimitive } from "bits-ui";
-  import { cn } from "$lib/shared/helpers";
+  import { cn, type WithoutChildrenOrChild } from "$lib/shared/helpers";
 
-  let { ref = $bindable(null), class: className, ...restProps } = $props();
+  let {
+    ref = $bindable(null),
+    class: className,
+    ...restProps
+  }: WithoutChildrenOrChild<DialogPrimitive.OverlayProps> = $props();
 </script>
 
 <DialogPrimitive.Overlay

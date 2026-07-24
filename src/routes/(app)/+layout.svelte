@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
   import * as Sidebar from "$lib/shared/components/ui/sidebar/index.js";
   import AppSidebar from "$lib/shared/components/app-sidebar.svelte";
   import SiteHeader from "$lib/shared/components/site-header.svelte";

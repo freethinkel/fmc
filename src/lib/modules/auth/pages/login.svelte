@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
   import LoginForm from "../components/login-form.svelte";
   import { authModel } from "../model";
   import { goto } from "$app/navigation";

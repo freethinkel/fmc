@@ -1,10 +1,10 @@
-<script>
+<script lang="ts">
   import { Switch as SwitchPrimitive } from "bits-ui";
   import { cn } from "$lib/shared/helpers";
 
   let {
     ref = $bindable(null),
-    class: className,
+    class: className = undefined,
     checked = $bindable(false),
     size = "default",
     ...restProps

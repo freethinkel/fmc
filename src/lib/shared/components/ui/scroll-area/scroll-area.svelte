@@ -1,7 +1,7 @@
-<script>
+<script lang="ts">
   import { ScrollArea as ScrollAreaPrimitive } from "bits-ui";
   import { Scrollbar } from "./index.js";
-  import { cn } from "$lib/shared/helpers";
+  import { cn, type WithElementRef } from "$lib/shared/helpers";
 
   let {
     ref = $bindable(null),
@@ -12,6 +12,11 @@
     scrollbarYClasses = "",
     children,
     ...restProps
+  }: WithElementRef<ScrollAreaPrimitive.RootProps> & {
+    viewportRef?: HTMLElement | null;
+    orientation?: "vertical" | "horizontal" | "both";
+    scrollbarXClasses?: string;
+    scrollbarYClasses?: string;
   } = $props();
 </script>
 

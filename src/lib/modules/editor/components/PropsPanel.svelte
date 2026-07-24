@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
   import { Input } from "$lib/shared/components/ui/input";
   import { Label } from "$lib/shared/components/ui/label";
   import { Checkbox } from "$lib/shared/components/ui/checkbox";
@@ -13,9 +13,12 @@
     AlignEndHorizontal,
   } from "@lucide/svelte";
   import { cn } from "$lib/shared/helpers";
-  import { TAG, unhex, hex } from "../lib/wf";
-  import { metaInfo, ID_LABELS, parseFrame } from "../lib/render";
+  import type { Component } from "svelte";
+  import type { LucideProps } from "@lucide/svelte";
+  import { TAG, unhex, hex, type FaceNode, type Resource } from "../lib/wf";
+  import { metaInfo, ID_LABELS, parseFrame, type Frame } from "../lib/render";
   import { editorModel } from "../model";
+  import type { AlignDir } from "../model/editor.model";
   const {
     $editor: editor,
     checkpoint,
@@ -25,18 +28,19 @@
   } = editorModel;
 
   // Figma-style position buttons: [dir, icon, title] — two groups of three
-  const alignH = [
+  const alignH: [AlignDir, Component<LucideProps>, string][] = [
     ["left", AlignStartVertical, "Align left"],
     ["hcenter", AlignCenterVertical, "Align horizontal centers"],
     ["right", AlignEndVertical, "Align right"],
   ];
-  const alignV = [
+  const alignV: [AlignDir, Component<LucideProps>, string][] = [
     ["top", AlignStartHorizontal, "Align top"],
     ["vcenter", AlignCenterHorizontal, "Align vertical centers"],
     ["bottom", AlignEndHorizontal, "Align bottom"],
   ];
 
-  const selStruct = (n) => (n?.tag === TAG.struct ? n : n?.subs?.find((s) => s.tag === TAG.struct));
+  const selStruct = (n: FaceNode | null) =>
+    n?.tag === TAG.struct ? n : n?.subs?.find((s) => s.tag === TAG.struct);
   const st = $derived(selStruct($editor.sel));
   const pivot = $derived($editor.sel?.subs?.find((s) => s.tag === TAG.pivot));
   const fmtNode = $derived($editor.sel?.subs?.find((s) => s.tag === TAG.fmt));
@@ -65,7 +69,7 @@
   });
   const fmtByte = $derived.by(() => {
     void $editor;
-    return fmtNode ? unhex(fmtNode.hex)[0] || 0 : 0;
+    return fmtNode ? unhex(fmtNode.hex || "")[0] || 0 : 0;
   });
   // 0x5f: [slotIndex][count][activeIdx][count × metric id][padding] — see 0x85 "Widget slot"
   const slotNode = $derived(
@@ -74,12 +78,13 @@
   const slotInfo = $derived.by(() => {
     void $editor;
     const v = slotNode?.hex ? unhex(slotNode.hex) : null;
+
     if (!v || v.length < 3) return null;
     return { activeIdx: v[2], ids: [...v.subarray(3, 3 + v[1])] };
   });
 
-  const num = (e) => +e.target.value || 0;
-  const set = (node, patch) => {
+  const num = (e: Event) => Number((e.target as HTMLInputElement).value) || 0;
+  const set = (node: FaceNode, patch: Partial<FaceNode>) => {
     checkpoint();
     patched({ node, patch });
   };
@@ -88,15 +93,16 @@
   // as drawGroup (AUTO children's x/y spread), so the icons match what actually moves
   const groupVertical = $derived.by(() => {
     if (!frame) return false;
-    const autos = ($editor.sel.subs || [])
+    const autos = ($editor.sel?.subs || [])
       .map((k) => k.subs?.find((s) => s.tag === TAG.struct))
-      .filter((s) => s && metaInfo(s).w === 0x8000);
-    const spread = (a) => (a.length ? Math.max(...a) - Math.min(...a) : 0);
+      .filter((s): s is FaceNode => s != null && metaInfo(s).w === 0x8000);
+    const spread = (a: number[]) => (a.length ? Math.max(...a) - Math.min(...a) : 0);
+
     return (
       autos.length > 1 && spread(autos.map((s) => s.y || 0)) > spread(autos.map((s) => s.x || 0))
     );
   });
-  const frameAlignBtns = $derived(
+  const frameAlignBtns: [number, Component<LucideProps>, string][] = $derived(
     groupVertical
       ? [
           [1, AlignStartVertical, "Children left"],
@@ -110,15 +116,21 @@
         ],
   );
 
-  function setFrame(patch) {
-    const f = $editor.sel.subs.find((s) => s.tag === TAG.frame);
-    let v = unhex(f.hex);
+  function setFrame(patch: Partial<Frame>) {
+    if (!frame) return;
+    const f = $editor.sel?.subs?.find((s) => s.tag === TAG.frame);
+
+    if (!f) return;
+    let v = unhex(f.hex || "");
+
     if (v.length < 10) {
       const b = new Uint8Array(10);
+
       b.set(v);
       v = b;
     } // frame.hex may omit the align byte
     const cur = { ...frame, ...patch };
+
     v[0] = cur.x;
     v[1] = cur.x >> 8;
     v[2] = cur.y;
@@ -131,19 +143,24 @@
     v[9] = cur.align;
     set(f, { hex: hex(v) });
   }
-  function setSlotActive(idx) {
-    const v = unhex(slotNode.hex);
+  function setSlotActive(idx: number) {
+    if (!slotNode) return;
+    const v = unhex(slotNode.hex || "");
+
     v[2] = idx;
     set(slotNode, { hex: hex(v) });
   }
-  function setFmt(digits, pad) {
+  function setFmt(digits: number, pad: number | boolean) {
+    if (!fmtNode) return;
     set(fmtNode, { hex: hex(new Uint8Array([(digits & 0x1f) | (pad ? 0x80 : 0)])) });
   }
   // meta[7] === 4 marks this widget's resource(s) accent-tintable on the real device — see
   // docs/cmf-protocol.md "Accent color". Every non-transparent pixel gets swapped, regardless
   // of its baked color, so this works on any art (white, colored, whatever).
-  function setAccent(on) {
-    const v = unhex(st.meta);
+  function setAccent(on: boolean) {
+    if (!st) return;
+    const v = unhex(st.meta || "");
+
     v[7] = on ? 4 : 0;
     set(st, { meta: hex(v) });
   }
@@ -153,24 +170,35 @@
   // into a static bitmap. So: hands get a smooth(0x12)/ticking(0x72) toggle; rings only
   // get a rescue button back to their native 0x0f if left on a broken smooth-era id.
   const SECOND_IDS = [0x0f, 0x12, 0x71, 0x72];
-  const isSecondHand = $derived($editor.sel?.tag === TAG.hand && SECOND_IDS.includes(meta?.id));
-  const isBrokenRing = $derived(
-    [0x80, 0x81].includes($editor.sel?.tag) && [0x71, 0x72].includes(meta?.id),
+  const isSecondHand = $derived(
+    $editor.sel?.tag === TAG.hand && meta != null && SECOND_IDS.includes(meta.id),
   );
-  function setSecondId(id) {
-    const v = unhex(st.meta);
+  const isBrokenRing = $derived(
+    $editor.sel != null &&
+      [0x80, 0x81].includes($editor.sel.tag) &&
+      meta != null &&
+      [0x71, 0x72].includes(meta.id),
+  );
+
+  function setSecondId(id: number) {
+    if (!st) return;
+    const v = unhex(st.meta || "");
+
     v[9] = id;
     set(st, { meta: hex(v) });
   }
-  function thumbURL(r) {
+  function thumbURL(r: Resource) {
     const c = document.createElement("canvas");
+
     c.width = r.w;
     c.height = r.h;
-    if (r.bitmap) c.getContext("2d").drawImage(r.bitmap, 0, 0);
+    if (r.bitmap) c.getContext("2d")?.drawImage(r.bitmap, 0, 0);
     return c.toDataURL();
   }
-  function downloadRes(ri) {
+  function downloadRes(ri: number) {
+    if (!$editor.face) return;
     const a = document.createElement("a");
+
     a.href = thumbURL($editor.face.resources[ri]);
     a.download = `res${ri}.png`;
     a.click();
@@ -304,7 +332,7 @@
     {#if isSecondHand}
       <div class="flex items-center gap-2">
         <Checkbox
-          checked={meta.id === 0x0f || meta.id === 0x12}
+          checked={meta?.id === 0x0f || meta?.id === 0x12}
           onCheckedChange={(v) => setSecondId(v ? 0x12 : 0x72)}
           id="smooth"
         />
@@ -317,7 +345,7 @@
         class="text-muted-foreground hover:text-foreground rounded-lg border px-2 py-1 text-xs"
         onclick={() => setSecondId(0x0f)}
       >
-        broken second source (0x{meta.id.toString(16)}) — restore ticking 0x0f
+        broken second source (0x{meta?.id.toString(16)}) — restore ticking 0x0f
       </button>
     {/if}
     {#if st?.meta}
@@ -327,7 +355,8 @@
           class="mt-1 h-8 font-mono text-xs"
           value={sv.metaHex}
           oninput={(e) => {
-            if (/^[0-9a-f]{28}$/i.test(e.target.value)) set(st, { meta: e.target.value });
+            if (/^[0-9a-f]{28}$/i.test(e.currentTarget.value))
+              set(st, { meta: e.currentTarget.value });
           }}
         />
       </div>
@@ -358,7 +387,8 @@
           class="mt-1 h-8 font-mono text-xs"
           value={sv.bindHex}
           oninput={(e) => {
-            if (/^([0-9a-f]{2})*$/i.test(e.target.value)) set(bindNode, { hex: e.target.value });
+            if (/^([0-9a-f]{2})*$/i.test(e.currentTarget.value))
+              set(bindNode, { hex: e.currentTarget.value });
           }}
         />
       </div>
@@ -389,14 +419,14 @@
     {#if sv.images}
       <div class="flex flex-wrap gap-2">
         {#each sv.images as ri}
+          {@const r = $editor.face!.resources[ri]}
           <div class="group relative">
             <label
-              title="res{ri} · {$editor.face.resources[ri].w}×{$editor.face.resources[ri]
-                .h} · cf{$editor.face.resources[ri].cf} — click to replace"
+              title="res{ri} · {r.w}×{r.h} · cf{r.cf} — click to replace"
               class="cursor-pointer"
             >
               <img
-                src={thumbURL($editor.face.resources[ri])}
+                src={thumbURL(r)}
                 alt="res{ri}"
                 class="max-h-14 max-w-14 rounded border border-border bg-[repeating-conic-gradient(#333_0_25%,#222_0_50%)] bg-[length:12px_12px]"
               />
@@ -404,9 +434,11 @@
                 type="file"
                 accept="image/*"
                 hidden
-                onchange={(e) =>
-                  e.target.files[0] &&
-                  replaceImageRequested({ resIdx: ri, file: e.target.files[0] })}
+                onchange={(e) => {
+                  const file = e.currentTarget.files?.[0];
+
+                  if (file) replaceImageRequested({ resIdx: ri, file });
+                }}
               />
             </label>
             <button

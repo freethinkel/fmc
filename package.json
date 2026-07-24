@@ -10,9 +10,8 @@
     "prepare": "svelte-kit sync || echo ''",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
-    "test": "node test.mjs",
-    "test:components": "vitest run",
-    "test:components:watch": "vitest --browser.headless=false --browser.ui --open",
+    "test": "vitest run --browser.headless=true",
+    "test:watch": "vitest --browser.headless=false --browser.ui --open",
     "lint": "oxlint",
     "format": "oxfmt",
     "format:check": "oxfmt --check"

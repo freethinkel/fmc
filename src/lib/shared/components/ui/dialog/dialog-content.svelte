@@ -1,8 +1,9 @@
-<script>
+<script lang="ts">
   import { Dialog as DialogPrimitive } from "bits-ui";
+  import type { Snippet } from "svelte";
   import DialogPortal from "./dialog-portal.svelte";
   import * as Dialog from "./index.js";
-  import { cn } from "$lib/shared/helpers";
+  import { cn, type WithoutChildrenOrChild } from "$lib/shared/helpers";
   import { Button } from "$lib/shared/components/ui/button/index.js";
   import XIcon from "@lucide/svelte/icons/x";
 
@@ -13,6 +14,10 @@
     children,
     showCloseButton = true,
     ...restProps
+  }: WithoutChildrenOrChild<DialogPrimitive.ContentProps> & {
+    portalProps?: DialogPrimitive.PortalProps;
+    children: Snippet;
+    showCloseButton?: boolean;
   } = $props();
 </script>
 

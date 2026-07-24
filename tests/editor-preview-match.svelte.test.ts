@@ -6,9 +6,9 @@
 // itself uses for regenPreviews()/previewBlob().
 import { describe, test, expect } from "vitest";
 import pixelmatch from "pixelmatch";
-import { parseBin, TAG } from "../lib/wf";
-import { render as drawFace, defaultSim } from "../lib/render";
-import { bitmapOf } from "../model/editor.model";
+import { parseBin, TAG } from "$lib/modules/editor/lib/wf";
+import { render as drawFace, defaultSim } from "$lib/modules/editor/lib/render";
+import { bitmapOf } from "$lib/modules/editor/model/editor.model";
 
 import analogUrl from "./__fixtures__/Analog__287__Simple_Dial.bin?url";
 import digitalUrl from "./__fixtures__/Digital__281__Metaball.bin?url";
@@ -165,9 +165,11 @@ function labeled(canvas: HTMLCanvasElement, label: string): HTMLCanvasElement {
   canvas.style.width = "160px";
   canvas.style.border = "1px solid #444";
   const cap = document.createElement("div");
+
   cap.textContent = label;
   cap.style.font = "11px monospace";
   const box = document.createElement("div");
+
   box.style.display = "inline-block";
   box.style.margin = "4px";
   box.append(canvas, cap);
@@ -175,11 +177,17 @@ function labeled(canvas: HTMLCanvasElement, label: string): HTMLCanvasElement {
   return canvas;
 }
 
-function imageData(source: CanvasImageSource, w: number, h: number): Uint8ClampedArray {
+function imageData(
+  source: CanvasImageSource,
+  w: number,
+  h: number,
+): Uint8ClampedArray {
   const c = document.createElement("canvas");
+
   c.width = w;
   c.height = h;
   const cx = c.getContext("2d")!;
+
   cx.fillStyle = "#000"; // preview/canvas are round-bezel graphics on transparent corners;
   cx.fillRect(0, 0, w, h); // the compared images must agree on a backdrop or corners read as a false diff
   cx.drawImage(source, 0, 0, w, h);
@@ -191,17 +199,21 @@ describe("render() output matches embedded preview", () => {
     test(name, async () => {
       const buf = await fetch(url).then((r) => r.arrayBuffer());
       const face = parseBin(buf);
+
       for (const res of face.resources) res.bitmap = await bitmapOf(res);
 
       const row = document.createElement("div");
+
       row.style.display = "flex";
       row.style.alignItems = "flex-start";
       document.body.appendChild(row);
       const title = document.createElement("div");
+
       title.style.cssText = "width:100%;font:12px monospace;margin-top:8px";
       row.before(title);
 
       const canvas = document.createElement("canvas");
+
       canvas.width = 466;
       canvas.height = 466;
       const sim = {
@@ -210,9 +222,11 @@ describe("render() output matches embedded preview", () => {
         time: new Date(time).getTime(),
         ...simOverrides, // per-case steps/calories/temp/... to match a specific baked value
       };
+
       drawFace(canvas.getContext("2d")!, face, TAG.main, sim);
 
-      const scr = face.screens.find((s) => s.tag === TAG.main) ?? face.screens[0];
+      const scr =
+        face.screens.find((s) => s.tag === TAG.main) ?? face.screens[0];
       const pv = scr.subs
         ?.find((s) => s.tag === TAG.preview)
         ?.subs?.find((s) => s.tag === TAG.pvStruct);
@@ -228,31 +242,50 @@ describe("render() output matches embedded preview", () => {
         threshold: 0.1,
       });
       const ratio = diffPixels / (r.w * r.h);
-      console.log(`RATIO ${name} = ${ratio}`);
 
       const actualCanvas = document.createElement("canvas");
+
       actualCanvas.width = r.w;
       actualCanvas.height = r.h;
       actualCanvas
         .getContext("2d")!
-        .putImageData(new ImageData(new Uint8ClampedArray(actual), r.w, r.h), 0, 0);
+        .putImageData(
+          new ImageData(new Uint8ClampedArray(actual), r.w, r.h),
+          0,
+          0,
+        );
 
       const expectedCanvas = document.createElement("canvas");
+
       expectedCanvas.width = r.w;
       expectedCanvas.height = r.h;
       expectedCanvas
         .getContext("2d")!
-        .putImageData(new ImageData(new Uint8ClampedArray(expected), r.w, r.h), 0, 0);
+        .putImageData(
+          new ImageData(new Uint8ClampedArray(expected), r.w, r.h),
+          0,
+          0,
+        );
 
       const diffCanvas = document.createElement("canvas");
+
       diffCanvas.width = r.w;
       diffCanvas.height = r.h;
-      diffCanvas.getContext("2d")!.putImageData(new ImageData(diff, r.w, r.h), 0, 0);
+      diffCanvas
+        .getContext("2d")!
+        .putImageData(new ImageData(diff, r.w, r.h), 0, 0);
 
       title.textContent = `${name} — ${(ratio * 100).toFixed(2)}% diff (max ${(maxDiffRatio * 100).toFixed(0)}%)`;
       [actualCanvas, expectedCanvas, diffCanvas].forEach((c, i) =>
         row.appendChild(
-          labeled(c, ["actual (our render)", "expected (baked preview)", "diff (pixelmatch)"][i]),
+          labeled(
+            c,
+            [
+              "actual (our render)",
+              "expected (baked preview)",
+              "diff (pixelmatch)",
+            ][i],
+          ),
         ),
       );
 
