@@ -161,3 +161,18 @@ test("alignSelected aligns a group child within its parent frame", async () => {
 
   expect(h.y).toBe(g.y + g.h - h.h);
 });
+
+// A group's frame x/y are int16, same as a struct's: nudging a group off the left edge used
+// to write -3 and read it back as 65533, which parked the whole group off the right instead.
+test("a frame keeps a negative x instead of wrapping to 65533", () => {
+  const v = new Uint8Array(21);
+
+  v[0] = -3;
+  v[1] = -3 >> 8;
+  v[2] = -7;
+  v[3] = -7 >> 8;
+  v[4] = 100; // w stays unsigned
+  const fr = parseFrame({ tag: TAG.group, subs: [{ tag: TAG.frame, hex: hex(v) }] })!;
+
+  expect([fr.x, fr.y, fr.w]).toEqual([-3, -7, 100]);
+});

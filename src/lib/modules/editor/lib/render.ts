@@ -494,9 +494,13 @@ export function parseFrame(node: FaceNode): Frame | null {
   const v = unhex(f.hex || "");
 
   if (v.length < 9) return null;
+  // x/y are int16 like a struct's (see wf.ts's i16) — a group may hang off the left/top edge,
+  // and reading that back unsigned turned x=-3 into 65533. w/h can't go negative, so they don't.
+  const i16 = (o: number) => ((v[o] | (v[o + 1] << 8)) << 16) >> 16;
+
   return {
-    x: v[0] | (v[1] << 8),
-    y: v[2] | (v[3] << 8),
+    x: i16(0),
+    y: i16(2),
     w: v[4] | (v[5] << 8),
     h: v[6] | (v[7] << 8),
     main: v[8] & 3,

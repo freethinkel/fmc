@@ -329,7 +329,7 @@
     // widget x/y are int16 — negatives are legal (and used by stock faces), so no clamp here;
     // group frames stay >=0, their x/y round-trip through the file as unsigned
     if (d.st) patched({ node: d.st, patch: { x: d.x0 + dx, y: d.y0 + dy } });
-    else setFrameXY(d.fr, Math.max(0, d.x0 + dx), Math.max(0, d.y0 + dy));
+    else setFrameXY(d.fr, d.x0 + dx, d.y0 + dy); // frame x/y are int16 — a group may hang off
   }
   function onUp() {
     if (rz) {
@@ -389,7 +389,7 @@
     const st = selStruct(sel);
     const fr = sel.tag === TAG.group ? parseFrame(sel) : null;
 
-    if (fr) setFrameXY(sel, Math.max(0, fr.x + mv[0]), Math.max(0, fr.y + mv[1]));
+    if (fr) setFrameXY(sel, fr.x + mv[0], fr.y + mv[1]);
     else if (st && st.x != null)
       patched({ node: st, patch: { x: st.x + mv[0], y: st.y! + mv[1] } });
     e.preventDefault();
