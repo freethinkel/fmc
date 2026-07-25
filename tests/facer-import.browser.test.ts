@@ -8,8 +8,17 @@ import { parseFrame, metaInfo } from "$lib/modules/editor/lib/render";
 
 const LAYERS = [
   { type: "shape", shape_type: 1, x: 0, y: 0, width: 320, height: 320, color: -16777216 },
-  // #DbZ# — the zero-padded spelling of #Db#, which is what real exports use
-  { type: "text", text: "#DbZ#", x: 100, y: 150, size: 60, alignment: 2, color: -1 },
+  // hour spelled out per digit, a literal colon, then #DmZ# — the zero-padded spelling of
+  // #Dm#, which is what real exports use. One row, three widgets.
+  {
+    type: "text",
+    text: "(floor(#Db#/10))(#Db#%10):#DmZ#",
+    x: 100,
+    y: 150,
+    size: 60,
+    alignment: 2,
+    color: -1,
+  },
   // one live tag plus a literal unit, alongside a tag with no CMF source
   { type: "text", text: "#WCT#°#WM#", x: 160, y: 90, size: 30, alignment: 1, color: -1 },
   {
@@ -22,16 +31,82 @@ const LAYERS = [
     color: -1,
     low_power: true,
   },
+  // a digit-sprite face spells the value out one expression per digit
+  {
+    type: "text",
+    text: "(floor(#Dm#/10))(#Dm#-(10*(floor(#Dm#/10))))",
+    x: 220,
+    y: 150,
+    size: 60,
+    color: -1,
+  },
+  // ...but this one only shows steps / 1000, which no data source can express
+  {
+    type: "text",
+    text: "(floor(#ZSC#/10000))((floor(#ZSC#/1000))-((floor(#ZSC#/10000))*10))K",
+    x: 60,
+    y: 90,
+    size: 30,
+    color: -1,
+  },
   // rotation bound to a clock tag makes this a hand, even with no hand type_opt
   { type: "dynamic_image", x: 160, y: 160, width: 100, height: 100, r: "#DWFM#", hash_round: "h" },
   { type: "dynamic_image", x: 160, y: 160, width: 100, height: 100, r: "#DWFH#", hash_round: "h" },
+  // the smooth spelling of the same tag, on the sweeping second source
+  { type: "dynamic_image", x: 160, y: 160, width: 100, height: 100, r: "#DWFSS#", hash_round: "h" },
   { type: "text", text: "#ZHR#", x: 60, y: 250, size: 30, opacity: "$#WCCI#=09?100:0$" },
+  // an animated opacity bakes in at full opacity — there is nothing to switch on
+  { type: "text", text: "AOD", x: 40, y: 40, size: 20, color: -1, opacity: "(sin(#DWE#)*50+50)" },
+  // a month name spelled out as one conditional per value
+  {
+    type: "text",
+    text: "$#DMM#=01?JAN:$$#DMM#=02?FEB:$$#DMM#=12?DEC:$",
+    x: 260,
+    y: 90,
+    size: 20,
+    color: -1,
+  },
+  // a position expression has nothing to place the layer at, and is reported rather than
+  // silently drawn at NaN
+  { type: "text", text: "-", x: "(86+(#DOW#*24.8))", y: 215, size: 20, color: -1 },
+  // an animated conditional keeps both branches alive, so it bakes in instead of dropping
+  {
+    type: "dynamic_image",
+    name: "heart.png",
+    x: 30,
+    y: 180,
+    width: 20,
+    height: 20,
+    hash_round: "h",
+    opacity: "$#ZHR#>0?(50+50*sin(6.28*#Dsm#*#ZHR#/60)):(100-200*((#Dsm#/2)%0.5))$",
+  },
+  // a weather icon set: no source for the condition, so only the cloud frame (03) bakes in
+  ...["01", "03", "10", "13"].map((c) => ({
+    type: "dynamic_image",
+    name: `wx${c}.png`,
+    x: 58,
+    y: 229,
+    width: 30,
+    height: 30,
+    opacity: `$#WCCI#=${c}?100:0$`,
+    hash_round: "h",
+  })),
+  // a weekday image set: one sprite per value of the same tag, all at one spot
+  ...[1, 2, 3, 4, 5, 6, 7].map((d) => ({
+    type: "dynamic_image",
+    x: 160,
+    y: 100,
+    width: 40,
+    height: 20,
+    opacity: `$#DOWB#=${d}?100:0$`,
+    hash_round: "h",
+  })),
 ];
 
 async function fakeExport(): Promise<File[]> {
   const c = new OffscreenCanvas(8, 8);
 
-  c.getContext("2d")!.fillRect(0, 0, 8, 8);
+  c.getContext("2d")!.fillRect(2, 2, 4, 4); // transparent margin — hands must be cropped to the ink
   const png = new Uint8Array(await (await c.convertToBlob()).arrayBuffer());
   const b64 = (s: string) => btoa(s).replace(/=+$/, ""); // Facer ships its base64 unpadded
 
@@ -55,12 +130,34 @@ test("facerToFace maps tags, hands and alignment", async () => {
   expect(main.tag).toBe(TAG.main);
   expect(aod.tag).toBe(TAG.aod);
 
-  // #DbZ# resolves through the Z suffix to the 12h hour source
+  // #DmZ# resolves through the Z suffix to the minute source; the per-digit spellings
+  // collapse back into one field each (0x01 hour, 0x0b minute twice)
   const nums = all(main, (n) => n.tag === TAG.number);
 
   const asc = (a: number[]) => [...a].sort((x, y) => x - y);
 
-  expect(asc(nums.map(idOf))).toEqual([0x01, 0x19, 0x5f]);
+  expect(asc(nums.map(idOf))).toEqual([0x01, 0x0b, 0x0b, 0x19, 0x5f]);
+  expect(skipped.some((s) => s.includes("K"))).toBe(true);
+  expect(skipped.some((s) => s.includes("position expression"))).toBe(true);
+  expect(skipped.some((s) => s.includes("heart.png"))).toBe(false); // animated, so baked
+  // the cloud frame is the one kept; the other three conditions are reported
+  expect(skipped.filter((s) => s.startsWith("wx")).sort()).toEqual(
+    ["wx01.png", "wx10.png", "wx13.png"].map(
+      (n) => `${n} (weather set — only the cloud frame is baked)`,
+    ),
+  );
+
+  // "HH:MM" is one row: two number widgets with the colon sprite between them
+  const hm = all(main, (n) => n.tag === TAG.group).find((g) =>
+    find(g, (x) => x.tag === TAG.number && idOf(x) === 0x01),
+  )!;
+
+  expect(hm.subs!.filter((s) => s.tag !== TAG.frame)).toHaveLength(3);
+
+  // the month name chain becomes a select on the month source, one label per value
+  const mon = all(main, (n) => n.tag === TAG.image).find((n) => idOf(n) === 0x16)!;
+
+  expect(mon.subs![0].images).toHaveLength(12);
 
   // a centred field is a group whose frame asks for main-axis centring, with an auto-width child
   const temp = nums.find((n) => idOf(n) === 0x5f)!;
@@ -69,14 +166,29 @@ test("facerToFace maps tags, hands and alignment", async () => {
 
   expect(fr.main).toBe(2); // CENTER
   expect(metaInfo(temp.subs!.find((s) => s.tag === TAG.struct)!).w).toBe(0x8000);
-  // the "°" literal survives as a sibling sprite; #WM# has no data source and is reported
+  // "°" and #WM# (the unit, always Celsius here) merge into one sibling sprite: value + "°C"
   expect(group.subs!.filter((s) => s.tag !== TAG.frame)).toHaveLength(2);
-  expect(skipped.some((s) => s.includes("#WM#"))).toBe(true);
+  expect(skipped.some((s) => s.includes("#WM#"))).toBe(false);
+
+  // the seven weekday layers collapse into one image-select widget on the weekday source
+  const sel = all(main, (n) => n.tag === TAG.image).find((n) => idOf(n) === 0x18)!;
+
+  expect(sel.subs![0].images).toHaveLength(7);
+  expect(skipped.some((s) => s.includes("#DOWB#"))).toBe(false);
 
   // hands come from the rotation tag, and carry the corpus-verified sources
   const hands = all(main, (n) => n.tag === TAG.hand);
 
-  expect(asc(hands.map(idOf))).toEqual([0x0a, 0x0e]);
+  expect(asc(hands.map(idOf))).toEqual([0x0a, 0x0e, 0x12]);
+
+  // ...and are cropped to their ink: a full-canvas 466×466 cf 5 hand costs 650 KB of RAM on
+  // the watch and reboots it. x + pivot must still land on the layer centre (160 scaled by
+  // 466/320 = 233), otherwise the hand rotates around the wrong point.
+  const hst = hands[0].subs!.find((s) => s.tag === TAG.struct)!;
+  const hres = face.resources[hst.images![0]];
+
+  expect(hres.w).toBeLessThan(Math.round((100 * 466) / 320));
+  expect(hst.x! + hands[0].subs!.find((s) => s.tag === TAG.pivot)!.pivotX!).toBe(233);
 
   // conditional opacity can't be expressed on the watch, so that layer is dropped, not baked
   expect(all(main, (n) => n.tag === TAG.number).some((n) => idOf(n) === 0x1a)).toBe(false);

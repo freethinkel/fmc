@@ -2,8 +2,8 @@
 // A Facer export dir: description.json (canvas size, title), watchface.json
 // (base64 JSON layer list), images/<hash> (base64 PNG; may be pre-decoded to
 // <hash>.png), fonts/<name> (raw TTF). Supported: shapes, static images, literal
-// text, hour/minute/second hands, and digital fields (time/date/battery/steps/…)
-// whose template is a single known #tag#. Everything else is skipped and reported.
+// text, hour/minute/second hands, and digital fields (time/date/battery/steps/…) whose
+// template resolves to known #tag#s. Everything else is skipped and reported.
 import { encodePixels, hex, TAG, type Face, type FaceNode, type Resource } from "./wf";
 
 const W = 466; // CMF Watch Pro 2 screen
@@ -18,17 +18,28 @@ const HAND: Record<string, { id: number; kind: string; meta: string }> = {
   hour_hand: { id: 0x0a, kind: "hour", meta: "0000000000000000000a003c0000" },
   minute_hand: { id: 0x0e, kind: "minute", meta: "0000000000000000000e003c0000" },
   second_hand: { id: 0x72, kind: "second", meta: "00000000010000040072003c0000" },
+  // 0x12 is the sweeping second source (see idValue in render.ts) — Facer's smooth tag
+  second_smooth: { id: 0x12, kind: "second", meta: "00000000010000040012003c0000" },
 };
 // A hand is either a layer Facer typed as one, or any image whose rotation is bound to a
 // clock tag — this face's sub-dial hands are plain images with r = "#DhoT#" / "#DWFM#".
+// The trailing S spelling (#DWFMS#) is Facer's smooth sweep of the same hand.
+// ponytail: #DWFK#/#DWFKS# is a 24h hand and lands on the 12h source — the watch has no
+// 24h hand id, so it runs at double rate; drop the two entries if that reads worse than
+// importing the face without an hour hand.
 const ROT: Record<string, string> = {
   DWFH: "hour_hand",
+  DWFHS: "hour_hand",
+  DWFK: "hour_hand",
+  DWFKS: "hour_hand",
   DhoT: "hour_hand",
   DhoTZ: "hour_hand",
   DWFM: "minute_hand",
+  DWFMS: "minute_hand",
   DmoT: "minute_hand",
   DWFS: "second_hand",
   DsoT: "second_hand",
+  DWFSS: "second_smooth",
 };
 
 const handRole = (l: Layer): string | null => {
@@ -53,14 +64,43 @@ type ARGB = ReturnType<typeof argb>;
 const rgba = (c: ARGB, opacity = 100) =>
   `rgba(${c.r},${c.g},${c.b},${(c.a / 255) * (opacity / 100)})`;
 
-// Facer opacity is a percentage, but it can also be an expression ("$#WCCI#=09?100:0$" on
-// the per-condition weather icons). There's no expression engine on the watch, so a layer
-// gated by one can't be carried over at all — null means "skip and report".
+// Facer opacity is a percentage, but it can also be an expression: a condition
+// ("$#WCCI#=09?100:0$" on the per-condition weather icons) or an animation
+// ("((sin(#DWE#*5))*50+50)" on a blinking colon). There's no expression engine on the
+// watch, so a conditional layer only survives as an image select (see condOf) — null means
+// "skip and report". An animated one has nothing to switch on, so it bakes in at full
+// opacity: a colon that doesn't blink beats no colon.
 function opacityOf(l: Layer): number | null {
   if (l.opacity == null || l.opacity === "") return 100;
   const n = parseFloat(String(l.opacity));
 
-  return Number.isNaN(n) ? null : n;
+  if (!Number.isNaN(n)) return n;
+  // a switch between two constants is what hides one of a stacked set (the weather icons)
+  // and must be honoured; anything else is an animation with no off state
+  return /\?\s*\d+(\.\d+)?\s*:\s*\d+(\.\d+)?\s*\$/.test(String(l.opacity)) ? null : 100;
+}
+
+// Facer spells a per-value thing out as one layer (or one conditional) per value: seven
+// weekday sprites stacked at one spot, twelve month names chained in a template. That's
+// exactly the watch's select widget — one widget holding N images, indexed by a data
+// source — so it carries over whenever the tag maps to a source we know, mapping Facer's
+// value to the index the watch counts from. #WCCI# (weather condition) has no source, so
+// those icon sets still drop.
+const SEL_SRC: Record<string, { id: number; n: number; index: (v: string) => number }> = {
+  DOWB: { id: 0x18, n: 7, index: (v) => (Number(v) + 5) % 7 }, // 1 = Sun -> WEEKDAYS (0 = Mon)
+  DE: { id: 0x18, n: 7, index: (v) => WEEKDAYS.indexOf(v.toUpperCase()) },
+  DMM: { id: 0x16, n: 12, index: (v) => Number(v) % 12 }, // 12 = Dec -> MONTHS (0 = Dec)
+  DMMM: { id: 0x16, n: 12, index: (v) => MONTHS.indexOf(v.toUpperCase()) },
+};
+
+function condOf(l: Layer): { id: number; n: number; index: number } | null {
+  const m = String(l.opacity ?? "").match(/^\$#([^#]+)#=(\w+)\?(\d+):(\d+)\$$/);
+  const s = m && SEL_SRC[m[1]];
+
+  if (!m || !s || Number(m[3]) <= Number(m[4])) return null; // ...?0:100$ is an inverted set
+  const index = s.index(m[2]);
+
+  return index >= 0 && index < s.n ? { id: s.id, n: s.n, index } : null;
 }
 
 // Facer draws a layer in active mode unless state_active_1 clears it, and in ambient mode
@@ -292,12 +332,55 @@ const MONTHS = ["DEC", "JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "
 type Live =
   | { type: "number"; id: number; digits: number; fmt: string; sub?: number; max?: number }
   | { type: "select"; id: number; labels: string[] };
-// prefix/suffix: the literal text around the live tag ("°" in "#WCT#°#WM#"), baked as
-// sprites and packed into the same row. dropped: tags in the template that have no CMF
-// data source and were left out.
+// A field is a row of parts — literal sprites and live widgets in template order, packed
+// into one auto-width group: "#WCT#°" is a value plus a unit, "(floor(#Db#/10))(#Db#%10):
+// #DmZ#" is hour, colon, minute. dropped: tags with no CMF data source, left out of the row.
+type Part = { text: string } | Live;
 type FieldClass =
-  | { type: "static" }
-  | (Live & { prefix: string; suffix: string; dropped: string[] });
+  | { type: "static"; text: string }
+  | { type: "row"; parts: Part[]; dropped: string[] };
+
+// Tags with no data source that still always render the same glyph: the weather unit
+// follows the watch's own setting, and we bake Celsius rather than lose the "°C".
+const LITERAL: Record<string, string> = { WM: "C", WMS: "C" };
+
+const isLive = (p: Part): p is Live => !("text" in p);
+
+// A face built on a digit-sprite font spells a value out one expression per digit:
+// "(floor(#Dm#/10))(#Dm#-(10*(floor(#Dm#/10))))". Collapse such a run back into the plain
+// tag — the widget's fmt byte does the padding. Only when the run reaches the ones place
+// (some divisor is 1 or 10): "(floor(#ZSC#/10000))(...)K" shows a slice of the number
+// instead, and there is no data source for "steps / 1000". Text around the run survives
+// (":#DmZ#"), text inside it doesn't — that would reorder the row.
+function collapseDigits(t: string): string | null {
+  const toks: { group: boolean; s: string }[] = [];
+  let depth = 0,
+    start = 0;
+
+  for (let i = 0; i < t.length; i++) {
+    if (t[i] === "(") {
+      if (depth++ === 0) start = i;
+    } else if (t[i] === ")") {
+      if (--depth === 0) toks.push({ group: true, s: t.slice(start, i + 1) });
+    } else if (depth === 0) toks.push({ group: false, s: t[i] });
+  }
+  const at = toks.map((x, i) => (x.group ? i : -1)).filter((i) => i >= 0);
+  const groups = at.map((i) => toks[i].s);
+
+  if (depth || groups.length < 2 || at[at.length - 1] - at[0] !== at.length - 1) return null;
+  const tags = new Set([...groups.join("").matchAll(/#([^#]+)#/g)].map((m) => m[1]));
+  const divs = [...groups.join("").matchAll(/\/(\d+)\)/g)].map((m) => Number(m[1]));
+
+  if (tags.size !== 1 || Math.min(...divs) > 10) return null;
+  if (!groups.every((g) => /floor\(|%10/.test(g))) return null;
+  const lit = (from: number, to: number) =>
+    toks
+      .slice(from, to)
+      .map((x) => x.s)
+      .join("");
+
+  return `${lit(0, at[0])}#${[...tags][0]}#${lit(at[at.length - 1] + 1, toks.length)}`;
+}
 
 // classifyText: a Facer text template -> a CMF widget descriptor, or null (skip).
 // number: digit-sprite field; select: image-per-value; static: bake into the background.
@@ -305,7 +388,7 @@ function classifyText(raw?: string): FieldClass | null {
   const src = raw || "";
   const t = src.replace(/\s+/g, "");
 
-  if (!t.includes("#")) return { type: "static" };
+  if (!t.includes("#")) return { type: "static", text: src };
   const splitTens = t.match(/^\(floor\(#([^#]+)#\/10\)\)$/);
   const splitOnes =
     t.match(/^\(#([^#]+)#-\(*floor\(#\1#\/10\)\)*\*10\)$/) || t.match(/^\(#([^#]+)#%10\)$/);
@@ -322,12 +405,8 @@ function classifyText(raw?: string): FieldClass | null {
 
     if (ids)
       return {
-        type: "number",
-        id: splitTens ? ids[0] : ids[1],
-        fmt: "01",
-        digits: 1,
-        prefix: "",
-        suffix: "",
+        type: "row",
+        parts: [{ type: "number", id: splitTens ? ids[0] : ids[1], fmt: "01", digits: 1 }],
         dropped: [],
       };
   }
@@ -371,31 +450,52 @@ function classifyText(raw?: string): FieldClass | null {
     DMMMM: SEL(0x16, MONTHS),
   };
 
+  // "$#DMM#=01?JAN:$$#DMM#=02?FEB:$…" — a face without a month tag it likes spells the name
+  // out as one equality per value. Same widget as #DMMM#, with the labels taken from the
+  // template rather than from MONTHS.
+  const chain = [...t.matchAll(/\$#([^#]+)#=(\w+)\?([^:$]*):\$/g)];
+  const src0 = chain.length > 1 ? SEL_SRC[chain[0][1]] : null;
+
+  if (src0 && t.replace(/\$#[^#]+#=\w+\?[^:$]*:\$/g, "") === "") {
+    const labels = Array(src0.n).fill("");
+
+    for (const m of chain) labels[src0.index(m[2])] = m[3];
+    if (chain.every((m) => m[1] === chain[0][1] && src0.index(m[2]) >= 0))
+      return { type: "row", parts: [{ type: "select", id: src0.id, labels }], dropped: [] };
+  }
+
   // a trailing Z on a time tag is Facer's "zero-padded" variant (#DbZ#, #DmZ#, #DsZ#) —
   // padding is the fmt byte's job here, so it resolves to the same source
   const lookup = (tag: string): Live | null => map[tag] ?? map[tag.replace(/Z$/, "")] ?? null;
-  // Split the template so literal text around the live tag survives ("84" + "°"). Exactly one
-  // tag must resolve; a second live field in the same layer can't share one widget's position.
-  const parts = src.split(/(#[^#]+#)/).filter((p) => p !== "");
+  // Split the template so literal text keeps its place in the row ("84" + "°"). Literals
+  // carrying expression syntax are leftovers of a wrapper we only half understand
+  // ("(pad(" + "#ZSC#" + ",5))") — the value is right, the parens aren't text.
+  const parts: Part[] = [];
+  const dropped: string[] = [];
   const isTag = (p: string) => /^#[^#]+#$/.test(p);
-  const live = parts
-    .map((p, i) => (isTag(p) && lookup(p.slice(1, -1)) ? i : -1))
-    .filter((i) => i >= 0);
 
-  if (live.length !== 1) return null; // nothing recognised, or two live fields in one layer
-  const at = live[0];
-  const literal = (from: number, to: number) =>
-    parts
-      .slice(from, to)
-      .filter((p) => !isTag(p))
-      .join("");
+  for (const p of (collapseDigits(t) ?? src).split(/(#[^#]+#)/)) {
+    const tag = isTag(p) ? p.slice(1, -1) : "";
+    const live = tag ? lookup(tag) : null;
+    const last = parts[parts.length - 1];
+    const text = tag ? LITERAL[tag] : /[()]/.test(p) ? "" : p;
 
-  return {
-    ...lookup(parts[at].slice(1, -1))!,
-    prefix: literal(0, at),
-    suffix: literal(at + 1, parts.length),
-    dropped: parts.filter((p, i) => i !== at && isTag(p)),
-  };
+    if (live) parts.push(live);
+    else if (!text) {
+      if (tag) dropped.push(p);
+    } else if (last && !isLive(last))
+      last.text += text; // adjacent literals share one sprite
+    else parts.push({ text });
+  }
+  // the same source twice in one template is an expression collapseDigits couldn't fold
+  // ("(floor(#ZSC#/10000))(…)K" — steps / 1000), not a row of two fields
+  const ids = parts.filter(isLive).map((p) => p.id);
+
+  if (ids.length) return new Set(ids).size === ids.length ? { type: "row", parts, dropped } : null;
+  // nothing live left: pure text once the fixed tags resolved ("°" + #WM# -> "°C") bakes in
+  return dropped.length || !parts.length
+    ? null
+    : { type: "static", text: parts.map((p) => (isLive(p) ? "" : p.text)).join("") };
 }
 
 interface Hand {
@@ -413,6 +513,14 @@ interface Field {
   cls: FieldClass;
   active: boolean;
   ambient: boolean;
+}
+// one image-select widget: the cropped art of each value, in a shared box (see condOf)
+interface Sel {
+  id: number;
+  n: number;
+  active: boolean;
+  ambient: boolean;
+  cells: Map<number, { canvas: OffscreenCanvas; x: number; y: number }>;
 }
 
 // A screen's baked art: statics land on `base`, but anything declared after the first hand
@@ -449,12 +557,79 @@ export async function facerToFace(files: File[]): Promise<{ face: Face; skipped:
   const amb = newSheet();
   const hands: Hand[] = []; // a face may ship separate active/ambient art for the same role
   const fields: Field[] = [];
+  const sels = new Map<string, Sel>();
   const skips = new Set<string>(); // deduped — a face can carry 18 near-identical weather icons
   const label = (l: Layer) => String(l.name || l.text || l.type_opt || l.type);
 
-  for (const l of layers) {
-    const opacity = opacityOf(l);
+  // #WCCI# is the weather condition, and the watch has no source for it — checked across the
+  // whole corpus in ../watchfaces: every meta id, every 0x5f slot menu, every 0x02 bind. So
+  // the set can't switch; pick one frame and bake it, preferring the cloud — it reads as
+  // "weather" whatever the sky is doing — over losing the icon altogether.
+  const CLOUD = ["03", "04", "02", "50", "13", "09", "10", "11", "01"];
+  const wcci = (l: Layer) =>
+    l.type === "dynamic_image" ? String(l.opacity ?? "").match(/^\$#WCCI#=(\w+)\?\d+:0\$$/) : null;
+  const baked = new Map<string, string>(); // one frame per icon set (a face can carry two)
 
+  for (const l of layers) {
+    const m = wcci(l);
+    const rank = (v: string) => (CLOUD.indexOf(v) + 1 || CLOUD.length + 1) - 1;
+
+    if (!m) continue;
+    const k = `${l.x}:${l.y}:${inActive(l)}:${inAmbient(l)}`;
+    const cur = baked.get(k);
+
+    if (cur === undefined || rank(m[1]) < rank(cur)) baked.set(k, m[1]);
+  }
+  const oneFrame = (l: Layer): "keep" | "drop" | "" => {
+    const m = wcci(l);
+
+    if (!m) return "";
+    return baked.get(`${l.x}:${l.y}:${inActive(l)}:${inAmbient(l)}`) === m[1] ? "keep" : "drop";
+  };
+
+  for (const l of layers) {
+    let opacity = opacityOf(l);
+    const cond = l.type === "dynamic_image" ? condOf(l) : null;
+    const one = oneFrame(l);
+
+    if (one === "drop") {
+      skips.add(`${label(l)} (weather set — only the cloud frame is baked)`);
+      continue;
+    }
+    if (one === "keep") opacity = 100;
+
+    // a position can be an expression too ("(86+(#DOW#*24.8))" slides a marker along a
+    // weekday row) — nothing to place it at, and NaN coordinates would drop it silently
+    if (Number.isNaN(num(l.x) + num(l.y))) {
+      skips.add(`${label(l)} (position expression)`);
+      continue;
+    }
+
+    if (cond && imgHash(l)) {
+      // draw it where Facer puts it, then crop — these sets are often full-canvas art with
+      // one label in a corner, and a 466×466 sprite per value would eat the flash budget
+      const img = await loadImage(map, imgHash(l)!);
+      const w = num(l.width) * s || W,
+        h = num(l.height) * s || W;
+      const tmp = new OffscreenCanvas(W, W);
+
+      const art = tinted(img, Math.round(w), Math.round(h), l.is_tinted ? l.tint_color : -1);
+
+      tmp.getContext("2d")!.drawImage(art, num(l.x) * s - w / 2, num(l.y) * s - h / 2);
+      const crop = cropOpaque(tmp);
+      const key = `${cond.id}:${l.x}:${l.y}:${inActive(l)}:${inAmbient(l)}`;
+      const sel = sels.get(key) ?? {
+        id: cond.id,
+        n: cond.n,
+        active: inActive(l),
+        ambient: inAmbient(l),
+        cells: new Map(),
+      };
+
+      if (crop) sel.cells.set(cond.index, crop);
+      sels.set(key, sel);
+      continue;
+    }
     if (opacity === null) {
       skips.add(`${label(l)} (conditional opacity)`);
       continue;
@@ -475,7 +650,7 @@ export async function facerToFace(files: File[]): Promise<{ face: Face; skipped:
         continue;
       }
       const family = await loadFont(map, l.new_font_name);
-      const text = l.transform === 1 ? String(l.text).toUpperCase() : String(l.text);
+      const text = l.transform === 1 ? cls.text.toUpperCase() : cls.text;
 
       for (const sh of on) {
         const cx = sh.cur.getContext("2d")!;
@@ -556,7 +731,9 @@ export async function facerToFace(files: File[]): Promise<{ face: Face; skipped:
   const TIME_IDS = new Set([0x01, 0x07, 0x08, 0x09, 0x0b, 0x0c, 0x0d, 0x0f, 0x13]);
   const roles = new Set(hands.map((h) => h.role));
   const hasHands = roles.has("hour_hand") && roles.has("minute_hand");
-  const hasTime = fields.some((f) => TIME_IDS.has((f.cls as { id?: number }).id ?? -1));
+  const hasTime = fields.some(
+    (f) => f.cls.type === "row" && f.cls.parts.some((p) => isLive(p) && TIME_IDS.has(p.id)),
+  );
 
   if (!hasHands && !hasTime)
     throw new Error("no clock layers found — need analog hands or a digital time field");
@@ -590,6 +767,28 @@ export async function facerToFace(files: File[]): Promise<{ face: Face; skipped:
       { tag: TAG.pivot, flag: 1, pivotX: h.px, pivotY: h.py },
     ],
   });
+  // one widget, one image per value of the source: pad every cell into the union box so the
+  // art stays where Facer had it whichever value is showing
+  async function selWidget(sel: Sel): Promise<FaceNode> {
+    const box = [...sel.cells.values()];
+    const x = Math.min(...box.map((c) => c.x)),
+      y = Math.min(...box.map((c) => c.y));
+    const w = Math.max(...box.map((c) => c.x + c.canvas.width)) - x,
+      h = Math.max(...box.map((c) => c.y + c.canvas.height)) - y;
+    const images: number[] = [];
+
+    for (let i = 0; i < sel.n; i++) {
+      const c = new OffscreenCanvas(w, h);
+      const cell = sel.cells.get(i);
+
+      if (cell) c.getContext("2d")!.drawImage(cell.canvas, cell.x - x, cell.y - y);
+      images.push(await addRes(c, 5));
+    }
+    return {
+      tag: TAG.image,
+      subs: [{ tag: TAG.struct, x, y, meta: numMeta(sel.id), refType: 0x61, images }],
+    };
+  }
   const preview = (res: number): FaceNode => ({
     tag: TAG.preview,
     subs: [{ tag: TAG.pvStruct, prefix: "0000000000", refType: 0x61, images: [res] }],
@@ -601,55 +800,57 @@ export async function facerToFace(files: File[]): Promise<{ face: Face; skipped:
   // unit ("80" + "%"). A plain x can only be right for one digit count, and there is no other
   // way to keep literal text glued to a value whose width changes.
   async function buildField({ l, cls }: Field, ambient: boolean): Promise<FaceNode> {
-    if (cls.type === "static") throw new Error("unreachable");
+    if (cls.type !== "row") throw new Error("unreachable");
     const family = await loadFont(map, l.new_font_name);
     const sizePx = Math.round(num(l.size) * s) || 20;
-    const labels = cls.type === "select" ? cls.labels : DIGITS;
     const color = rgba(argb(ambient ? (l.low_power_color ?? l.color) : l.color));
-    const fix = [cls.prefix, cls.suffix].filter(Boolean);
-    // one vertical metric across value and literals so the row shares a baseline
-    const tall = glyphCell([...labels, ...fix], family, sizePx);
-    const cell = { ...glyphCell(labels, family, sizePx), h: tall.h, base: tall.base };
-    const imgs: number[] = [];
+    const labelsOf = (p: Part) => (!isLive(p) ? [p.text] : p.type === "select" ? p.labels : DIGITS);
+    // one vertical metric across every part so the whole row shares a baseline
+    const tall = glyphCell(cls.parts.flatMap(labelsOf), family, sizePx);
+    const sprites = new Map<string, number[]>(); // hour and minute share one digit set
+    const cellOf = async (p: Part) => {
+      const labels = labelsOf(p);
+      const cell = { ...glyphCell(labels, family, sizePx), h: tall.h, base: tall.base };
+      const key = labels.join("|");
 
-    for (const sp of renderGlyphs(labels, family, sizePx, color, cell))
-      imgs.push(await addRes(sp, 5));
-    const lit = async (text: string) => {
-      const c = { ...glyphCell([text], family, sizePx), h: tall.h, base: tall.base };
+      if (!sprites.has(key)) {
+        const res: number[] = [];
 
-      return {
-        res: await addRes(renderGlyphs([text], family, sizePx, color, c)[0], 5),
-        w: c.w,
-      };
+        for (const sp of renderGlyphs(labels, family, sizePx, color, cell))
+          res.push(await addRes(sp, 5));
+        sprites.set(key, res);
+      }
+      return { cell, images: sprites.get(key)! };
     };
-    const pre = cls.prefix ? await lit(cls.prefix) : null;
-    const post = cls.suffix ? await lit(cls.suffix) : null;
-    const digits = cls.type === "number" ? cls.digits : 1;
-    const ax = Math.round(num(l.x) * s);
-    const y = Math.max(0, Math.round(num(l.y) * s - cell.base));
-    const auto = (id: number, images: number[], node: (st: FaceNode) => FaceNode) =>
-      node({ tag: TAG.struct, x: 0, y: 0, meta: numMeta(id, 0, 0, true), refType: 0x61, images });
+    const auto = (meta: string, images: number[], node: (st: FaceNode) => FaceNode) =>
+      node({ tag: TAG.struct, x: 0, y: 0, meta, refType: 0x61, images });
     const kids: FaceNode[] = [];
+    let row = 0;
 
-    if (pre) kids.push(auto(0, [pre.res], (st) => ({ tag: TAG.image, subs: [st] })));
-    kids.push(
-      auto(cls.id, imgs, (st) => {
-        st.meta = numMeta(
-          cls.id,
-          cls.type === "number" ? cls.sub || 0 : 0,
-          cls.type === "number" ? cls.max || 0 : 0,
-          true,
-        );
-        return cls.type === "number"
-          ? { tag: TAG.number, subs: [st, { tag: TAG.fmt, hex: cls.fmt }] }
-          : { tag: TAG.image, subs: [st] };
-      }),
-    );
-    if (post) kids.push(auto(0, [post.res], (st) => ({ tag: TAG.image, subs: [st] })));
+    for (const p of cls.parts) {
+      const { cell, images } = await cellOf(p);
+
+      if (!isLive(p)) {
+        row += cell.w;
+        kids.push(auto(numMeta(0, 0, 0, true), images, (st) => ({ tag: TAG.image, subs: [st] })));
+        continue;
+      }
+      const meta = numMeta(p.id, p.type === "number" ? p.sub || 0 : 0, 0, true);
+
+      row += cell.w * (p.type === "number" ? p.digits : 1);
+      kids.push(
+        auto(meta, images, (st) =>
+          p.type === "number"
+            ? { tag: TAG.number, subs: [st, { tag: TAG.fmt, hex: p.fmt }] }
+            : { tag: TAG.image, subs: [st] },
+        ),
+      );
+    }
+    const ax = Math.round(num(l.x) * s);
+    const y = Math.max(0, Math.round(num(l.y) * s - tall.base));
 
     // frame width 0 means "auto-size to content", so the row just starts at the frame origin —
     // that covers left align, and right align by shifting the origin back a typical row width.
-    const row = digits * cell.w + (pre?.w || 0) + (post?.w || 0);
     // widest box centred on ax that still fits the screen; too narrow means ax sits near an
     // edge, where there is nothing to centre against
     const gw = Math.min(2 * ax, 2 * (W - ax));
@@ -662,7 +863,7 @@ export async function facerToFace(files: File[]): Promise<{ face: Face; skipped:
 
     return {
       tag: TAG.group,
-      subs: [{ tag: TAG.frame, hex: frameHex(fx, y, fw, cell.h, al) }, ...kids],
+      subs: [{ tag: TAG.frame, hex: frameHex(fx, y, fw, tall.h, al) }, ...kids],
     };
   }
 
@@ -673,7 +874,22 @@ export async function facerToFace(files: File[]): Promise<{ face: Face; skipped:
       .slice(0, 14) || "Facer";
   const handRes: number[] = [];
 
-  for (const h of hands) handRes.push(await addRes(h.canvas, 5));
+  // Crop every hand to its ink before encoding, shifting x/y and the pivot by the same amount
+  // so it still rotates around the same point. Facer hands are usually full-canvas PNGs: kept
+  // whole, one 466×466 cf 5 sprite costs 650 KB of RAM on the watch (a 3-hand face imported
+  // this way reboots it), against ~25 KB cropped. Same treatment as watchmaker.ts's hands.
+  for (const h of hands) {
+    const crop = cropOpaque(h.canvas);
+
+    if (crop) {
+      h.canvas = crop.canvas;
+      h.x += crop.x;
+      h.y += crop.y;
+      h.px -= crop.x;
+      h.py -= crop.y;
+    }
+    handRes.push(await addRes(h.canvas, 5));
+  }
 
   // AOD falls back to a dimmed copy of the active art when the face has no low_power layers
   if (!amb.used) {
@@ -693,6 +909,8 @@ export async function facerToFace(files: File[]): Promise<{ face: Face; skipped:
     subs.push(preview(await addRes(scaled(sh.base, 270, 270), 4)));
     subs.push(imgWidget(0, 0, BG_META, await addRes(sh.base, 4)));
     for (const f of fields) if (pick(f)) subs.push(await buildField(f, ambient));
+    for (const sel of sels.values())
+      if ((ambient ? sel.ambient : sel.active) && sel.cells.size) subs.push(await selWidget(sel));
     const drawn = new Set<string>(); // one hand per role per screen
 
     for (const [i, h] of hands.entries())
