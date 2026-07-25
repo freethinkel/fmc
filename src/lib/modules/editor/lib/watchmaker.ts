@@ -5,7 +5,7 @@
 // Supported: shapes, markers, static images, literal text (straight and curved) and
 // hour/minute/second/battery hands. Anything driven by a WatchMaker tag or a Lua expression
 // is skipped and reported.
-import { cropOpaque, encodeCanvas, encodeJpeg, fileMap } from "./facer";
+import { cropOpaque, encodeCanvas, fileMap } from "./facer";
 import { hex, TAG, type Face, type FaceNode, type Resource } from "./wf";
 
 const W = 466; // CMF Watch Pro 2 screen
@@ -530,14 +530,9 @@ export async function watchmakerToFace(files: File[]): Promise<{ face: Face; ski
         },
       ],
     });
-    subs.push(
-      imgWidget(
-        0,
-        0,
-        "d201d20100000000000000000000",
-        resources.push(await encodeJpeg(sh.base)) - 1,
-      ),
-    );
+    // cf 4, not JPEG — a full-screen cf 1 background reboots the watch on the AOD → normal
+    // transition (see facer.ts)
+    subs.push(imgWidget(0, 0, "d201d20100000000000000000000", await addRes(sh.base, 4)));
     const drawn = new Set<string>();
 
     for (const h of handNodes)

@@ -84,4 +84,10 @@ test("facerToFace maps tags, hands and alignment", async () => {
 
   // only the low_power field crosses over to the dim screen
   expect(all(aod, (n) => n.tag === TAG.number).map(idOf)).toEqual([0x19]);
+
+  // a full-screen JPEG (cf 1) background reboots the watch when it leaves AOD — cf 4 only
+  const bgs = face.resources.filter((r) => r.w === 466 && r.h === 466);
+
+  expect(bgs).toHaveLength(2); // one per screen
+  expect(bgs.map((r) => r.cf)).toEqual([4, 4]);
 });

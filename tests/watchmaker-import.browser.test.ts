@@ -51,6 +51,11 @@ test("watchmakerToFace decodes the export and maps hands, screens and skips", as
   expect(main.tag).toBe(TAG.main);
   expect(aod.tag).toBe(TAG.aod);
   expect(face.name).toBe("Probe Face");
+  // a full-screen JPEG (cf 1) background reboots the watch when it leaves AOD — cf 4 only
+  const bgs = face.resources.filter((r) => r.w === 466 && r.h === 466);
+
+  expect(bgs).toHaveLength(2); // one per screen
+  expect(bgs.map((r) => r.cf)).toEqual([4, 4]);
 
   // Two consecutive {drh} layers are one hand's stack (art + shadow), not two hands — and a
   // role change must not swallow the hand before it.

@@ -145,22 +145,13 @@ export function encodeCanvas(canvas: OffscreenCanvas, cf: number): Promise<Resou
   return createImageBitmap(canvas).then((b) => ((r.bitmap = b), r));
 }
 
-// Full-screen art goes in as cf 1 (raw baseline JPEG), the way the stock photo faces store
-// theirs. Photographic backgrounds barely compress under LZ4 — a camo dial came out at
-// 120 KB as cf 4 against 40 KB here, and the whole file has to fit the flash budget
-// (the largest stock face is ~222 KB).
-export async function encodeJpeg(canvas: OffscreenCanvas): Promise<Resource> {
-  const blob = await canvas.convertToBlob({ type: "image/jpeg", quality: 0.88 });
-  const data = new Uint8Array(await blob.arrayBuffer());
-
-  return {
-    cf: 1,
-    w: canvas.width,
-    h: canvas.height,
-    data,
-    bitmap: await createImageBitmap(canvas),
-  };
-}
+// Full-screen art used to go in as cf 1 (raw baseline JPEG) to save flash — a camo dial came
+// out at 40 KB against 120 KB as cf 4. It reboots the watch: a 466×466 cf 1 on the MAIN screen
+// is decoded on the AOD → normal transition and the firmware resets there (confirmed on a
+// CMF Watch Pro 2 — same face with both backgrounds re-encoded as cf 4 is stable). No stock
+// face carries a full-screen JPEG on the main screen either; the biggest is Metaball's
+// 320×346, and the one 466×466 cf 1 in the corpus (Widgets) sits on the AOD screen only.
+// Backgrounds are cf 4 now, which costs ~150 KB of flash per face.
 
 export function cropOpaque(
   canvas: OffscreenCanvas,
@@ -574,7 +565,6 @@ export async function facerToFace(files: File[]): Promise<{ face: Face; skipped:
   const resources: Resource[] = [];
   const addRes = async (canvas: OffscreenCanvas, cf: number) =>
     resources.push(await encodeCanvas(canvas, cf)) - 1;
-  const addJpeg = async (canvas: OffscreenCanvas) => resources.push(await encodeJpeg(canvas)) - 1;
   const scaled = (src: OffscreenCanvas, w: number, h: number) => {
     const c = new OffscreenCanvas(w, h);
 
@@ -701,7 +691,7 @@ export async function facerToFace(files: File[]): Promise<{ face: Face; skipped:
     const subs: FaceNode[] = tag === TAG.main ? [{ tag: TAG.name, text: name }] : [];
 
     subs.push(preview(await addRes(scaled(sh.base, 270, 270), 4)));
-    subs.push(imgWidget(0, 0, BG_META, await addJpeg(sh.base)));
+    subs.push(imgWidget(0, 0, BG_META, await addRes(sh.base, 4)));
     for (const f of fields) if (pick(f)) subs.push(await buildField(f, ambient));
     const drawn = new Set<string>(); // one hand per role per screen
 
