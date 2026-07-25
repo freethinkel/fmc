@@ -52,6 +52,8 @@
   import IconGlobe from "@tabler/icons-svelte/icons/globe";
   import IconGlobeOff from "@tabler/icons-svelte/icons/globe-off";
   import IconHelp from "@tabler/icons-svelte/icons/help";
+  import IconLink from "@tabler/icons-svelte/icons/link";
+  import IconUnlink from "@tabler/icons-svelte/icons/unlink";
 
   // Central icon registry — the single place to retune an icon app-wide.
   // Keys are OUR semantic names (used at call sites); values are Tabler components.
@@ -111,6 +113,8 @@
     globe: IconGlobe,
     "globe-lock": IconGlobeOff, // no globe+lock icon in tabler — globe-off (same family as "globe") reads as "not public"
     help: IconHelp,
+    link: IconLink, // aspect-ratio lock: chain link, like Figma's constrain-proportions toggle
+    unlink: IconUnlink,
   } as const;
 
   export type IconName = keyof typeof ICONS;

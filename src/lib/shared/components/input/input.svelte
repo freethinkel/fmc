@@ -13,6 +13,8 @@
     max?: number | string;
     step?: number | string;
     onInput?: (value: string) => void;
+    // native `change` — fires on blur/Enter/stepper, for edits too expensive to run per keystroke
+    onChange?: (value: string) => void;
   }
   let {
     value = $bindable(""),
@@ -28,6 +30,7 @@
     max,
     step,
     onInput,
+    onChange,
   }: Props = $props();
 </script>
 
@@ -45,6 +48,7 @@
   autocomplete={autocomplete as any}
   bind:value
   oninput={() => onInput?.(value)}
+  onchange={() => onChange?.(value)}
 />
 
 <style>

@@ -98,6 +98,12 @@ export const replaceImageRequested = createEvent<{
   resIdx: number;
   file: File;
 }>();
+// node: the widget node (or its struct); w/h: target size of its FIRST frame
+export const resizeImageRequested = createEvent<{
+  node: FaceNode;
+  w: number;
+  h: number;
+}>();
 
 // ---- helpers (module-scope: reused across effects, recursive, or carry their own "why") ----
 export async function bitmapOf(r: Resource): Promise<ImageBitmap> {
@@ -393,6 +399,80 @@ const replaceImageFx = createEffect(async ({ resIdx, file }: { resIdx: number; f
   enc.bitmap = await bitmapOf(enc);
   treeChanged(() => Object.assign(r, enc));
 });
+
+// A widget is drawn 1:1 from its resource (the format has no draw-time scale), so "resize the
+// image" means re-encoding the pixels at the new size. Lossy on the way down — the discarded
+// pixels are gone, exactly like replaceImage; resources live outside undo (see the stacks above).
+async function scaledResource(r: Resource, w: number, h: number): Promise<Resource> {
+  const src = r.bitmap ?? (await bitmapOf(r));
+  const c = new OffscreenCanvas(w, h);
+  const cx = c.getContext("2d")!;
+
+  cx.drawImage(src, 0, 0, w, h);
+  if (r.cf === 1) {
+    // JPEG resource (backgrounds) — keep the codec, decodePixels/encodePixels can't touch it
+    const blob = await c.convertToBlob({ type: "image/jpeg", quality: 0.92 });
+
+    return {
+      cf: 1,
+      w,
+      h,
+      data: new Uint8Array(await blob.arrayBuffer()),
+      bitmap: await createImageBitmap(blob),
+    };
+  }
+  const enc = encodePixels(cx.getImageData(0, 0, w, h).data, w, h, r.cf);
+
+  enc.bitmap = await bitmapOf(enc);
+  return enc;
+}
+
+const resizeImageFx = createEffect(
+  async ({ node, w, h }: { node: FaceNode; w: number; h: number }) => {
+    const { face } = $editor.getState();
+    const st = node.tag === TAG.struct ? node : node.subs?.find((s) => s.tag === TAG.struct);
+    const imgs = st?.images;
+
+    if (!face || !imgs?.length) return;
+    const dim = (v: number) => Math.max(1, Math.min(2047, Math.round(v))); // 11-bit fields, see encodePixels
+    const tw = dim(w),
+      th = dim(h);
+    const r0 = face.resources[imgs[0]];
+
+    if (!r0 || (tw === r0.w && th === r0.h)) return;
+    const sx = tw / r0.w,
+      sy = th / r0.h;
+
+    // every frame of a multi-frame widget (digits, weekday icons) scales by the same ratio
+    for (const ri of new Set(imgs)) {
+      const r = face.resources[ri];
+
+      if (!r) continue;
+      const scaled =
+        ri === imgs[0]
+          ? await scaledResource(r, tw, th)
+          : await scaledResource(r, dim(r.w * sx), dim(r.h * sy));
+
+      // stale accent tint would keep the old size — accentFx recomputes it on done below
+      Object.assign(r, scaled, { accentBitmap: undefined });
+    }
+    const pivot = node.subs?.find((s) => s.tag === TAG.pivot);
+
+    treeChanged(() => {
+      // a hand rotates around x+pivot — scale the pivot with the art and shift x/y so the
+      // rotation center stays put, otherwise the hand jumps off the dial on every resize
+      if (pivot && st?.x != null) {
+        const px = Math.round(pivot.pivotX! * sx),
+          py = Math.round(pivot.pivotY! * sy);
+
+        st.x += pivot.pivotX! - px;
+        st.y = (st.y || 0) + pivot.pivotY! - py;
+        pivot.pivotX = px;
+        pivot.pivotY = py;
+      }
+    });
+  },
+);
 
 // ---- imperative actions ----
 // deleteWidget/alignSelected/buildCurrentBin/previewBlob/exportBin below stay as plain functions
@@ -732,7 +812,7 @@ sample({
 });
 
 sample({
-  clock: replaceImageFx.done,
+  clock: [replaceImageFx.done, resizeImageFx.done],
   source: $editor,
   fn: (s) => ({ ...s, dirty: true }),
   target: $editor,
@@ -743,6 +823,23 @@ sample({
   target: errored,
 });
 sample({
+  clock: resizeImageFx.fail,
+  fn: ({ error }) => `image resize: ${error.message}`,
+  target: errored,
+});
+sample({
   clock: replaceImageRequested,
   target: replaceImageFx,
+});
+sample({
+  clock: resizeImageRequested,
+  target: resizeImageFx,
+});
+// new pixels — the accent tint was computed off the old ones
+sample({
+  clock: [replaceImageFx.done, resizeImageFx.done],
+  source: $editor,
+  filter: (s) => Boolean(s.face && s.sim.accentColor),
+  fn: (s) => ({ face: s.face!, color: s.sim.accentColor! }),
+  target: accentFx,
 });
