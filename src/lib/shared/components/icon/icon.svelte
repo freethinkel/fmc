@@ -54,6 +54,7 @@
   import IconHelp from "@tabler/icons-svelte/icons/help";
   import IconLink from "@tabler/icons-svelte/icons/link";
   import IconUnlink from "@tabler/icons-svelte/icons/unlink";
+  import IconContrast from "@tabler/icons-svelte/icons/contrast";
 
   // Central icon registry — the single place to retune an icon app-wide.
   // Keys are OUR semantic names (used at call sites); values are Tabler components.
@@ -115,6 +116,7 @@
     help: IconHelp,
     link: IconLink, // aspect-ratio lock: chain link, like Figma's constrain-proportions toggle
     unlink: IconUnlink,
+    contrast: IconContrast,
   } as const;
 
   export type IconName = keyof typeof ICONS;

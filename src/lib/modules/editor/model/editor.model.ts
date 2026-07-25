@@ -99,6 +99,7 @@ export const replaceImageRequested = createEvent<{
   resIdx: number;
   file: File;
 }>();
+export const invertColorsRequested = createEvent();
 // node: the widget node (or its struct); w/h: target size of its FIRST frame
 export const resizeImageRequested = createEvent<{
   node: FaceNode;
@@ -515,6 +516,68 @@ const resizeImageFx = createEffect(
   },
 );
 
+// Invert the pixels of every image under the selection (or the whole current screen when
+// nothing is selected) — the quick way to turn a light layout into an AOD-friendly dark one.
+// Involutive: hit it twice to get back. Resources shared with another screen are cloned first,
+// so inverting the AOD can't repaint the main screen.
+const invertColorsFx = createEffect(async () => {
+  const { face, sel, screenTag } = $editor.getState();
+
+  if (!face) return;
+  const roots = sel ? [sel] : face.screens.filter((s) => s.tag === screenTag);
+  const imagesIn = (n: FaceNode, out: Set<number>) => {
+    n.images?.forEach((i) => out.add(i));
+    n.subs?.forEach((c) => imagesIn(c, out));
+    return out;
+  };
+  const mine = new Set<number>();
+
+  roots.forEach((r) => imagesIn(r, mine));
+  const outside = new Set<number>();
+  const walkOutside = (n: FaceNode) => {
+    if (roots.includes(n)) return;
+    n.images?.forEach((i) => outside.add(i));
+    n.subs?.forEach(walkOutside);
+  };
+
+  face.screens.forEach(walkOutside);
+  const remap = new Map<number, number>();
+
+  for (const i of mine) {
+    if (outside.has(i)) remap.set(i, face.resources.push({ ...face.resources[i] }) - 1);
+  }
+  if (remap.size) {
+    const repoint = (n: FaceNode) => {
+      if (n.images) n.images = n.images.map((i) => remap.get(i) ?? i);
+      n.subs?.forEach(repoint);
+    };
+
+    checkpoint(0);
+    treeChanged(() => roots.forEach(repoint));
+  }
+  for (const idx of mine) {
+    const r = face.resources[remap.get(idx) ?? idx];
+    // r.bitmap is the pixels actually on screen (a resized resource still holds the old ones
+    // in r.data); JPEG resources only ever decode through the bitmap
+    const px = r?.bitmap ? pixelsOf(r.bitmap, r.w, r.h) : r && decodePixels(r);
+
+    if (!px) continue;
+    for (let i = 0; i < px.length; i += 4) {
+      px[i] = 255 - px[i];
+      px[i + 1] = 255 - px[i + 1];
+      px[i + 2] = 255 - px[i + 2]; // alpha untouched
+    }
+    const bmp = await createImageBitmap(new ImageData(px, r.w, r.h));
+
+    Object.assign(r, {
+      data: await encodeBitmap(bmp, r.w, r.h, r.cf),
+      bitmap: bmp,
+      srcBitmap: undefined, // the inverted pixels are the original now — see flushResized
+      accentBitmap: undefined,
+    });
+  }
+});
+
 // ---- imperative actions ----
 // deleteWidget/alignSelected/buildCurrentBin/previewBlob/exportBin below stay as plain functions
 // reading $editor.getState() directly: they're one-shot imperative actions fired straight from a
@@ -532,6 +595,24 @@ export function deleteWidget() {
     p.subs!.splice(p.subs!.indexOf(st.sel!), 1);
     st.sel = null;
     // ponytail: orphaned resources stay in the file — harmless to the watch, space is cheap
+  });
+}
+
+// Reorder a node among its siblings — subs order is draw order, so this is z-ordering.
+// ponytail: same-parent only; reparenting would need frame-relative coordinate fixups.
+export function moveNode(node: FaceNode, target: FaceNode, after: boolean) {
+  const s = $editor.getState();
+
+  if (!s.face || node === target) return;
+  const p = findParent(s.face.screens, node);
+
+  if (!p?.subs?.includes(target)) return;
+  checkpoint(0);
+  treeChanged(() => {
+    const subs = p.subs!;
+
+    subs.splice(subs.indexOf(node), 1);
+    subs.splice(subs.indexOf(target) + (after ? 1 : 0), 0, node);
   });
 }
 
@@ -871,10 +952,19 @@ sample({
 });
 
 sample({
-  clock: [replaceImageFx.done, resizeImageFx.done],
+  clock: [replaceImageFx.done, resizeImageFx.done, invertColorsFx.done],
   source: $editor,
   fn: (s) => ({ ...s, dirty: true }),
   target: $editor,
+});
+sample({
+  clock: invertColorsRequested,
+  target: invertColorsFx,
+});
+sample({
+  clock: invertColorsFx.fail,
+  fn: ({ error }) => `invert colors: ${error.message}`,
+  target: errored,
 });
 sample({
   clock: replaceImageFx.fail,

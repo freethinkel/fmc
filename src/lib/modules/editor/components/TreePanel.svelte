@@ -5,7 +5,14 @@
   import { TAG, unhex, type FaceNode } from "../lib/wf";
   import { metaInfo, ID_LABELS } from "../lib/render";
   import { editorModel } from "../model";
-  const { $editor: editor, select, addWidgetRequested, deleteWidget } = editorModel;
+  const {
+    $editor: editor,
+    select,
+    addWidgetRequested,
+    deleteWidget,
+    moveNode,
+    invertColorsRequested,
+  } = editorModel;
 
   const tagNames = {
     [TAG.main]: "Screen",
@@ -86,6 +93,33 @@
     if (openNodes.has(n)) openNodes.delete(n);
     else openNodes.add(n);
   }
+
+  // Native HTML5 drag & drop — reorder siblings (= draw order). Dragging across parents is
+  // rejected in dragover, so the drop indicator only shows on valid targets.
+  // $state.raw, not $state: a proxied node would break identity checks against the tree
+  let drag = $state.raw<{ node: FaceNode; parent: FaceNode | null } | null>(null);
+  let dropAt = $state.raw<{ node: FaceNode; after: boolean } | null>(null);
+
+  function onDragStart(n: FaceNode, parent: FaceNode | null, e: DragEvent) {
+    drag = { node: n, parent };
+    e.dataTransfer?.setData("text/plain", ""); // Firefox needs payload to start a drag
+    if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
+  }
+
+  function onDragOver(n: FaceNode, parent: FaceNode | null, e: DragEvent) {
+    if (!drag || drag.node === n || drag.parent !== parent) return;
+    e.preventDefault();
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+
+    dropAt = { node: n, after: e.clientY > r.top + r.height / 2 };
+  }
+
+  function onDrop(n: FaceNode, e: DragEvent) {
+    e.preventDefault();
+    // the list is reversed, so dropping visually below the target means earlier in subs
+    if (drag && dropAt?.node === n) moveNode(drag.node, n, !dropAt.after);
+    drag = dropAt = null;
+  }
 </script>
 
 <div class="tree-panel">
@@ -133,6 +167,21 @@
         </label>
       </Button>
     </span>
+    <span
+      class="tool-slot"
+      title={$editor.sel
+        ? "Invert colors of the selected layer"
+        : "Invert colors of the whole screen"}
+    >
+      <Button
+        kind="secondary"
+        size="sm"
+        disabled={!$editor.face}
+        onClick={() => invertColorsRequested()}
+      >
+        <Icon name="contrast" size={16} />
+      </Button>
+    </span>
     <div class="spacer"></div>
     <span class="tool-slot" title="Delete selected widget">
       <Button kind="ghost" size="sm" disabled={!$editor.sel} onClick={deleteWidget}>
@@ -143,7 +192,7 @@
   <div class="list">
     {#if $editor.face}
       {#each $editor.face.screens.filter((s) => s.tag === $editor.screenTag) as scr}
-        {@render treeNode(scr, 0)}
+        {@render treeNode(scr, 0, null)}
       {/each}
     {:else}
       <p class="empty">Drop a .bin here or grab one from the marketplace.</p>
@@ -151,15 +200,25 @@
   </div>
 </div>
 
-{#snippet treeNode(n: FaceNode, depth: number)}
+{#snippet treeNode(n: FaceNode, depth: number, parent: FaceNode | null)}
   {@const nodeIcon = tagIcons[n.tag] || "box"}
-  {@const kids = depth < 4 ? (n.subs || []).filter((c) => c.subs || c.tag === TAG.struct) : []}
+  <!-- reversed: subs order is draw order, so the last sub is the topmost layer and goes first -->
+  {@const kids =
+    depth < 4 ? (n.subs || []).filter((c) => c.subs || c.tag === TAG.struct).reverse() : []}
   <button
     type="button"
     class="node-row"
     class:selected={$editor.sel === n}
+    class:dragging={drag?.node === n}
+    class:drop-before={dropAt?.node === n && !dropAt.after}
+    class:drop-after={dropAt?.node === n && dropAt.after}
     style="padding-inline-start: {8 + depth * 12}px"
+    draggable={!!parent}
     onclick={() => select(n)}
+    ondragstart={(e) => onDragStart(n, parent, e)}
+    ondragover={(e) => onDragOver(n, parent, e)}
+    ondrop={(e) => onDrop(n, e)}
+    ondragend={() => (drag = dropAt = null)}
   >
     {#if kids.length}
       <Icon
@@ -176,7 +235,7 @@
   </button>
   {#if kids.length && openNodes.has(n)}
     {#each kids as c}
-      {@render treeNode(c, depth + 1)}
+      {@render treeNode(c, depth + 1, n)}
     {/each}
   {/if}
 {/snippet}
@@ -236,6 +295,16 @@
     &.selected {
       background: oklch(from var(--color-accent) l c h / 12%);
       color: var(--color-accent);
+    }
+    &.dragging {
+      opacity: 0.4;
+    }
+    /* drop line: accent hue rotated to yellow, so it reads against the orange selection */
+    &.drop-before {
+      box-shadow: inset 0 2px 0 oklch(from var(--color-accent) l c 100);
+    }
+    &.drop-after {
+      box-shadow: inset 0 -2px 0 oklch(from var(--color-accent) l c 100);
     }
     &:not(.selected) :global(.node-icon) {
       color: oklch(from var(--color-text) l c h);
