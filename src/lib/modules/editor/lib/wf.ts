@@ -8,6 +8,11 @@ export interface Resource {
   h: number;
   data: Uint8Array;
   bitmap?: ImageBitmap;
+  // set once a resize touched this resource: the ORIGINAL full-size pixels. Resizing only
+  // rescales `bitmap` (+ w/h) off this source and leaves `data` stale — it's re-encoded from
+  // the source at build time (flushResized in editor.model), so resizing back and forth costs
+  // nothing in quality and only what lands on the watch is ever downsampled.
+  srcBitmap?: ImageBitmap;
   // preview-only recolor of the accent sentinel (see docs/cmf-protocol.md) — never
   // read by buildBin/encodePixels, must not leak into exported resource.data
   accentBitmap?: ImageBitmap;

@@ -44,19 +44,53 @@ test("resizing an image widget resizes its resource and its rendered box", async
 
   expect(h0).toBeTruthy();
   const ri = h0.node.subs!.find((k) => k.tag === TAG.struct)!.images![0];
+  const r = s.face!.resources[ri];
+  const data0 = r.data;
   const w = Math.round(h0.w / 2),
     h = Math.round(h0.h / 2);
 
   editorModel.select(h0.node);
   editorModel.resizeImageRequested({ node: h0.node, w, h });
-  await vi.waitFor(() => expect(s.face!.resources[ri].w).toBe(w));
+  await vi.waitFor(() => expect(r.w).toBe(w));
 
-  expect(s.face!.resources[ri].h).toBe(h);
+  expect(r.h).toBe(h);
   const after = draw().findLast((x) => x.node === h0.node)!;
 
   expect([after.w, after.h]).toEqual([w, h]);
+  expect(r.data).toBe(data0); // encoded pixels untouched until the file is built
   // still a valid file (also proves the re-encoded resource survives lz4 + rebuild)
-  expect(editorModel.buildCurrentBin().length).toBeGreaterThan(0);
+  expect((await editorModel.buildCurrentBin()).length).toBeGreaterThan(0);
+  expect(r.data).not.toBe(data0);
+});
+
+test("shrinking then restoring the size costs no detail", async () => {
+  const s = await load("resize-lossless-test");
+  const h0 = draw().find(
+    (h) =>
+      h.node.tag === TAG.image &&
+      h.node.subs?.find((k) => k.tag === TAG.struct)?.images?.length === 1,
+  )!;
+  const ri = h0.node.subs!.find((k) => k.tag === TAG.struct)!.images![0];
+  const r = s.face!.resources[ri];
+  const w0 = r.w,
+    h0px = r.h;
+  const pixels = (b: ImageBitmap) => {
+    const c = document.createElement("canvas");
+
+    c.width = b.width;
+    c.height = b.height;
+    c.getContext("2d")!.drawImage(b, 0, 0);
+    return [...c.getContext("2d")!.getImageData(0, 0, b.width, b.height).data];
+  };
+  const before = pixels(r.bitmap!);
+
+  editorModel.resizeImageRequested({ node: h0.node, w: 8, h: 8 });
+  await vi.waitFor(() => expect(r.w).toBe(8));
+  editorModel.resizeImageRequested({ node: h0.node, w: w0, h: h0px });
+  await vi.waitFor(() => expect(r.w).toBe(w0));
+
+  // rescaled off the pinned original, not off the 8x8 step
+  expect(pixels(r.bitmap!)).toEqual(before);
 });
 
 test("resizing a hand scales its pivot and keeps the rotation center put", async () => {

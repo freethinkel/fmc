@@ -18,6 +18,13 @@
 
   let lockAspect = $state(true);
 
+  // frame byte 8's two 2-bit alignment fields (see parseFrame) — only these two values
+  // occur across the corpus, so END/SPACE_* aren't offered.
+  const FLEX_ALIGN = [
+    { value: "0", label: "start" },
+    { value: "2", label: "center" },
+  ];
+
   // Figma-style position buttons: [dir, icon, title] — two groups of three
   const alignH: [AlignDir, IconName, string][] = [
     ["left", "align-left", "Align left"],
@@ -81,7 +88,7 @@
   );
 
   // size of the widget's first frame — the resource IS the widget's size, there's no
-  // draw-time scale in the format, so resizing re-encodes the pixels (editor.model)
+  // draw-time scale in the format, so resizing rescales the pixels (editor.model)
   const resSize = $derived.by(() => {
     void $editor;
     const r = sv.images?.length ? $editor.face?.resources[sv.images[0]] : null;
@@ -123,7 +130,7 @@
     v[5] = cur.w >> 8;
     v[6] = cur.h;
     v[7] = cur.h >> 8;
-    v[8] = cur.gap;
+    v[8] = (cur.cross << 2) | cur.main;
     set(f, { hex: hex(v) });
   }
   function setSlotActive(idx: number) {
@@ -243,7 +250,7 @@
           <Icon name={lockAspect ? "link" : "unlink"} size={16} />
         </button>
       </div>
-      <p class="hint-xs">resizing re-encodes the image — scaling down loses detail</p>
+      <p class="hint-xs">rescaled from the original — re-encoded only on save/flash</p>
     {/if}
     {#if frame}
       <div class="row">
@@ -259,9 +266,19 @@
         <Input type="number" value={String(frame.h)} onInput={(v) => setFrame({ h: num(v) })} />
       </div>
       <div class="row">
-        <span class="field-label">gap</span>
-        <Input type="number" value={String(frame.gap)} onInput={(v) => setFrame({ gap: num(v) })} />
+        <span class="field-label">align</span>
+        <Select
+          value={String(frame.main)}
+          options={FLEX_ALIGN}
+          onChange={(v) => setFrame({ main: num(v) })}
+        />
+        <Select
+          value={String(frame.cross)}
+          options={FLEX_ALIGN}
+          onChange={(v) => setFrame({ cross: num(v) })}
+        />
       </div>
+      <p class="hint-xs">how the group's auto-laid-out children pack: along the row, then across</p>
     {/if}
     {#if pivot}
       <div class="row">

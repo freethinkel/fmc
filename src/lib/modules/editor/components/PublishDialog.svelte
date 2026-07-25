@@ -31,7 +31,7 @@
       description,
       ownerId: $user.id,
       published: true,
-      bin: buildCurrentBin(),
+      bin: await buildCurrentBin(),
       preview: await previewBlob(),
     });
   }

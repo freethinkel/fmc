@@ -71,7 +71,7 @@
       name: $editor.face?.name || "Custom",
       ownerId: u.id,
       published: $openedWf?.published ?? false,
-      bin: buildCurrentBin(),
+      bin: await buildCurrentBin(),
       preview: await previewBlob(),
     });
   }
@@ -119,8 +119,11 @@
     if (resizable(h.node)) {
       ctx.setLineDash([]);
       ctx.fillStyle = "#4af";
-      for (const [cx, cy] of CORNERS)
-        ctx.fillRect(h.x + cx * h.w - HANDLE / 2, h.y + cy * h.h - HANDLE / 2, HANDLE, HANDLE);
+      for (const [cx, cy] of CORNERS) {
+        const p = onDisc(h.x + cx * h.w, h.y + cy * h.h);
+
+        ctx.fillRect(p.x - HANDLE / 2, p.y - HANDLE / 2, HANDLE, HANDLE);
+      }
     }
     const pv = h.node.subs?.find((s) => s.tag === TAG.pivot);
     const st = h.node.subs?.find((s) => s.tag === TAG.struct);
@@ -141,9 +144,10 @@
   }
 
   // ---- resize handles ----
-  // ponytail: handles only on a single-frame image (0x30) — there its hit rect IS the
-  // resource rect, so a corner drag maps 1:1 onto the new pixel size. Digits, hands and
-  // multi-frame widgets (composed or rotated boxes) resize from the props panel instead.
+  // Any widget drawn from images gets corner handles, on its selection box. The box isn't
+  // always the resource rect (a NUMBER's is the composed digits, a HAND's is the rotated
+  // AABB), so the drag works in scale factors: the box is scaled uniformly and the resource
+  // follows by the same factor. Groups (frame w/h, not pixels) and procedural arcs are out.
   const HANDLE = 10; // canvas units (466-space)
   const CORNERS = [
     [0, 0],
@@ -151,10 +155,22 @@
     [0, 1],
     [1, 1],
   ] as const;
-  const resizable = (n: FaceNode | null): boolean =>
-    Boolean(
-      n?.tag === TAG.image && n.subs?.find((s) => s.tag === TAG.struct)?.images?.length === 1,
-    );
+  // the canvas frame is a circle (border-radius 50%, see .canvas-frame), so a corner of a
+  // full-screen image sits in clipped-away pixels — pull handles onto the visible disc
+  const onDisc = (x: number, y: number): XY => {
+    const dx = x - 233,
+      dy = y - 233,
+      d = Math.hypot(dx, dy),
+      max = 233 - HANDLE;
+
+    return d <= max ? { x, y } : { x: 233 + (dx / d) * max, y: 233 + (dy / d) * max };
+  };
+  const firstRes = (n: FaceNode | null) => {
+    const st = n && n.tag !== TAG.group ? n.subs?.find((s) => s.tag === TAG.struct) : null;
+
+    return st?.images?.length ? $editor.face?.resources[st.images[0]] : undefined;
+  };
+  const resizable = (n: FaceNode | null): boolean => Boolean(firstRes(n));
 
   type Rz = {
     node: FaceNode;
@@ -179,9 +195,11 @@
   const selHit = () =>
     resizable($editor.sel) ? hits.findLast((h) => h.node === $editor.sel) || null : null;
   const handleAt = (p: XY, h: Hit) => {
-    for (const [cx, cy] of CORNERS)
-      if (Math.abs(p.x - (h.x + cx * h.w)) <= HANDLE && Math.abs(p.y - (h.y + cy * h.h)) <= HANDLE)
-        return { cx, cy };
+    for (const [cx, cy] of CORNERS) {
+      const c = onDisc(h.x + cx * h.w, h.y + cy * h.h);
+
+      if (Math.abs(p.x - c.x) <= HANDLE && Math.abs(p.y - c.y) <= HANDLE) return { cx, cy };
+    }
     return null;
   };
 
@@ -305,8 +323,17 @@
   }
   function onUp() {
     if (rz) {
-      // delta-based, like alignSelected: st.x is widget-local, the hit box is screen space
-      if (rz.gx !== rz.bx || rz.gy !== rz.by) {
+      const r0 = firstRes(rz.node);
+      const scale = rz.gw / rz.w0;
+
+      // a hand's x/y is owned by the pivot math in resizeImageFx — don't fight it. Everything
+      // else keeps the anchored corner: delta-based, like alignSelected, since st.x is
+      // widget-local while the hit box is screen space.
+      if (
+        r0 &&
+        !rz.node.subs?.some((s) => s.tag === TAG.pivot) &&
+        (rz.gx !== rz.bx || rz.gy !== rz.by)
+      ) {
         checkpoint(0);
         patched({
           node: rz.st,
@@ -316,7 +343,12 @@
           },
         });
       }
-      resizeImageRequested({ node: rz.node, w: rz.gw, h: rz.gh });
+      if (r0)
+        resizeImageRequested({
+          node: rz.node,
+          w: Math.round(r0.w * scale),
+          h: Math.round(r0.h * scale),
+        });
       rz = null;
     }
     drag = null;
@@ -353,8 +385,8 @@
     e.preventDefault();
   }
 
-  function flashWatch() {
-    flashRequested(buildCurrentBin());
+  async function flashWatch() {
+    flashRequested(await buildCurrentBin());
   }
 
   const hasAOD = $derived($editor.face?.screens.some((s) => s.tag === TAG.aod));

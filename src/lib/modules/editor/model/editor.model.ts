@@ -131,15 +131,28 @@ function accentFlaggedResources(face: Face): Set<number> {
   return flagged;
 }
 
+// RGBA readback of a bitmap at the given size — canvas is the only way back to pixels for
+// something that was scaled/decoded by the browser rather than by decodePixels
+function pixelsOf(b: ImageBitmap, w: number, h: number): Uint8ClampedArray<ArrayBuffer> {
+  const c = new OffscreenCanvas(w, h);
+  const cx = c.getContext("2d")!;
+
+  cx.drawImage(b, 0, 0, w, h);
+  return cx.getImageData(0, 0, w, h).data;
+}
+
 // preview-only recolor of an accent-flagged resource: replace every non-transparent pixel's
 // RGB with the chosen color (alpha untouched) — the flag identifies the whole resource as
 // tintable regardless of its baked color, so there's no per-pixel color test here. Never
 // touches r.data — the exported .bin must keep the original bytes for the real watch to
 // substitute its own accent color.
 async function accentBitmapFor(r: Resource, colorHex: string): Promise<ImageBitmap | undefined> {
-  const px = decodePixels(r);
+  if (r.cf === 1) return undefined; // JPEG — no per-pixel recolor
+  // off the bitmap, not decodePixels(r.data): a resized resource carries the old pixels in
+  // `data` until build time, the bitmap is always the one on screen
+  const px = r.bitmap ? pixelsOf(r.bitmap, r.w, r.h) : decodePixels(r);
 
-  if (!px) return undefined; // cf=1 (JPEG) — no per-pixel recolor
+  if (!px) return undefined;
   const n = parseInt(colorHex.slice(1), 16);
   const cr = (n >> 16) & 255,
     cg = (n >> 8) & 255,
@@ -381,7 +394,10 @@ const replaceImageFx = createEffect(async ({ resIdx, file }: { resIdx: number; f
     const data = new Uint8Array(await file.arrayBuffer());
     const b = await createImageBitmap(new Blob([data], { type: "image/jpeg" }));
 
-    treeChanged(() => Object.assign(r, { data, w: b.width, h: b.height, bitmap: b }));
+    // the uploaded file is the new original — drop any pinned resize source
+    treeChanged(() =>
+      Object.assign(r, { data, w: b.width, h: b.height, bitmap: b, srcBitmap: undefined }),
+    );
     return;
   }
   const img = await createImageBitmap(file);
@@ -397,34 +413,32 @@ const replaceImageFx = createEffect(async ({ resIdx, file }: { resIdx: number; f
   );
 
   enc.bitmap = await bitmapOf(enc);
-  treeChanged(() => Object.assign(r, enc));
+  treeChanged(() => Object.assign(r, enc, { srcBitmap: undefined }));
 });
 
-// A widget is drawn 1:1 from its resource (the format has no draw-time scale), so "resize the
-// image" means re-encoding the pixels at the new size. Lossy on the way down — the discarded
-// pixels are gone, exactly like replaceImage; resources live outside undo (see the stacks above).
-async function scaledResource(r: Resource, w: number, h: number): Promise<Resource> {
-  const src = r.bitmap ?? (await bitmapOf(r));
-  const c = new OffscreenCanvas(w, h);
-  const cx = c.getContext("2d")!;
-
-  cx.drawImage(src, 0, 0, w, h);
-  if (r.cf === 1) {
+// A widget is drawn 1:1 from its resource (the format has no draw-time scale), so a resize
+// really is a rescale of the pixels. Encoding them is deferred: resize only rescales the
+// bitmap off r.srcBitmap (the untouched original), so shrinking and growing again costs no
+// quality, and flushResized re-encodes from that same source when the file is built.
+async function encodeBitmap(b: ImageBitmap, w: number, h: number, cf: number): Promise<Uint8Array> {
+  if (cf === 1) {
     // JPEG resource (backgrounds) — keep the codec, decodePixels/encodePixels can't touch it
-    const blob = await c.convertToBlob({ type: "image/jpeg", quality: 0.92 });
+    const c = new OffscreenCanvas(w, h);
 
-    return {
-      cf: 1,
-      w,
-      h,
-      data: new Uint8Array(await blob.arrayBuffer()),
-      bitmap: await createImageBitmap(blob),
-    };
+    c.getContext("2d")!.drawImage(b, 0, 0, w, h);
+    return new Uint8Array(
+      await (await c.convertToBlob({ type: "image/jpeg", quality: 0.92 })).arrayBuffer(),
+    );
   }
-  const enc = encodePixels(cx.getImageData(0, 0, w, h).data, w, h, r.cf);
+  return encodePixels(pixelsOf(b, w, h), w, h, cf).data;
+}
 
-  enc.bitmap = await bitmapOf(enc);
-  return enc;
+// re-encode every resized resource from its original pixels — called just before buildBin, so
+// the downsampling lands only in what's exported/flashed. r.bitmap (the crisp browser-scaled
+// preview) is left alone; the editing session keeps showing the good one.
+async function flushResized(face: Face) {
+  for (const r of face.resources)
+    if (r.srcBitmap) r.data = await encodeBitmap(r.srcBitmap, r.w, r.h, r.cf);
 }
 
 const resizeImageFx = createEffect(
@@ -448,13 +462,22 @@ const resizeImageFx = createEffect(
       const r = face.resources[ri];
 
       if (!r) continue;
-      const scaled =
-        ri === imgs[0]
-          ? await scaledResource(r, tw, th)
-          : await scaledResource(r, dim(r.w * sx), dim(r.h * sy));
+      r.srcBitmap ??= r.bitmap ?? (await bitmapOf(r)); // first resize pins the original
+      const rw = ri === imgs[0] ? tw : dim(r.w * sx),
+        rh = ri === imgs[0] ? th : dim(r.h * sy);
 
-      // stale accent tint would keep the old size — accentFx recomputes it on done below
-      Object.assign(r, scaled, { accentBitmap: undefined });
+      Object.assign(r, {
+        w: rw,
+        h: rh,
+        // always off the ORIGINAL, so shrink-then-grow is lossless
+        bitmap: await createImageBitmap(r.srcBitmap, {
+          resizeWidth: rw,
+          resizeHeight: rh,
+          resizeQuality: "high",
+        }),
+        // stale accent tint would keep the old size — accentFx recomputes it on done below
+        accentBitmap: undefined,
+      });
     }
     const pivot = node.subs?.find((s) => s.tag === TAG.pivot);
 
@@ -583,9 +606,11 @@ export function alignSelected(dir: AlignDir) {
   if (pass()) pass();
 }
 
-export function buildCurrentBin(): Uint8Array {
+// async because of flushResized — resized images are only re-encoded here, on the way out
+export async function buildCurrentBin(): Promise<Uint8Array> {
   const s = $editor.getState();
 
+  await flushResized(s.face!);
   if (s.dirty) regenPreviews(s.face!, s.sim); // embedded 0x28 previews = current render
   const out = buildBin(s.face!);
 
@@ -604,9 +629,9 @@ export function previewBlob(): Promise<Blob> {
   return new Promise((res) => c.toBlob((b) => res(b!), "image/png"));
 }
 
-export function exportBin() {
+export async function exportBin() {
   try {
-    const out = buildCurrentBin();
+    const out = await buildCurrentBin();
     const a = document.createElement("a");
 
     a.href = URL.createObjectURL(new Blob([out as BlobPart]));
