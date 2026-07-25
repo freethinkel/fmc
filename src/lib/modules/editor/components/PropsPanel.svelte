@@ -12,8 +12,18 @@
     checkpoint,
     patched,
     replaceImageRequested,
+    resizeImageRequested,
     alignSelected,
   } = editorModel;
+
+  let lockAspect = $state(true);
+
+  // frame byte 8's main-axis alignment (see parseFrame) — only these two values occur
+  // across the corpus, so END/SPACE_* aren't offered. [value, icon, title]
+  const FLEX_ALIGN: [number, IconName, string][] = [
+    [0, "align-left", "Pack children at the frame start"],
+    [2, "align-center", "Center children in the frame"],
+  ];
 
   // Figma-style position buttons: [dir, icon, title] — two groups of three
   const alignH: [AlignDir, IconName, string][] = [
@@ -33,9 +43,7 @@
   const pivot = $derived($editor.sel?.subs?.find((s) => s.tag === TAG.pivot));
   const fmtNode = $derived($editor.sel?.subs?.find((s) => s.tag === TAG.fmt));
   const bindNode = $derived($editor.sel?.subs?.find((s) => s.tag === TAG.bind));
-  const frame = $derived(
-    $editor.sel?.tag === TAG.group ? parseFrame($editor.sel) : null,
-  );
+  const frame = $derived($editor.sel?.tag === TAG.group ? parseFrame($editor.sel) : null);
   // The face tree is mutated in place (editor.model's patched), so node-returning deriveds
   // above keep yielding the SAME object and property reads off them (st.x, st.meta…) never
   // invalidate. Everything the template DISPLAYS goes through this snapshot instead — it
@@ -63,9 +71,7 @@
   });
   // 0x5f: [slotIndex][count][activeIdx][count × metric id][padding] — see 0x85 "Widget slot"
   const slotNode = $derived(
-    $editor.sel?.tag === 0x85
-      ? $editor.sel.subs?.find((s) => s.tag === 0x5f)
-      : null,
+    $editor.sel?.tag === 0x85 ? $editor.sel.subs?.find((s) => s.tag === 0x5f) : null,
   );
   const slotInfo = $derived.by(() => {
     void $editor;
@@ -80,6 +86,20 @@
       label: `0x${id.toString(16)} — ${ID_LABELS[id] || "?"}`,
     })) ?? [],
   );
+
+  // size of the widget's first frame — the resource IS the widget's size, there's no
+  // draw-time scale in the format, so resizing rescales the pixels (editor.model)
+  const resSize = $derived.by(() => {
+    void $editor;
+    const r = sv.images?.length ? $editor.face?.resources[sv.images[0]] : null;
+
+    return r ? { w: r.w, h: r.h } : null;
+  });
+
+  function resize(w: number, h: number) {
+    if (!resSize || !$editor.sel) return;
+    resizeImageRequested({ node: $editor.sel, w, h });
+  }
 
   const num = (s: string) => Number(s) || 0;
   const set = (node: FaceNode, patch: Partial<FaceNode>) => {
@@ -110,7 +130,7 @@
     v[5] = cur.w >> 8;
     v[6] = cur.h;
     v[7] = cur.h >> 8;
-    v[8] = cur.gap;
+    v[8] = (v[8] & ~3) | cur.main; // keep the byte's unread high bits (see parseFrame)
     set(f, { hex: hex(v) });
   }
   function setSlotActive(idx: number) {
@@ -143,9 +163,7 @@
   // get a rescue button back to their native 0x0f if left on a broken smooth-era id.
   const SECOND_IDS = [0x0f, 0x12, 0x71, 0x72];
   const isSecondHand = $derived(
-    $editor.sel?.tag === TAG.hand &&
-      meta != null &&
-      SECOND_IDS.includes(meta.id),
+    $editor.sel?.tag === TAG.hand && meta != null && SECOND_IDS.includes(meta.id),
   );
   const isBrokenRing = $derived(
     $editor.sel != null &&
@@ -186,12 +204,7 @@
         {#each [alignH, alignV] as group}
           <div class="btn-group">
             {#each group as [dir, iconName, title] (dir)}
-              <button
-                type="button"
-                {title}
-                class="icon-btn"
-                onclick={() => alignSelected(dir)}
-              >
+              <button type="button" {title} class="icon-btn" onclick={() => alignSelected(dir)}>
                 <Icon name={iconName} size={16} />
               </button>
             {/each}
@@ -202,56 +215,73 @@
     {#if st && sv.x != null && !frame}
       <div class="row">
         <span class="field-label">x</span>
-        <Input
-          type="number"
-          value={String(sv.x)}
-          onInput={(v) => set(st, { x: num(v) })}
-        />
+        <Input type="number" value={String(sv.x)} onInput={(v) => set(st, { x: num(v) })} />
         <span class="field-label">y</span>
-        <Input
-          type="number"
-          value={String(sv.y)}
-          onInput={(v) => set(st, { y: num(v) })}
-        />
+        <Input type="number" value={String(sv.y)} onInput={(v) => set(st, { y: num(v) })} />
       </div>
     {/if}
-    {#if frame}
-      <div class="row">
-        <span class="field-label">x</span>
-        <Input
-          type="number"
-          value={String(frame.x)}
-          onInput={(v) => setFrame({ x: num(v) })}
-        />
-        <span class="field-label">y</span>
-        <Input
-          type="number"
-          value={String(frame.y)}
-          onInput={(v) => setFrame({ y: num(v) })}
-        />
-      </div>
+    {#if resSize}
       <div class="row">
         <span class="field-label">w</span>
         <Input
           type="number"
-          value={String(frame.w)}
-          onInput={(v) => setFrame({ w: num(v) })}
+          min={1}
+          max={2047}
+          value={String(resSize.w)}
+          onChange={(v) =>
+            resize(num(v), lockAspect ? Math.round((num(v) * resSize.h) / resSize.w) : resSize.h)}
         />
         <span class="field-label">h</span>
         <Input
           type="number"
-          value={String(frame.h)}
-          onInput={(v) => setFrame({ h: num(v) })}
+          min={1}
+          max={2047}
+          value={String(resSize.h)}
+          onChange={(v) =>
+            resize(lockAspect ? Math.round((num(v) * resSize.w) / resSize.h) : resSize.w, num(v))}
         />
+        <button
+          type="button"
+          title={lockAspect ? "Aspect ratio locked" : "Aspect ratio free"}
+          class="icon-btn"
+          class:on={lockAspect}
+          onclick={() => (lockAspect = !lockAspect)}
+        >
+          <Icon name={lockAspect ? "link" : "unlink"} size={16} />
+        </button>
+      </div>
+      <p class="hint-xs">rescaled from the original — re-encoded only on save/flash</p>
+    {/if}
+    {#if frame}
+      <div class="row">
+        <span class="field-label">x</span>
+        <Input type="number" value={String(frame.x)} onInput={(v) => setFrame({ x: num(v) })} />
+        <span class="field-label">y</span>
+        <Input type="number" value={String(frame.y)} onInput={(v) => setFrame({ y: num(v) })} />
       </div>
       <div class="row">
-        <span class="field-label">gap</span>
-        <Input
-          type="number"
-          value={String(frame.gap)}
-          onInput={(v) => setFrame({ gap: num(v) })}
-        />
+        <span class="field-label">w</span>
+        <Input type="number" value={String(frame.w)} onInput={(v) => setFrame({ w: num(v) })} />
+        <span class="field-label">h</span>
+        <Input type="number" value={String(frame.h)} onInput={(v) => setFrame({ h: num(v) })} />
       </div>
+      <div class="row">
+        <span class="field-label">align</span>
+        <div class="btn-group">
+          {#each FLEX_ALIGN as [main, iconName, title] (main)}
+            <button
+              type="button"
+              {title}
+              class="icon-btn"
+              class:on={frame.main === main}
+              onclick={() => setFrame({ main })}
+            >
+              <Icon name={iconName} size={16} />
+            </button>
+          {/each}
+        </div>
+      </div>
+      <p class="hint-xs">where the group's auto-laid-out children sit along the row</p>
     {/if}
     {#if pivot}
       <div class="row">
@@ -272,8 +302,7 @@
     {/if}
     {#if meta?.id}
       <p class="hint">
-        source: <span class="text-emph"
-          >0x{meta.id.toString(16)} — {ID_LABELS[meta.id] || "?"}</span
+        source: <span class="text-emph">0x{meta.id.toString(16)} — {ID_LABELS[meta.id] || "?"}</span
         >
         {#if meta.max}, max {meta.max}{/if}
       </p>
@@ -281,10 +310,7 @@
     {#if st?.meta}
       <div class="check-row">
         <Checkbox checked={!!meta?.accent} onChange={(v) => setAccent(v)} />
-        <button
-          type="button"
-          class="check-label"
-          onclick={() => setAccent(!meta?.accent)}
+        <button type="button" class="check-label" onclick={() => setAccent(!meta?.accent)}
           >tints with device accent color</button
         >
       </div>
@@ -298,8 +324,7 @@
         <button
           type="button"
           class="check-label"
-          onclick={() =>
-            setSecondId(meta?.id === 0x0f || meta?.id === 0x12 ? 0x72 : 0x12)}
+          onclick={() => setSecondId(meta?.id === 0x0f || meta?.id === 0x12 ? 0x72 : 0x12)}
         >
           smooth sweep (unchecked — ticks once per second)
         </button>
@@ -333,15 +358,11 @@
             onInput={(v) => setFmt(num(v), fmtByte & 0x80)}
           />
         </span>
-        <Checkbox
-          checked={!!(fmtByte & 0x80)}
-          onChange={(v) => setFmt(fmtByte & 0x1f, v)}
-        />
+        <Checkbox checked={!!(fmtByte & 0x80)} onChange={(v) => setFmt(fmtByte & 0x1f, v)} />
         <button
           type="button"
           class="check-label"
-          onclick={() => setFmt(fmtByte & 0x1f, !(fmtByte & 0x80))}
-          >leading zeros</button
+          onclick={() => setFmt(fmtByte & 0x1f, !(fmtByte & 0x80))}>leading zeros</button
         >
       </div>
     {/if}
@@ -366,42 +387,60 @@
         />
       </div>
     {/if}
-    {#if sv.images}
-      <div class="images">
-        {#each sv.images as ri}
-          {@const r = $editor.face!.resources[ri]}
-          <div class="thumb-wrap">
-            <label
-              title="res{ri} · {r.w}×{r.h} · cf{r.cf} — click to replace"
-              class="thumb"
-            >
-              <img src={thumbURL(r)} alt="res{ri}" />
-              <input
-                type="file"
-                accept="image/*"
-                hidden
-                onchange={(e) => {
-                  const file = e.currentTarget.files?.[0];
-
-                  if (file) replaceImageRequested({ resIdx: ri, file });
-                }}
-              />
-            </label>
-            <button
-              title="Download PNG"
-              onclick={() => downloadRes(ri)}
-              class="dl-btn"
-            >
-              <Icon name="download" size={14} />
-            </button>
+    {#if sv.images?.length && slotInfo}
+      <!-- 0x85 images aren't a value-indexed set: [0] is the on-watch "tap to configure"
+           placeholder, [1..count] are the companion-app picker icons, one per metric of
+           the 0x5f list — see the 0x85 note in lib/render.ts -->
+      <div>
+        <span class="muted-label">placeholder (widget-edit screen only)</span>
+        <div class="images">{@render thumb(sv.images[0])}</div>
+      </div>
+      {#if sv.images.length > 1}
+        <div>
+          <span class="muted-label">companion-app menu icons</span>
+          <div class="images">
+            {#each sv.images.slice(1) as ri, i}
+              <div class="thumb-col" class:active={i === slotInfo.activeIdx}>
+                {@render thumb(ri)}
+                <span class="thumb-cap"
+                  >{ID_LABELS[slotInfo.ids[i]] || `0x${slotInfo.ids[i]?.toString(16)}`}</span
+                >
+              </div>
+            {/each}
           </div>
-        {/each}
+        </div>
+      {/if}
+    {:else if sv.images}
+      <div class="images">
+        {#each sv.images as ri}{@render thumb(ri)}{/each}
       </div>
     {/if}
   </div>
 {:else}
   <p class="hint">Nothing selected.</p>
 {/if}
+
+{#snippet thumb(ri: number)}
+  {@const r = $editor.face!.resources[ri]}
+  <div class="thumb-wrap">
+    <label title="res{ri} · {r.w}×{r.h} · cf{r.cf} — click to replace" class="thumb">
+      <img src={thumbURL(r)} alt="res{ri}" />
+      <input
+        type="file"
+        accept="image/*"
+        hidden
+        onchange={(e) => {
+          const file = e.currentTarget.files?.[0];
+
+          if (file) replaceImageRequested({ resIdx: ri, file });
+        }}
+      />
+    </label>
+    <button title="Download PNG" onclick={() => downloadRes(ri)} class="dl-btn">
+      <Icon name="download" size={14} />
+    </button>
+  </div>
+{/snippet}
 
 <style>
   .panel {
@@ -471,6 +510,11 @@
       background: oklch(from var(--color-text) l c h / 6%);
       color: var(--color-text);
     }
+
+    &.on {
+      border-color: var(--color-accent);
+      color: var(--color-accent);
+    }
   }
   .text-btn {
     border: 1px solid oklch(from var(--color-text) l c h / 12%);
@@ -509,6 +553,21 @@
   }
   .thumb-wrap {
     position: relative;
+  }
+  .thumb-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    max-width: 64px;
+  }
+  .thumb-cap {
+    font-size: 0.6875rem;
+    text-align: center;
+    color: oklch(from var(--color-text) l c h / 55%);
+  }
+  .thumb-col.active .thumb-cap {
+    color: var(--color-accent);
   }
   .thumb {
     display: block;

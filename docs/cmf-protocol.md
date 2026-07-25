@@ -43,7 +43,7 @@ Every node: `[tag u8][len u16][value]`. `TAG` constants (`wf.ts:45-50`):
 | pivot    | 0x05 | `flag u8, pivotX u16, pivotY u16` — hand rotation center                                                                                                 |
 | pvStruct | 0x08 | `prefix[5]` + image ref, no x/y (preview image only)                                                                                                     |
 | fmt      | 0x40 | 1 byte: digit-count/zero-pad flag, sibling of a `number` struct                                                                                          |
-| frame    | 0x48 | `x,y,w,h,gap,align` — auto-layout row/column (**skip this**: every widget can be placed with absolute x/y directly at screen top level, no group needed) |
+| frame    | 0x48 | `x u16, y u16, w u16, h u16, align u8` + 12 zero bytes — auto-layout row/column; align's low 2 bits place the AUTO children along the row (0 = start, 2 = center, LVGL `lv_flex_align_t`), there is no gap field (**skip this**: every widget can be placed with absolute x/y directly at screen top level, no group needed) |
 | image    | 0x30 | static image OR pick-by-value from N images                                                                                                              |
 | number   | 0x60 | live numeric readout, digit-image strip                                                                                                                  |
 | group    | 0x68 | frame + auto-laid-out children (skip, see frame)                                                                                                         |

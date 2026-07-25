@@ -5,12 +5,7 @@
   import { TAG, unhex, type FaceNode } from "../lib/wf";
   import { metaInfo, ID_LABELS } from "../lib/render";
   import { editorModel } from "../model";
-  const {
-    $editor: editor,
-    select,
-    addWidgetRequested,
-    deleteWidget,
-  } = editorModel;
+  const { $editor: editor, select, addWidgetRequested, deleteWidget } = editorModel;
 
   const tagNames = {
     [TAG.main]: "Screen",
@@ -56,10 +51,8 @@
   };
 
   export function nodeLabel(n: FaceNode) {
-    let s =
-      tagNames[n.tag as keyof typeof tagNames] || `0x${n.tag.toString(16)}`;
-    const st =
-      n.tag === TAG.struct ? n : n.subs?.find((c) => c.tag === TAG.struct);
+    let s = tagNames[n.tag as keyof typeof tagNames] || `0x${n.tag.toString(16)}`;
+    const st = n.tag === TAG.struct ? n : n.subs?.find((c) => c.tag === TAG.struct);
 
     if (st?.meta) {
       const { id } = metaInfo(st);
@@ -72,8 +65,7 @@
       const v = sf?.hex ? unhex(sf.hex) : null;
       const activeId = v && v.length >= 3 ? v[3 + v[2]] : undefined;
 
-      if (activeId != null)
-        s += ` · ${ID_LABELS[activeId] || "0x" + activeId.toString(16)}`;
+      if (activeId != null) s += ` · ${ID_LABELS[activeId] || "0x" + activeId.toString(16)}`;
     }
     if (n._kind) s += ` · ${n._kind}`;
     return s;
@@ -112,10 +104,7 @@
         </label>
       </Button>
     </span>
-    <span
-      class="tool-slot"
-      title="Add number widget — select 10 digit images (0…9)"
-    >
+    <span class="tool-slot" title="Add number widget — select 10 digit images (0…9)">
       <Button kind="secondary" size="sm" disabled={!$editor.face}>
         <label class="file-label">
           <Icon name="hash" size={16} />
@@ -146,12 +135,7 @@
     </span>
     <div class="spacer"></div>
     <span class="tool-slot" title="Delete selected widget">
-      <Button
-        kind="ghost"
-        size="sm"
-        disabled={!$editor.sel}
-        onClick={deleteWidget}
-      >
+      <Button kind="ghost" size="sm" disabled={!$editor.sel} onClick={deleteWidget}>
         <Icon name="trash" size={16} color="var(--color-error)" />
       </Button>
     </span>
@@ -169,10 +153,7 @@
 
 {#snippet treeNode(n: FaceNode, depth: number)}
   {@const nodeIcon = tagIcons[n.tag] || "box"}
-  {@const kids =
-    depth < 4
-      ? (n.subs || []).filter((c) => c.subs || c.tag === TAG.struct)
-      : []}
+  {@const kids = depth < 4 ? (n.subs || []).filter((c) => c.subs || c.tag === TAG.struct) : []}
   <button
     type="button"
     class="node-row"

@@ -36,8 +36,10 @@
     undo,
     redo,
     patched,
+    resizeImageRequested,
     loadRequested,
     newFaceRequested,
+    importFacerRequested,
     exportBin,
     buildCurrentBin,
     previewBlob,
@@ -61,6 +63,15 @@
     if (t instanceof HTMLInputElement) t.value = "";
   }
 
+  // Facer exports are directories, so this takes a whole folder rather than one file
+  function openFacer(e: Event) {
+    const t = e.target;
+
+    if (t instanceof HTMLInputElement && t.files?.length) importFacerRequested([...t.files]);
+    faceDetached();
+    if (t instanceof HTMLInputElement) t.value = "";
+  }
+
   // Save: new watchface → draft; already-open own watchface → update, keeping its status
   async function saveDraft() {
     const u = $user;
@@ -70,7 +81,7 @@
       name: $editor.face?.name || "Custom",
       ownerId: u.id,
       published: $openedWf?.published ?? false,
-      bin: buildCurrentBin(),
+      bin: await buildCurrentBin(),
       preview: await previewBlob(),
     });
   }
@@ -100,9 +111,7 @@
 
   function drawSelection(ctx: CanvasRenderingContext2D, sel: FaceNode | null) {
     if (!sel) return;
-    const h = hits.findLast(
-      (h) => h.node === sel || h.node.subs?.includes(sel),
-    );
+    const h = hits.findLast((h) => h.node === sel || h.node.subs?.includes(sel));
 
     if (!h) return;
     ctx.save();
@@ -110,6 +119,22 @@
     ctx.lineWidth = 2;
     ctx.setLineDash([6, 4]);
     ctx.strokeRect(h.x - 1, h.y - 1, h.w + 2, h.h + 2);
+    if (rz) {
+      // resize preview: the resource is only re-encoded on pointerup, so nothing about the
+      // drawn image changes during the drag — this ghost is the whole live feedback
+      ctx.strokeStyle = "#4af";
+      ctx.setLineDash([2, 2]);
+      ctx.strokeRect(rz.gx, rz.gy, rz.gw, rz.gh);
+    }
+    if (resizable(h.node)) {
+      ctx.setLineDash([]);
+      ctx.fillStyle = "#4af";
+      for (const [cx, cy] of CORNERS) {
+        const p = onDisc(h.x + cx * h.w, h.y + cy * h.h);
+
+        ctx.fillRect(p.x - HANDLE / 2, p.y - HANDLE / 2, HANDLE, HANDLE);
+      }
+    }
     const pv = h.node.subs?.find((s) => s.tag === TAG.pivot);
     const st = h.node.subs?.find((s) => s.tag === TAG.struct);
 
@@ -127,6 +152,66 @@
     }
     ctx.restore();
   }
+
+  // ---- resize handles ----
+  // Any widget drawn from images gets corner handles, on its selection box. The box isn't
+  // always the resource rect (a NUMBER's is the composed digits, a HAND's is the rotated
+  // AABB), so the drag works in scale factors: the box is scaled uniformly and the resource
+  // follows by the same factor. Groups (frame w/h, not pixels) and procedural arcs are out.
+  const HANDLE = 10; // canvas units (466-space)
+  const CORNERS = [
+    [0, 0],
+    [1, 0],
+    [0, 1],
+    [1, 1],
+  ] as const;
+  // the canvas frame is a circle (border-radius 50%, see .canvas-frame), so a corner of a
+  // full-screen image sits in clipped-away pixels — pull handles onto the visible disc
+  const onDisc = (x: number, y: number): XY => {
+    const dx = x - 233,
+      dy = y - 233,
+      d = Math.hypot(dx, dy),
+      max = 233 - HANDLE;
+
+    return d <= max ? { x, y } : { x: 233 + (dx / d) * max, y: 233 + (dy / d) * max };
+  };
+  const firstRes = (n: FaceNode | null) => {
+    const st = n && n.tag !== TAG.group ? n.subs?.find((s) => s.tag === TAG.struct) : null;
+
+    return st?.images?.length ? $editor.face?.resources[st.images[0]] : undefined;
+  };
+  const resizable = (n: FaceNode | null): boolean => Boolean(firstRes(n));
+
+  type Rz = {
+    node: FaceNode;
+    st: FaceNode;
+    dirX: number;
+    dirY: number;
+    ax: number;
+    ay: number;
+    w0: number;
+    h0: number;
+    x0: number;
+    y0: number;
+    bx: number;
+    by: number;
+    gx: number;
+    gy: number;
+    gw: number;
+    gh: number;
+  };
+  let rz: Rz | null = null;
+
+  const selHit = () =>
+    resizable($editor.sel) ? hits.findLast((h) => h.node === $editor.sel) || null : null;
+  const handleAt = (p: XY, h: Hit) => {
+    for (const [cx, cy] of CORNERS) {
+      const c = onDisc(h.x + cx * h.w, h.y + cy * h.h);
+
+      if (Math.abs(p.x - c.x) <= HANDLE && Math.abs(p.y - c.y) <= HANDLE) return { cx, cy };
+    }
+    return null;
+  };
 
   // ---- selection and drag ----
   type XY = { x: number; y: number };
@@ -173,9 +258,35 @@
   function onDown(e: PointerEvent) {
     if (!$editor.face) return;
     const p = canvasXY(e);
-    const h = hits.findLast(
-      (h) => p.x >= h.x && p.x < h.x + h.w && p.y >= h.y && p.y < h.y + h.h,
-    );
+    const sh = selHit();
+    const c = sh && handleAt(p, sh);
+
+    if (sh && c) {
+      const st = selStruct($editor.sel)!;
+
+      rz = {
+        node: $editor.sel!,
+        st,
+        dirX: c.cx,
+        dirY: c.cy,
+        // the dragged corner moves, the opposite one stays put — that's the anchor
+        ax: c.cx ? sh.x : sh.x + sh.w,
+        ay: c.cy ? sh.y : sh.y + sh.h,
+        w0: sh.w,
+        h0: sh.h,
+        x0: st.x ?? 0,
+        y0: st.y ?? 0,
+        bx: sh.x,
+        by: sh.y,
+        gx: sh.x,
+        gy: sh.y,
+        gw: sh.w,
+        gh: sh.h,
+      };
+      canvas?.setPointerCapture(e.pointerId);
+      return;
+    }
+    const h = hits.findLast((h) => p.x >= h.x && p.x < h.x + h.w && p.y >= h.y && p.y < h.y + h.h);
 
     select(h?.node || null);
     if (!h?.node) return;
@@ -183,14 +294,30 @@
     const fr = h.node.tag === TAG.group ? parseFrame(h.node) : null;
 
     if (fr) drag = { p, fr: h.node, x0: fr.x, y0: fr.y, moved: false };
-    else if (st && st.x != null)
-      drag = { p, st, x0: st.x, y0: st.y!, moved: false };
+    else if (st && st.x != null) drag = { p, st, x0: st.x, y0: st.y!, moved: false };
     canvas?.setPointerCapture(e.pointerId);
   }
   function onMove(e: PointerEvent) {
+    if (rz) {
+      const p = canvasXY(e);
+      // uniform scale (corner drags keep proportions — free w/h lives in the props panel)
+      const s = Math.max(Math.abs(p.x - rz.ax) / rz.w0, Math.abs(p.y - rz.ay) / rz.h0);
+
+      rz.gw = Math.max(1, Math.round(rz.w0 * s));
+      rz.gh = Math.max(1, Math.round(rz.h0 * s));
+      rz.gx = rz.dirX ? rz.ax : rz.ax - rz.gw;
+      rz.gy = rz.dirY ? rz.ay : rz.ay - rz.gh;
+      return;
+    }
     const d = drag;
 
-    if (!d) return;
+    if (!d) {
+      const sh = canvas && selHit();
+      const c = sh && handleAt(canvasXY(e), sh);
+
+      if (canvas) canvas.style.cursor = c ? (c.cx === c.cy ? "nwse-resize" : "nesw-resize") : "";
+      return;
+    }
     if (!d.moved) {
       checkpoint(0);
       d.moved = true;
@@ -199,24 +326,46 @@
     const dx = Math.round(p.x - d.p.x),
       dy = Math.round(p.y - d.p.y);
 
-    if (d.st)
-      patched({
-        node: d.st,
-        patch: { x: Math.max(0, d.x0 + dx), y: Math.max(0, d.y0 + dy) },
-      });
+    // widget x/y are int16 — negatives are legal (and used by stock faces), so no clamp here;
+    // group frames stay >=0, their x/y round-trip through the file as unsigned
+    if (d.st) patched({ node: d.st, patch: { x: d.x0 + dx, y: d.y0 + dy } });
     else setFrameXY(d.fr, Math.max(0, d.x0 + dx), Math.max(0, d.y0 + dy));
   }
   function onUp() {
+    if (rz) {
+      const r0 = firstRes(rz.node);
+      const scale = rz.gw / rz.w0;
+
+      // a hand's x/y is owned by the pivot math in resizeImageFx — don't fight it. Everything
+      // else keeps the anchored corner: delta-based, like alignSelected, since st.x is
+      // widget-local while the hit box is screen space.
+      if (
+        r0 &&
+        !rz.node.subs?.some((s) => s.tag === TAG.pivot) &&
+        (rz.gx !== rz.bx || rz.gy !== rz.by)
+      ) {
+        checkpoint(0);
+        patched({
+          node: rz.st,
+          patch: {
+            x: rz.x0 + Math.round(rz.gx - rz.bx),
+            y: rz.y0 + Math.round(rz.gy - rz.by),
+          },
+        });
+      }
+      if (r0)
+        resizeImageRequested({
+          node: rz.node,
+          w: Math.round(r0.w * scale),
+          h: Math.round(r0.h * scale),
+        });
+      rz = null;
+    }
     drag = null;
   }
 
   function onKey(e: KeyboardEvent) {
-    if (
-      ["INPUT", "TEXTAREA", "SELECT"].includes(
-        (e.target as HTMLElement).tagName,
-      )
-    )
-      return;
+    if (["INPUT", "TEXTAREA", "SELECT"].includes((e.target as HTMLElement).tagName)) return;
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
       if (e.shiftKey) redo();
       else undo();
@@ -240,18 +389,14 @@
     const st = selStruct(sel);
     const fr = sel.tag === TAG.group ? parseFrame(sel) : null;
 
-    if (fr)
-      setFrameXY(sel, Math.max(0, fr.x + mv[0]), Math.max(0, fr.y + mv[1]));
+    if (fr) setFrameXY(sel, Math.max(0, fr.x + mv[0]), Math.max(0, fr.y + mv[1]));
     else if (st && st.x != null)
-      patched({
-        node: st,
-        patch: { x: Math.max(0, st.x + mv[0]), y: Math.max(0, st.y! + mv[1]) },
-      });
+      patched({ node: st, patch: { x: st.x + mv[0], y: st.y! + mv[1] } });
     e.preventDefault();
   }
 
-  function flashWatch() {
-    flashRequested(buildCurrentBin());
+  async function flashWatch() {
+    flashRequested(await buildCurrentBin());
   }
 
   const hasAOD = $derived($editor.face?.screens.some((s) => s.tag === TAG.aod));
@@ -274,11 +419,7 @@
   );
 </script>
 
-<svelte:window
-  onkeydown={onKey}
-  ondragover={(e) => e.preventDefault()}
-  ondrop={openFile}
-/>
+<svelte:window onkeydown={onKey} ondragover={(e) => e.preventDefault()} ondrop={openFile} />
 
 <div class="page">
   <div class="toolbar">
@@ -289,6 +430,15 @@
         <input type="file" accept=".bin" hidden onchange={openFile} />
       </label>
     </Button>
+    <span class="tool-slot" title="Import a Facer or WatchMaker export folder">
+      <Button kind="secondary" size="sm">
+        <label class="file-label">
+          <Icon name="watch" size={16} />
+          <span class="btn-label">Import folder</span>
+          <input type="file" webkitdirectory hidden onchange={openFacer} />
+        </label>
+      </Button>
+    </span>
     <span class="tool-slot" title="New">
       <Button
         kind="secondary"
@@ -309,22 +459,12 @@
         onChange={(v) => screenTagSet(v === "aod" ? TAG.aod : TAG.main)}
       />
       <span class="tool-slot" title="Undo (⌘Z)">
-        <Button
-          kind="ghost"
-          size="sm"
-          disabled={!$editor.undoN}
-          onClick={() => undo()}
-        >
+        <Button kind="ghost" size="sm" disabled={!$editor.undoN} onClick={() => undo()}>
           <Icon name="undo" size={16} />
         </Button>
       </span>
       <span class="tool-slot" title="Redo (⇧⌘Z)">
-        <Button
-          kind="ghost"
-          size="sm"
-          disabled={!$editor.redoN}
-          onClick={() => redo()}
-        >
+        <Button kind="ghost" size="sm" disabled={!$editor.redoN} onClick={() => redo()}>
           <Icon name="redo" size={16} />
         </Button>
       </span>
@@ -335,21 +475,14 @@
         </Button>
       </span>
       {#if $user}
-        <span
-          class="tool-slot"
-          title={$openedWf ? "Save changes" : "Save as draft"}
-        >
+        <span class="tool-slot" title={$openedWf ? "Save changes" : "Save as draft"}>
           <Button kind="ghost" size="sm" onClick={saveDraft} disabled={$saving}>
             <Icon name="save" size={16} />
             <span class="btn-label">{$saving ? "Saving…" : "Save"}</span>
           </Button>
         </span>
         <span class="tool-slot" title="Publish">
-          <Button
-            kind="secondary"
-            size="sm"
-            onClick={() => publishDialogOpened()}
-          >
+          <Button kind="secondary" size="sm" onClick={() => publishDialogOpened()}>
             <Icon name="upload-cloud" size={16} />
             <span class="btn-label">Publish</span>
           </Button>
@@ -358,12 +491,7 @@
     {/if}
     {#if $bleInfo && $editor.face}
       <span class="tool-slot" title="Upload to the watch">
-        <Button
-          kind="primary"
-          size="sm"
-          onClick={flashWatch}
-          disabled={$flashing}
-        >
+        <Button kind="primary" size="sm" onClick={flashWatch} disabled={$flashing}>
           <Icon name="zap" size={16} />
           {$flashing ? "Flashing…" : "Flash"}
         </Button>
@@ -372,10 +500,7 @@
   </div>
 
   {#if $editor.err || ($flashing && $bleStatus) || $bleStatus?.startsWith("error:")}
-    <p
-      class="statusbar"
-      class:error={$editor.err || $bleStatus?.startsWith("error:")}
-    >
+    <p class="statusbar" class:error={$editor.err || $bleStatus?.startsWith("error:")}>
       {$editor.err || $bleStatus}
     </p>
   {/if}
@@ -398,7 +523,7 @@
         ></canvas>
       </div>
       <p class="hint">
-        click — select · drag / arrow keys (⇧ ×10) — move · ⌘Z undo
+        click — select · drag / arrow keys (⇧ ×10) — move · corners — resize · ⌘Z undo
       </p>
     </section>
 
@@ -435,12 +560,7 @@
   </div>
 </div>
 
-<Dialog
-  side
-  open={mobilePanel !== null}
-  title={mobileTitle}
-  onClose={() => (mobilePanel = null)}
->
+<Dialog side open={mobilePanel !== null} title={mobileTitle} onClose={() => (mobilePanel = null)}>
   {#if mobilePanel === "tree"}
     <TreePanel />
   {:else if mobilePanel === "props"}

@@ -16,13 +16,15 @@ export default defineConfig({
       {
         extends: true,
         test: {
-          name: "components",
+          // *.browser.test.ts — anything that needs a real browser, whether that's mounting a
+          // component or just reaching for canvas/ImageBitmap/FontFace (the editor libs do).
+          name: "browser",
           browser: {
             enabled: true,
             provider: playwright(),
             instances: [{ browser: "chromium" }],
           },
-          include: ["tests/**/*.svelte.{test,spec}.ts"],
+          include: ["tests/**/*.browser.{test,spec}.ts"],
         },
       },
       {
@@ -31,7 +33,7 @@ export default defineConfig({
           name: "unit",
           environment: "node",
           include: ["tests/**/*.{test,spec}.ts"],
-          exclude: ["tests/**/*.svelte.{test,spec}.ts"],
+          exclude: ["tests/**/*.browser.{test,spec}.ts"],
         },
       },
     ],

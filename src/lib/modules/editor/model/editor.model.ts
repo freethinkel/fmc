@@ -90,6 +90,7 @@ export const loadRequested = createEvent<{
 // need to react (e.g. navigate once the face is ready) subscribe; others just ignore it
 export const loadDone = createEvent<{ face: Face; label: string }>();
 export const newFaceRequested = createEvent<string | void>();
+export const importFacerRequested = createEvent<File[]>();
 export const addWidgetRequested = createEvent<{
   kind: "image" | "number" | "hand";
   files: File[];
@@ -97,6 +98,12 @@ export const addWidgetRequested = createEvent<{
 export const replaceImageRequested = createEvent<{
   resIdx: number;
   file: File;
+}>();
+// node: the widget node (or its struct); w/h: target size of its FIRST frame
+export const resizeImageRequested = createEvent<{
+  node: FaceNode;
+  w: number;
+  h: number;
 }>();
 
 // ---- helpers (module-scope: reused across effects, recursive, or carry their own "why") ----
@@ -125,15 +132,28 @@ function accentFlaggedResources(face: Face): Set<number> {
   return flagged;
 }
 
+// RGBA readback of a bitmap at the given size — canvas is the only way back to pixels for
+// something that was scaled/decoded by the browser rather than by decodePixels
+function pixelsOf(b: ImageBitmap, w: number, h: number): Uint8ClampedArray<ArrayBuffer> {
+  const c = new OffscreenCanvas(w, h);
+  const cx = c.getContext("2d")!;
+
+  cx.drawImage(b, 0, 0, w, h);
+  return cx.getImageData(0, 0, w, h).data;
+}
+
 // preview-only recolor of an accent-flagged resource: replace every non-transparent pixel's
 // RGB with the chosen color (alpha untouched) — the flag identifies the whole resource as
 // tintable regardless of its baked color, so there's no per-pixel color test here. Never
 // touches r.data — the exported .bin must keep the original bytes for the real watch to
 // substitute its own accent color.
 async function accentBitmapFor(r: Resource, colorHex: string): Promise<ImageBitmap | undefined> {
-  const px = decodePixels(r);
+  if (r.cf === 1) return undefined; // JPEG — no per-pixel recolor
+  // off the bitmap, not decodePixels(r.data): a resized resource carries the old pixels in
+  // `data` until build time, the bitmap is always the one on screen
+  const px = r.bitmap ? pixelsOf(r.bitmap, r.w, r.h) : decodePixels(r);
 
-  if (!px) return undefined; // cf=1 (JPEG) — no per-pixel recolor
+  if (!px) return undefined;
   const n = parseInt(colorHex.slice(1), 16);
   const cr = (n >> 16) & 255,
     cg = (n >> 8) & 255,
@@ -198,6 +218,23 @@ const loadBufferFx = createEffect(
     return { face, label };
   },
 );
+// Facer and WatchMaker exports are both directories, and tell each other apart by their
+// manifest — no need to make the user pick the format they downloaded.
+const importFacerFx = createEffect(async (files: File[]) => {
+  const has = (n: string) => files.some((f) => (f.webkitRelativePath || f.name).endsWith(n));
+  const wm = has("watch.pxml");
+  const toFace = wm
+    ? (await import("../lib/watchmaker")).watchmakerToFace
+    : (await import("../lib/facer")).facerToFace;
+
+  if (!wm && !has("watchface.json"))
+    throw new Error("not a watchface export: no watchface.json (Facer) or watch.pxml (WatchMaker)");
+  const { face, skipped } = await toFace(files);
+
+  for (const r of face.resources) if (!r.bitmap) r.bitmap = await bitmapOf(r);
+  return { face, label: wm ? "watchmaker" : "facer", dirty: true, skipped };
+});
+
 export const $loading = loadBufferFx.pending;
 
 // serialized — faceLoaded (reapplying the current color to a freshly parsed face) and a
@@ -375,7 +412,10 @@ const replaceImageFx = createEffect(async ({ resIdx, file }: { resIdx: number; f
     const data = new Uint8Array(await file.arrayBuffer());
     const b = await createImageBitmap(new Blob([data], { type: "image/jpeg" }));
 
-    treeChanged(() => Object.assign(r, { data, w: b.width, h: b.height, bitmap: b }));
+    // the uploaded file is the new original — drop any pinned resize source
+    treeChanged(() =>
+      Object.assign(r, { data, w: b.width, h: b.height, bitmap: b, srcBitmap: undefined }),
+    );
     return;
   }
   const img = await createImageBitmap(file);
@@ -391,8 +431,89 @@ const replaceImageFx = createEffect(async ({ resIdx, file }: { resIdx: number; f
   );
 
   enc.bitmap = await bitmapOf(enc);
-  treeChanged(() => Object.assign(r, enc));
+  treeChanged(() => Object.assign(r, enc, { srcBitmap: undefined }));
 });
+
+// A widget is drawn 1:1 from its resource (the format has no draw-time scale), so a resize
+// really is a rescale of the pixels. Encoding them is deferred: resize only rescales the
+// bitmap off r.srcBitmap (the untouched original), so shrinking and growing again costs no
+// quality, and flushResized re-encodes from that same source when the file is built.
+async function encodeBitmap(b: ImageBitmap, w: number, h: number, cf: number): Promise<Uint8Array> {
+  if (cf === 1) {
+    // JPEG resource (backgrounds) — keep the codec, decodePixels/encodePixels can't touch it
+    const c = new OffscreenCanvas(w, h);
+
+    c.getContext("2d")!.drawImage(b, 0, 0, w, h);
+    return new Uint8Array(
+      await (await c.convertToBlob({ type: "image/jpeg", quality: 0.92 })).arrayBuffer(),
+    );
+  }
+  return encodePixels(pixelsOf(b, w, h), w, h, cf).data;
+}
+
+// re-encode every resized resource from its original pixels — called just before buildBin, so
+// the downsampling lands only in what's exported/flashed. r.bitmap (the crisp browser-scaled
+// preview) is left alone; the editing session keeps showing the good one.
+async function flushResized(face: Face) {
+  for (const r of face.resources)
+    if (r.srcBitmap) r.data = await encodeBitmap(r.srcBitmap, r.w, r.h, r.cf);
+}
+
+const resizeImageFx = createEffect(
+  async ({ node, w, h }: { node: FaceNode; w: number; h: number }) => {
+    const { face } = $editor.getState();
+    const st = node.tag === TAG.struct ? node : node.subs?.find((s) => s.tag === TAG.struct);
+    const imgs = st?.images;
+
+    if (!face || !imgs?.length) return;
+    const dim = (v: number) => Math.max(1, Math.min(2047, Math.round(v))); // 11-bit fields, see encodePixels
+    const tw = dim(w),
+      th = dim(h);
+    const r0 = face.resources[imgs[0]];
+
+    if (!r0 || (tw === r0.w && th === r0.h)) return;
+    const sx = tw / r0.w,
+      sy = th / r0.h;
+
+    // every frame of a multi-frame widget (digits, weekday icons) scales by the same ratio
+    for (const ri of new Set(imgs)) {
+      const r = face.resources[ri];
+
+      if (!r) continue;
+      r.srcBitmap ??= r.bitmap ?? (await bitmapOf(r)); // first resize pins the original
+      const rw = ri === imgs[0] ? tw : dim(r.w * sx),
+        rh = ri === imgs[0] ? th : dim(r.h * sy);
+
+      Object.assign(r, {
+        w: rw,
+        h: rh,
+        // always off the ORIGINAL, so shrink-then-grow is lossless
+        bitmap: await createImageBitmap(r.srcBitmap, {
+          resizeWidth: rw,
+          resizeHeight: rh,
+          resizeQuality: "high",
+        }),
+        // stale accent tint would keep the old size — accentFx recomputes it on done below
+        accentBitmap: undefined,
+      });
+    }
+    const pivot = node.subs?.find((s) => s.tag === TAG.pivot);
+
+    treeChanged(() => {
+      // a hand rotates around x+pivot — scale the pivot with the art and shift x/y so the
+      // rotation center stays put, otherwise the hand jumps off the dial on every resize
+      if (pivot && st?.x != null) {
+        const px = Math.round(pivot.pivotX! * sx),
+          py = Math.round(pivot.pivotY! * sy);
+
+        st.x += pivot.pivotX! - px;
+        st.y = (st.y || 0) + pivot.pivotY! - py;
+        pivot.pivotX = px;
+        pivot.pivotY = py;
+      }
+    });
+  },
+);
 
 // ---- imperative actions ----
 // deleteWidget/alignSelected/buildCurrentBin/previewBlob/exportBin below stay as plain functions
@@ -418,9 +539,9 @@ export function deleteWidget() {
 // container's edge/center. The container is the parent group's frame when the node is a
 // group child (Figma aligns relative to the parent), the screen otherwise. Delta-based off
 // the render hits, so it works uniformly for groups (frame x/y), widgets (struct x/y) and
-// grouped children whose drawn position differs from their raw x/y. ponytail: clamped to
-// >=0 — a group child at the x=0 "center me" convention can't be pushed further left than
-// the format can express, and AUTO (0x8000) children ignore x/y entirely.
+// grouped children whose drawn position differs from their raw x/y. Widget x/y may go
+// negative (int16, see wf.ts); group frames stay clamped to >=0 — their x/y is unsigned in
+// the file. ponytail: AUTO (meta.w 0x8000) children ignore x/y entirely, so they don't move.
 export function alignSelected(dir: AlignDir) {
   const s = $editor.getState();
 
@@ -490,10 +611,7 @@ export function alignSelected(dir: AlignDir) {
       const st = sel.subs?.find((n) => n.tag === TAG.struct);
 
       if (!st || st.x == null) return false;
-      patched({
-        node: st,
-        patch: { x: Math.max(0, st.x + dx), y: Math.max(0, (st.y || 0) + dy) },
-      });
+      patched({ node: st, patch: { x: st.x + dx, y: (st.y || 0) + dy } });
     }
     return true;
   };
@@ -506,9 +624,11 @@ export function alignSelected(dir: AlignDir) {
   if (pass()) pass();
 }
 
-export function buildCurrentBin(): Uint8Array {
+// async because of flushResized — resized images are only re-encoded here, on the way out
+export async function buildCurrentBin(): Promise<Uint8Array> {
   const s = $editor.getState();
 
+  await flushResized(s.face!);
   if (s.dirty) regenPreviews(s.face!, s.sim); // embedded 0x28 previews = current render
   const out = buildBin(s.face!);
 
@@ -527,9 +647,9 @@ export function previewBlob(): Promise<Blob> {
   return new Promise((res) => c.toBlob((b) => res(b!), "image/png"));
 }
 
-export function exportBin() {
+export async function exportBin() {
   try {
-    const out = buildCurrentBin();
+    const out = await buildCurrentBin();
     const a = document.createElement("a");
 
     a.href = URL.createObjectURL(new Blob([out as BlobPart]));
@@ -720,8 +840,24 @@ sample({
   target: newFaceFx,
 });
 sample({
-  clock: [loadBufferFx.doneData, newFaceFx.doneData],
+  clock: [loadBufferFx.doneData, newFaceFx.doneData, importFacerFx.doneData],
   target: faceLoaded,
+});
+
+sample({
+  clock: importFacerRequested,
+  target: importFacerFx,
+});
+sample({
+  clock: importFacerFx.doneData,
+  filter: ({ skipped }) => skipped.length > 0,
+  fn: ({ skipped }) => `facer: skipped layers — ${skipped.join(", ")}`,
+  target: errored,
+});
+sample({
+  clock: importFacerFx.fail,
+  fn: ({ error }) => `facer import: ${error.message}`,
+  target: errored,
 });
 
 sample({
@@ -735,7 +871,7 @@ sample({
 });
 
 sample({
-  clock: replaceImageFx.done,
+  clock: [replaceImageFx.done, resizeImageFx.done],
   source: $editor,
   fn: (s) => ({ ...s, dirty: true }),
   target: $editor,
@@ -746,6 +882,23 @@ sample({
   target: errored,
 });
 sample({
+  clock: resizeImageFx.fail,
+  fn: ({ error }) => `image resize: ${error.message}`,
+  target: errored,
+});
+sample({
   clock: replaceImageRequested,
   target: replaceImageFx,
+});
+sample({
+  clock: resizeImageRequested,
+  target: resizeImageFx,
+});
+// new pixels — the accent tint was computed off the old ones
+sample({
+  clock: [replaceImageFx.done, resizeImageFx.done],
+  source: $editor,
+  filter: (s) => Boolean(s.face && s.sim.accentColor),
+  fn: (s) => ({ face: s.face!, color: s.sim.accentColor! }),
+  target: accentFx,
 });

@@ -8,6 +8,11 @@ export interface Resource {
   h: number;
   data: Uint8Array;
   bitmap?: ImageBitmap;
+  // set once a resize touched this resource: the ORIGINAL full-size pixels. Resizing only
+  // rescales `bitmap` (+ w/h) off this source and leaves `data` stale — it's re-encoded from
+  // the source at build time (flushResized in editor.model), so resizing back and forth costs
+  // nothing in quality and only what lands on the watch is ever downsampled.
+  srcBitmap?: ImageBitmap;
   // preview-only recolor of the accent sentinel (see docs/cmf-protocol.md) — never
   // read by buildBin/encodePixels, must not leak into exported resource.data
   accentBitmap?: ImageBitmap;
@@ -67,6 +72,9 @@ export const hex = (d: Uint8Array) => [...d].map((b) => b.toString(16).padStart(
 export const unhex = (s: string) =>
   new Uint8Array((s.match(/../g) || []).map((b) => parseInt(b, 16)));
 const u16 = (d: Uint8Array, o: number) => d[o] | (d[o + 1] << 8);
+// widget x/y are int16 (LVGL lv_coord_t): 10 nodes across the corpus sit at 0xfffe/0xfffc/…,
+// i.e. a couple of pixels off the left/top edge, not at x=65534
+const i16 = (d: Uint8Array, o: number) => (u16(d, o) << 16) >> 16;
 const u32 = (d: Uint8Array, o: number) =>
   (d[o] | (d[o + 1] << 8) | (d[o + 2] << 16) | (d[o + 3] << 24)) >>> 0;
 
@@ -191,8 +199,8 @@ function nodeToJSON(
   // struct: [x u16][y u16][meta 14b] then either a refTail (image ref) or nothing —
   // short arcs (0x81/0x80 rings with no bitmap, ring drawn procedurally) carry no ref at all.
   if (n.tag === TAG.struct && v.length >= 18) {
-    j.x = u16(v, 0);
-    j.y = u16(v, 2);
+    j.x = i16(v, 0);
+    j.y = i16(v, 2);
     j.meta = hex(v.subarray(4, 18));
     if (parentTag === TAG.hand && handKinds[v[13]]) j._kind = handKinds[v[13]];
     const rt = v.length >= 25 ? parseRefTail(v, 18, resources, resOffset) : null;

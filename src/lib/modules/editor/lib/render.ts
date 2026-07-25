@@ -5,9 +5,8 @@ import { TAG, unhex, type Face, type FaceNode, type Resource } from "./wf";
 // Known data sources (meta byte 9). "?" = guess, not confirmed.
 // 0x1c/0x24/0x48/0x76/0x8b — labels corrected against Function's widget-slot menu (companion-app
 // icons: flame/calories, standing figure/stands, lightning/battery, road/distance, cloud-sun/aqi).
-// idValue() below matches for 0x24 (battery) and 0x48 (stands); 0x8b still returns steps (its
-// pre-existing bucket) and 0x1c/0x76 aren't cased at all (default 0) — no face in the corpus
-// binds a live widget to them directly, so only their widget-slot menu label was confirmed.
+// idValue() feeds each of them from the matching sim field; the unit of 0x1c/0x76/0x8b is a
+// guess (no corpus face binds a live widget to them), tweak per-face via an override.
 export const ID_LABELS: Record<number, string> = {
   0x01: "hour",
   0x04: "minute?",
@@ -27,7 +26,7 @@ export const ID_LABELS: Record<number, string> = {
   0x18: "weekday",
   0x19: "steps",
   0x1a: "heart rate",
-  0x1c: "calories",
+  0x1c: "calories (slot)",
   0x1e: "calories",
   0x22: "distance km int",
   0x23: "distance mi int",
@@ -35,17 +34,17 @@ export const ID_LABELS: Record<number, string> = {
   0x26: "steps (slot)",
   0x30: "battery",
   0x36: "temperature 2?",
-  0x48: "stands",
+  0x48: "stand hours",
   0x49: "steps (slot)",
   0x5f: "temperature",
-  0x6a: "metric (slot)?",
-  0x6c: "metric (slot)?",
+  0x6a: "steps (slot)?",
+  0x6c: "steps (slot)?",
   0x71: "second (ticking)",
   0x72: "second (ticking)",
   0x73: "24h/metric flag",
   0x74: "distance km frac",
   0x75: "distance mi frac",
-  0x76: "distance",
+  0x76: "distance km (slot)",
   0x8b: "aqi",
 };
 
@@ -60,9 +59,11 @@ export interface Sim {
   calories: SimValue;
   temp: SimValue;
   distance: SimValue;
+  aqi: SimValue;
+  stands: SimValue; // hours stood (0x48) — see ID_LABELS/idValue note, corrected from "calories"
   stepsGoal: SimValue;
   calGoal: SimValue;
-  stands: SimValue; // hours stood (0x48) — see ID_LABELS/idValue note, corrected from "calories"
+  standsGoal: SimValue; // ring denominator for 0x48, the watch's default stand goal is 12 h
   overrides: Record<number, number | string>;
   // preview override for accent-flagged widgets (see metaInfo's `accent` field / "Accent
   // color" in docs/cmf-protocol.md); null = draw the baked default. Applied async in
@@ -109,9 +110,11 @@ export function defaultSim(): Sim {
     calories: 321,
     distance: 4520,
     temp: 25,
+    aqi: 42,
+    stands: 5,
     stepsGoal: 10000,
     calGoal: 500,
-    stands: 5,
+    standsGoal: 12,
     overrides: {}, // id -> number, manual override of any source
     accentColor: null,
     showSlotPlaceholders: false,
@@ -179,14 +182,15 @@ export function idValue(id: number, sim: Sim, t: TimeParts): number {
       return Number(sim.steps);
     case 0x1a:
       return Number(sim.hr);
-    // 0x48/0x24 corrected against Function's widget-slot menu icons (standing figure/lightning
-    // bolt, not calories/steps) — 0x48 is stand hours, 0x24 is battery.
+    case 0x1c:
     case 0x1e:
       return Number(sim.calories);
     case 0x22:
       return Math.floor(Number(sim.distance) / 1000);
     case 0x23:
       return Math.floor(Number(sim.distance) / 1609.34);
+    // 0x48/0x24 corrected against Function's widget-slot menu icons (standing figure/lightning
+    // bolt, not calories/steps) — 0x48 is stand hours, 0x24 is battery.
     case 0x24:
       return Number(sim.battery);
     case 0x26:
@@ -196,7 +200,6 @@ export function idValue(id: number, sim: Sim, t: TimeParts): number {
       return Number(sim.stands);
     case 0x6a:
     case 0x6c:
-    case 0x8b:
       return Number(sim.steps); // unlabelled complication-slot metrics
     case 0x30:
       return Number(sim.battery);
@@ -209,6 +212,11 @@ export function idValue(id: number, sim: Sim, t: TimeParts): number {
       return Math.floor(Number(sim.distance) / 100) % 10;
     case 0x75:
       return Math.floor(Number(sim.distance) / 160.934) % 10;
+    // ponytail: slot-menu labels only, unit unverified — km int / plain AQI, override per face
+    case 0x76:
+      return Math.floor(Number(sim.distance) / 1000);
+    case 0x8b:
+      return Number(sim.aqi);
     default:
       return 0;
   }
@@ -444,15 +452,18 @@ function progressFrac(id: number, sim: Sim, t: TimeParts, spec: ArcSpec): number
   let v = idValue(id, sim, t);
 
   if (spec.max <= 100 && v > spec.max) {
-    // goal rings count as percent of the goal (steps/kcal), firmware divides on its own
+    // goal rings count as percent of the goal (steps/kcal/stands), firmware divides on its own.
+    // Battery (0x24/0x30) is already a percentage — no goal, so it falls through unscaled.
     const goal = (
       {
         0x19: sim.stepsGoal,
-        0x24: sim.stepsGoal,
         0x26: sim.stepsGoal,
         0x49: sim.stepsGoal,
+        0x6a: sim.stepsGoal,
+        0x6c: sim.stepsGoal,
+        0x1c: sim.calGoal,
         0x1e: sim.calGoal,
-        0x48: sim.calGoal,
+        0x48: sim.standsGoal,
       } as Record<number, SimValue>
     )[id];
 
@@ -469,7 +480,11 @@ export interface Frame {
   y: number;
   w: number;
   h: number;
-  gap: number;
+  // byte 8, low 2 bits: how the auto-laid-out children align along the packing axis
+  // (0 = START, 2 = CENTER — LVGL's lv_flex_align_t; END/SPACE_* never occur in the corpus).
+  // The high bits are presumably the cross-axis field of the same enum (0x0a = main CENTER +
+  // something), unverified — we still center the cross axis unconditionally, see drawGroup.
+  main: number;
   node: FaceNode;
 }
 export function parseFrame(node: FaceNode): Frame | null {
@@ -484,7 +499,7 @@ export function parseFrame(node: FaceNode): Frame | null {
     y: v[2] | (v[3] << 8),
     w: v[4] | (v[5] << 8),
     h: v[6] | (v[7] << 8),
-    gap: v[8],
+    main: v[8] & 3,
     node: f,
   };
 }
@@ -821,10 +836,18 @@ function drawWidget(
   return { w: b.width, h: b.height };
 }
 
-// 0x68: frame 0x48 (x,y,w,h,gap) + children. Layout model (reversed from the 101-face
-// corpus survey; no layout flag exists in frame 0x48 — bytes 9..20 are always zero, byte 8
-// is the row gap):
-// - struct meta w = 0x8000 (AUTO) — packs into a row/column centered in the frame;
+// 0x68: frame 0x48 (x,y,w,h,align) + children. Layout model (reversed from the 101-face
+// corpus survey; bytes 9..20 are always zero, byte 8 is the flex alignment — see parseFrame):
+// - struct meta w = 0x8000 (AUTO) — packs into a row/column placed per frame.main.
+//   Byte 8 was read as a pixel row gap until AEGIS_Ground_Force (a community face, byte 8 = 0
+//   on every group) turned up rendering its 200px-wide label frames left-aligned on the real
+//   device where we centered them. Every corpus face with AUTO children carries 0x02 or 0x0a
+//   there — both main=CENTER, which is why centering-everything held up until now; the gap
+//   reading never had evidence of its own (forcing gap=0 moves no corpus preview by a pixel).
+//   That file's own baked preview centers the rows, but it isn't a render of the file at all
+//   (it also shows a weather icon and a "°F" unit glyph that exist nowhere in its tree) — a
+//   third-party authoring tool's mock-up, i.e. exactly the tool whose output the device
+//   disagrees with here. Corpus previews are device bakes; that one isn't evidence.
 // - a NUMBER at x=0 with a true-AUTO sibling joins that row gapless (its width is dynamic,
 //   so it can't carry the 0x8000 marker itself — Function/Elaborate_2 "80%");
 // - progress rings (0x80/0x81) — struct x/y is already screen-absolute; a 0 on either axis
@@ -922,40 +945,32 @@ function drawGroup(
     return null;
   };
 
-  // a NUMBER packed next to a real auto sibling hugs it with no gap, unlike two true 0x8000
-  // icons — confirmed on Function's battery tile: the baked "80%" has no space between digits
-  // and the % sign, while our render used the group's own fr.gap there same as between icons.
-  const shownIdx = kids.map((k, i) => (sizes[i] ? i : -1)).filter((i) => i >= 0);
-  const gapAfter = (posInShown: number) => {
-    const a = shownIdx[posInShown],
-      b = shownIdx[posInShown + 1];
-
-    if (b === undefined) return 0;
-    return kids[a].tag === TAG.number || kids[b].tag === TAG.number ? 0 : fr.gap;
-  };
-  const total = shown.reduce((s, z, p) => s + (vertical ? z.h : z.w) + gapAfter(p), 0);
+  const total = shown.reduce((s, z) => s + (vertical ? z.h : z.w), 0);
   // frame.w/h === 0 on the packing axis means "auto-size to content" (seen on Function's
-  // icon+digits+degree temperature row: frame w=0, gap=10, 4 auto children) — centering
+  // icon+digits+degree temperature row: frame w=0, 4 auto children) — centering
   // against a literal 0 shoved the whole packed row left by half its own width. Clamp the
   // available length to at least `total` so an auto-sized frame just starts flush at the
   // frame origin instead of drifting negative.
   const mainAvail = Math.max(vertical ? fr.h : fr.w, total);
-  let c = (vertical ? y : x) + (mainAvail - total) / 2;
+  // ponytail: only START/CENTER exist in the corpus — END (1) and SPACE_* (3) would need
+  // their own arm here, add one if a face ever carries them.
+  let c = (vertical ? y : x) + (fr.main ? (mainAvail - total) / 2 : 0);
 
   if (ctx) {
-    let shownPos = 0;
-
     kids.forEach((k, i) => {
       const z = sizes[i];
 
       if (z) {
+        // cross axis stays centered on every face: byte 8's high bits presumably carry it,
+        // but every corpus group whose vertical placement the previews actually pin down
+        // reads 0x0a there, and AEGIS's frames are exactly one child tall — nothing to
+        // distinguish START from CENTER on that axis yet.
         const pos = vertical
           ? { x: x + (fr.w - z.w) / 2, y: c }
           : { x: c, y: rowCross ?? y + (fr.h - z.h) / 2 };
 
         drawWidget(ctx, k, res, sim, t, 0, 0, pos, hits, arcsById);
-        c += (vertical ? z.h : z.w) + gapAfter(shownPos);
-        shownPos++;
+        c += vertical ? z.h : z.w;
       } else if (!isAuto(k)) {
         // progress rings (0x80/0x81) inside a group carry already-absolute struct x/y —
         // confirmed on Combo, where a grouped ring's x/y is byte-identical to an ungrouped
@@ -988,8 +1003,7 @@ function drawGroup(
         const o = !isRing ? localOrigin(k) : null;
         const measured =
           o && !o.x ? drawWidget(null, k, res, sim, t, 0, 0, { x: 0, y: 0 }, null, arcsById) : null;
-        const pos =
-          ringPos ?? (measured ? { x: x + (fr.w - measured.w) / 2, y: y + o!.y } : null);
+        const pos = ringPos ?? (measured ? { x: x + (fr.w - measured.w) / 2, y: y + o!.y } : null);
 
         drawWidget(ctx, k, res, sim, t, isRing ? 0 : x, isRing ? 0 : y, pos, hits, arcsById);
       }
