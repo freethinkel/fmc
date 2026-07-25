@@ -1,6 +1,5 @@
 <script lang="ts">
   import { Input } from "$lib/shared/components/input";
-  import { Tabs } from "$lib/shared/components/tabs";
   import { Select } from "$lib/shared/components/select";
   import { Skeleton } from "$lib/shared/components/skeleton";
   import { Icon } from "$lib/shared/components/icon";
@@ -21,28 +20,7 @@
     editRequested,
   } = marketModel;
 
-  import { goto } from "$app/navigation";
-  import { page } from "$app/state";
-
   marketLoadRequested();
-
-  const TAB_ITEMS = [
-    { value: "nothing", label: "From Nothing" },
-    { value: "community", label: "Community" },
-  ];
-  const TABS = TAB_ITEMS.map((t) => t.value);
-
-  const tabParam = page.url.searchParams.get("tab") ?? "";
-  let tab = $state<string | undefined>(
-    TABS.includes(tabParam) ? tabParam : "nothing",
-  );
-
-  $effect(() => {
-    const url = new URL(window.location.href);
-
-    url.searchParams.set("tab", tab ?? "");
-    goto(url, { replaceState: true, noScroll: true, keepFocus: true });
-  });
 
   let query = $state("");
   let sort = $state("new"); // new | popular | downloads
@@ -64,9 +42,10 @@
 
   const shown = $derived(
     $items
-      // "From Nothing" — the whole catalog without an owner (both factory type=nothing
-      // and cmf), grouped by category (see grouped below)
-      .filter((wf) => (tab === "community" ? Boolean(wf.owner) : !wf.owner))
+      // community only — ownerless catalog records aren't served any more
+      // (fmc_pocketbase 1753500000_hide_catalog.js); the guard stays so a stale
+      // cached list can't render them either
+      .filter((wf) => Boolean(wf.owner))
       .filter((wf) =>
         wf.name.toLowerCase().includes(query.trim().toLowerCase()),
       )
@@ -82,28 +61,13 @@
       ),
   );
 
-  // "From Nothing" — sections by category with horizontal scroll (like on the watch itself),
-  // not a flat grid
-  const grouped = $derived.by(() => {
-    const byCat = new Map();
-
-    for (const wf of shown) {
-      const key = wf.description || "";
-
-      if (!byCat.has(key)) byCat.set(key, []);
-      byCat.get(key).push(wf);
-    }
-    return [...byCat.entries()];
-  });
-
   // all data is already loaded in full (getFullList in the model) — we progressively
-  // reveal only the flat grid (community) render, so the screen doesn't get flooded
-  // with cards at once. Resets on tab/search/sort change since that changes shown.
+  // reveal the grid so the screen doesn't get flooded with cards at once.
+  // Resets on search/sort change since that changes shown.
   const PAGE = 60;
   let visibleCount = $state(PAGE);
   /* oxlint-disable no-unused-expressions -- bare refs register these as $effect deps */
   $effect(() => {
-    tab;
     query;
     sort;
     visibleCount = PAGE;
@@ -126,11 +90,6 @@
   {#if $marketErr}<p class="error">{$marketErr}</p>{/if}
 
   <div class="toolbar">
-    <Tabs
-      items={TAB_ITEMS}
-      value={tab ?? "nothing"}
-      onChange={(v) => (tab = v)}
-    />
     <div class="search">
       <Icon name="search" size={14} />
       <Input bind:value={query} placeholder="Search…" />
@@ -148,34 +107,6 @@
           <Skeleton height="14px" width="70%" />
           <Skeleton height="12px" width="40%" />
         </div>
-      {/each}
-    </main>
-  {:else if tab === "nothing"}
-    <!-- sections by category, horizontal scroll within each — like on the watch itself -->
-    <main class="sections">
-      {#each grouped as [category, list] (category)}
-        <section>
-          <h2 class="category-title">{category || "Other"}</h2>
-          <div class="h-scroll">
-            {#each list as wf (wf.id)}
-              <div class="h-item">
-                <WatchfaceCard
-                  {wf}
-                  likeCount={likeCount(wf.id)}
-                  liked={!!myLike(wf.id)}
-                  canLike={!!$user}
-                  canRemove={$user?.id === wf.owner}
-                  onOpen={() => editRequested(wf)}
-                  onLike={() =>
-                    $user && likeToggleRequested({ wf, userId: $user.id })}
-                  onRemove={() => remove(wf)}
-                />
-              </div>
-            {/each}
-          </div>
-        </section>
-      {:else}
-        <p class="empty">Nothing found.</p>
       {/each}
     </main>
   {:else}
@@ -262,30 +193,6 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
-  }
-  .sections {
-    padding: 16px;
-  }
-  section {
-    margin-bottom: 24px;
-  }
-  .category-title {
-    font-size: 1.1rem;
-    margin: 0 0 8px;
-    font-weight: 600;
-  }
-  .h-scroll {
-    display: flex;
-    gap: 12px;
-    overflow-x: auto;
-    /* don't chain edge-overscroll into the browser back/forward swipe */
-    overscroll-behavior-x: contain;
-    padding-bottom: 8px;
-  }
-  .h-item {
-    flex-shrink: 0;
-    width: 190px;
-    min-height: 275px;
   }
   .empty {
     padding: 64px 0;
