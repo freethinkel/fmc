@@ -20,8 +20,12 @@
     editRequested,
   } = marketModel;
 
+  // depend on the id, not the record: pb's startup authRefresh swaps in a fresh record object
+  // with the same id, and re-firing the load made the SDK auto-cancel the first request
+  const uid = $derived($user?.id);
+
   $effect(() => {
-    if ($user) myLoadRequested($user.id);
+    if (uid) myLoadRequested(uid);
     else goto("/login");
   });
 

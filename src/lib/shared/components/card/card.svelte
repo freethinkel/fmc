@@ -8,9 +8,7 @@
 </script>
 
 {#if onClick}
-  <button type="button" class="card clickable" onclick={onClick}
-    >{@render children?.()}</button
-  >
+  <button type="button" class="card clickable" onclick={onClick}>{@render children?.()}</button>
 {:else}
   <div class="card">{@render children?.()}</div>
 {/if}

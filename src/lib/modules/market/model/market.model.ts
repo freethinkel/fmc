@@ -312,6 +312,10 @@ sample({
     marketApi.removeFx.failData,
     marketApi.togglePublishFx.failData,
   ],
+  // ClientResponseError.isAbort — the SDK auto-cancels a request when an identical one is
+  // fired (same collection+params), so the "loser" is never a real failure: a newer identical
+  // request is already in flight. Nothing to show the user.
+  filter: (e) => !(e as { isAbort?: boolean }).isAbort,
   fn: (e) => e.message,
   target: $marketErr,
 });
@@ -337,4 +341,6 @@ sample({
   target: $myItems,
 });
 
-reset({ clock: marketApi.loadMarketFx.done, target: $marketErr });
+// any successful load clears the banner — otherwise a one-off failure (or a request the SDK
+// auto-cancelled) stayed on screen for the rest of the session, /my never reset it at all
+reset({ clock: [marketApi.loadMarketFx.done, marketApi.loadMyFx.done], target: $marketErr });

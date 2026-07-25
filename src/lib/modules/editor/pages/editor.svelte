@@ -39,6 +39,7 @@
     resizeImageRequested,
     loadRequested,
     newFaceRequested,
+    importFacerRequested,
     exportBin,
     buildCurrentBin,
     previewBlob,
@@ -59,6 +60,15 @@
     if (f) f.arrayBuffer().then((buf) => loadRequested({ buf, label: f.name }));
     faceDetached();
     e.preventDefault();
+    if (t instanceof HTMLInputElement) t.value = "";
+  }
+
+  // Facer exports are directories, so this takes a whole folder rather than one file
+  function openFacer(e: Event) {
+    const t = e.target;
+
+    if (t instanceof HTMLInputElement && t.files?.length) importFacerRequested([...t.files]);
+    faceDetached();
     if (t instanceof HTMLInputElement) t.value = "";
   }
 
@@ -420,6 +430,15 @@
         <input type="file" accept=".bin" hidden onchange={openFile} />
       </label>
     </Button>
+    <span class="tool-slot" title="Import a Facer or WatchMaker export folder">
+      <Button kind="secondary" size="sm">
+        <label class="file-label">
+          <Icon name="watch" size={16} />
+          <span class="btn-label">Import folder</span>
+          <input type="file" webkitdirectory hidden onchange={openFacer} />
+        </label>
+      </Button>
+    </span>
     <span class="tool-slot" title="New">
       <Button
         kind="secondary"

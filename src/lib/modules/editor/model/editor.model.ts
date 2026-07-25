@@ -90,6 +90,7 @@ export const loadRequested = createEvent<{
 // need to react (e.g. navigate once the face is ready) subscribe; others just ignore it
 export const loadDone = createEvent<{ face: Face; label: string }>();
 export const newFaceRequested = createEvent<string | void>();
+export const importFacerRequested = createEvent<File[]>();
 export const addWidgetRequested = createEvent<{
   kind: "image" | "number" | "hand";
   files: File[];
@@ -217,6 +218,23 @@ const loadBufferFx = createEffect(
     return { face, label };
   },
 );
+// Facer and WatchMaker exports are both directories, and tell each other apart by their
+// manifest — no need to make the user pick the format they downloaded.
+const importFacerFx = createEffect(async (files: File[]) => {
+  const has = (n: string) => files.some((f) => (f.webkitRelativePath || f.name).endsWith(n));
+  const wm = has("watch.pxml");
+  const toFace = wm
+    ? (await import("../lib/watchmaker")).watchmakerToFace
+    : (await import("../lib/facer")).facerToFace;
+
+  if (!wm && !has("watchface.json"))
+    throw new Error("not a watchface export: no watchface.json (Facer) or watch.pxml (WatchMaker)");
+  const { face, skipped } = await toFace(files);
+
+  for (const r of face.resources) if (!r.bitmap) r.bitmap = await bitmapOf(r);
+  return { face, label: wm ? "watchmaker" : "facer", dirty: true, skipped };
+});
+
 export const $loading = loadBufferFx.pending;
 
 // serialized — faceLoaded (reapplying the current color to a freshly parsed face) and a
@@ -822,8 +840,24 @@ sample({
   target: newFaceFx,
 });
 sample({
-  clock: [loadBufferFx.doneData, newFaceFx.doneData],
+  clock: [loadBufferFx.doneData, newFaceFx.doneData, importFacerFx.doneData],
   target: faceLoaded,
+});
+
+sample({
+  clock: importFacerRequested,
+  target: importFacerFx,
+});
+sample({
+  clock: importFacerFx.doneData,
+  filter: ({ skipped }) => skipped.length > 0,
+  fn: ({ skipped }) => `facer: skipped layers — ${skipped.join(", ")}`,
+  target: errored,
+});
+sample({
+  clock: importFacerFx.fail,
+  fn: ({ error }) => `facer import: ${error.message}`,
+  target: errored,
 });
 
 sample({

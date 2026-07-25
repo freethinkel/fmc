@@ -57,7 +57,12 @@
             <span
               title="Clear Chrome's device permission and the saved auth key — does not affect pairing state on the watch itself"
             >
-              <Button kind="ghost" size="sm" onClick={() => forgetRequested()} disabled={$forgetting}>
+              <Button
+                kind="ghost"
+                size="sm"
+                onClick={() => forgetRequested()}
+                disabled={$forgetting}
+              >
                 <Icon name="eraser" size={16} />
                 {$forgetting ? "Forgetting…" : "Forget device"}
               </Button>

@@ -480,7 +480,11 @@ export interface Frame {
   y: number;
   w: number;
   h: number;
-  gap: number;
+  // byte 8, low 2 bits: how the auto-laid-out children align along the packing axis
+  // (0 = START, 2 = CENTER — LVGL's lv_flex_align_t; END/SPACE_* never occur in the corpus).
+  // The high bits are presumably the cross-axis field of the same enum (0x0a = main CENTER +
+  // something), unverified — we still center the cross axis unconditionally, see drawGroup.
+  main: number;
   node: FaceNode;
 }
 export function parseFrame(node: FaceNode): Frame | null {
@@ -495,7 +499,7 @@ export function parseFrame(node: FaceNode): Frame | null {
     y: v[2] | (v[3] << 8),
     w: v[4] | (v[5] << 8),
     h: v[6] | (v[7] << 8),
-    gap: v[8],
+    main: v[8] & 3,
     node: f,
   };
 }
@@ -832,10 +836,18 @@ function drawWidget(
   return { w: b.width, h: b.height };
 }
 
-// 0x68: frame 0x48 (x,y,w,h,gap) + children. Layout model (reversed from the 101-face
-// corpus survey; no layout flag exists in frame 0x48 — bytes 9..20 are always zero, byte 8
-// is the row gap):
-// - struct meta w = 0x8000 (AUTO) — packs into a row/column centered in the frame;
+// 0x68: frame 0x48 (x,y,w,h,align) + children. Layout model (reversed from the 101-face
+// corpus survey; bytes 9..20 are always zero, byte 8 is the flex alignment — see parseFrame):
+// - struct meta w = 0x8000 (AUTO) — packs into a row/column placed per frame.main.
+//   Byte 8 was read as a pixel row gap until AEGIS_Ground_Force (a community face, byte 8 = 0
+//   on every group) turned up rendering its 200px-wide label frames left-aligned on the real
+//   device where we centered them. Every corpus face with AUTO children carries 0x02 or 0x0a
+//   there — both main=CENTER, which is why centering-everything held up until now; the gap
+//   reading never had evidence of its own (forcing gap=0 moves no corpus preview by a pixel).
+//   That file's own baked preview centers the rows, but it isn't a render of the file at all
+//   (it also shows a weather icon and a "°F" unit glyph that exist nowhere in its tree) — a
+//   third-party authoring tool's mock-up, i.e. exactly the tool whose output the device
+//   disagrees with here. Corpus previews are device bakes; that one isn't evidence.
 // - a NUMBER at x=0 with a true-AUTO sibling joins that row gapless (its width is dynamic,
 //   so it can't carry the 0x8000 marker itself — Function/Elaborate_2 "80%");
 // - progress rings (0x80/0x81) — struct x/y is already screen-absolute; a 0 on either axis
@@ -933,40 +945,32 @@ function drawGroup(
     return null;
   };
 
-  // a NUMBER packed next to a real auto sibling hugs it with no gap, unlike two true 0x8000
-  // icons — confirmed on Function's battery tile: the baked "80%" has no space between digits
-  // and the % sign, while our render used the group's own fr.gap there same as between icons.
-  const shownIdx = kids.map((k, i) => (sizes[i] ? i : -1)).filter((i) => i >= 0);
-  const gapAfter = (posInShown: number) => {
-    const a = shownIdx[posInShown],
-      b = shownIdx[posInShown + 1];
-
-    if (b === undefined) return 0;
-    return kids[a].tag === TAG.number || kids[b].tag === TAG.number ? 0 : fr.gap;
-  };
-  const total = shown.reduce((s, z, p) => s + (vertical ? z.h : z.w) + gapAfter(p), 0);
+  const total = shown.reduce((s, z) => s + (vertical ? z.h : z.w), 0);
   // frame.w/h === 0 on the packing axis means "auto-size to content" (seen on Function's
-  // icon+digits+degree temperature row: frame w=0, gap=10, 4 auto children) — centering
+  // icon+digits+degree temperature row: frame w=0, 4 auto children) — centering
   // against a literal 0 shoved the whole packed row left by half its own width. Clamp the
   // available length to at least `total` so an auto-sized frame just starts flush at the
   // frame origin instead of drifting negative.
   const mainAvail = Math.max(vertical ? fr.h : fr.w, total);
-  let c = (vertical ? y : x) + (mainAvail - total) / 2;
+  // ponytail: only START/CENTER exist in the corpus — END (1) and SPACE_* (3) would need
+  // their own arm here, add one if a face ever carries them.
+  let c = (vertical ? y : x) + (fr.main ? (mainAvail - total) / 2 : 0);
 
   if (ctx) {
-    let shownPos = 0;
-
     kids.forEach((k, i) => {
       const z = sizes[i];
 
       if (z) {
+        // cross axis stays centered on every face: byte 8's high bits presumably carry it,
+        // but every corpus group whose vertical placement the previews actually pin down
+        // reads 0x0a there, and AEGIS's frames are exactly one child tall — nothing to
+        // distinguish START from CENTER on that axis yet.
         const pos = vertical
           ? { x: x + (fr.w - z.w) / 2, y: c }
           : { x: c, y: rowCross ?? y + (fr.h - z.h) / 2 };
 
         drawWidget(ctx, k, res, sim, t, 0, 0, pos, hits, arcsById);
-        c += (vertical ? z.h : z.w) + gapAfter(shownPos);
-        shownPos++;
+        c += vertical ? z.h : z.w;
       } else if (!isAuto(k)) {
         // progress rings (0x80/0x81) inside a group carry already-absolute struct x/y —
         // confirmed on Combo, where a grouped ring's x/y is byte-identical to an ungrouped
@@ -999,8 +1003,7 @@ function drawGroup(
         const o = !isRing ? localOrigin(k) : null;
         const measured =
           o && !o.x ? drawWidget(null, k, res, sim, t, 0, 0, { x: 0, y: 0 }, null, arcsById) : null;
-        const pos =
-          ringPos ?? (measured ? { x: x + (fr.w - measured.w) / 2, y: y + o!.y } : null);
+        const pos = ringPos ?? (measured ? { x: x + (fr.w - measured.w) / 2, y: y + o!.y } : null);
 
         drawWidget(ctx, k, res, sim, t, isRing ? 0 : x, isRing ? 0 : y, pos, hits, arcsById);
       }

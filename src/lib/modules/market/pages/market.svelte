@@ -30,10 +30,8 @@
     { value: "downloads", label: "Most downloaded" },
   ];
 
-  const likeCount = (id: string) =>
-    $likes.filter((l) => l.watchface === id).length;
-  const myLike = (id: string) =>
-    $likes.find((l) => l.watchface === id && l.user === $user?.id);
+  const likeCount = (id: string) => $likes.filter((l) => l.watchface === id).length;
+  const myLike = (id: string) => $likes.find((l) => l.watchface === id && l.user === $user?.id);
 
   function remove(wf: RecordModel) {
     if (!confirm(`Delete "${wf.name}"?`)) return;
@@ -46,15 +44,10 @@
       // (fmc_pocketbase 1753500000_hide_catalog.js); the guard stays so a stale
       // cached list can't render them either
       .filter((wf) => Boolean(wf.owner))
-      .filter((wf) =>
-        wf.name.toLowerCase().includes(query.trim().toLowerCase()),
-      )
+      .filter((wf) => wf.name.toLowerCase().includes(query.trim().toLowerCase()))
       .toSorted((a, b) =>
         sort === "popular"
-          ? (b.downloads || 0) +
-            likeCount(b.id) -
-            (a.downloads || 0) -
-            likeCount(a.id)
+          ? (b.downloads || 0) + likeCount(b.id) - (a.downloads || 0) - likeCount(a.id)
           : sort === "downloads"
             ? (b.downloads || 0) - (a.downloads || 0)
             : b.created.localeCompare(a.created),
@@ -77,8 +70,7 @@
 
   function loadMore(node: HTMLElement) {
     const io = new IntersectionObserver(([e]) => {
-      if (e.isIntersecting)
-        visibleCount = Math.min(visibleCount + PAGE, shown.length);
+      if (e.isIntersecting) visibleCount = Math.min(visibleCount + PAGE, shown.length);
     });
 
     io.observe(node);
@@ -123,9 +115,7 @@
           onRemove={() => remove(wf)}
         />
       {:else}
-        <p class="empty full">
-          No community watchfaces yet — publish yours from the editor.
-        </p>
+        <p class="empty full">No community watchfaces yet — publish yours from the editor.</p>
       {/each}
       {#if visibleCount < shown.length}
         <div class="sentinel" use:loadMore></div>

@@ -18,11 +18,11 @@
 
   let lockAspect = $state(true);
 
-  // frame byte 8's two 2-bit alignment fields (see parseFrame) — only these two values
-  // occur across the corpus, so END/SPACE_* aren't offered.
-  const FLEX_ALIGN = [
-    { value: "0", label: "start" },
-    { value: "2", label: "center" },
+  // frame byte 8's main-axis alignment (see parseFrame) — only these two values occur
+  // across the corpus, so END/SPACE_* aren't offered. [value, icon, title]
+  const FLEX_ALIGN: [number, IconName, string][] = [
+    [0, "align-left", "Pack children at the frame start"],
+    [2, "align-center", "Center children in the frame"],
   ];
 
   // Figma-style position buttons: [dir, icon, title] — two groups of three
@@ -130,7 +130,7 @@
     v[5] = cur.w >> 8;
     v[6] = cur.h;
     v[7] = cur.h >> 8;
-    v[8] = (cur.cross << 2) | cur.main;
+    v[8] = (v[8] & ~3) | cur.main; // keep the byte's unread high bits (see parseFrame)
     set(f, { hex: hex(v) });
   }
   function setSlotActive(idx: number) {
@@ -267,18 +267,21 @@
       </div>
       <div class="row">
         <span class="field-label">align</span>
-        <Select
-          value={String(frame.main)}
-          options={FLEX_ALIGN}
-          onChange={(v) => setFrame({ main: num(v) })}
-        />
-        <Select
-          value={String(frame.cross)}
-          options={FLEX_ALIGN}
-          onChange={(v) => setFrame({ cross: num(v) })}
-        />
+        <div class="btn-group">
+          {#each FLEX_ALIGN as [main, iconName, title] (main)}
+            <button
+              type="button"
+              {title}
+              class="icon-btn"
+              class:on={frame.main === main}
+              onclick={() => setFrame({ main })}
+            >
+              <Icon name={iconName} size={16} />
+            </button>
+          {/each}
+        </div>
       </div>
-      <p class="hint-xs">how the group's auto-laid-out children pack: along the row, then across</p>
+      <p class="hint-xs">where the group's auto-laid-out children sit along the row</p>
     {/if}
     {#if pivot}
       <div class="row">
