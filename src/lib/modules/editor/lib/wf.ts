@@ -16,6 +16,10 @@ export interface Resource {
   // preview-only recolor of the accent sentinel (see docs/cmf-protocol.md) — never
   // read by buildBin/encodePixels, must not leak into exported resource.data
   accentBitmap?: ImageBitmap;
+  // brightness/contrast/saturation in percent (100 = untouched) + hue rotation in degrees.
+  // Applied off srcBitmap as a canvas filter, so the sliders are non-destructive; re-applied
+  // at build time by flushResized.
+  adjust?: { brightness: number; contrast: number; saturate: number; hue: number };
 }
 
 export interface FaceNode {

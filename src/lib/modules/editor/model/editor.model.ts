@@ -100,6 +100,10 @@ export const replaceImageRequested = createEvent<{
   file: File;
 }>();
 export const invertColorsRequested = createEvent();
+export const adjustImageRequested = createEvent<{
+  node: FaceNode;
+  adjust: Resource["adjust"];
+}>();
 // node: the widget node (or its struct); w/h: target size of its FIRST frame
 export const resizeImageRequested = createEvent<{
   node: FaceNode;
@@ -135,13 +139,27 @@ function accentFlaggedResources(face: Face): Set<number> {
 
 // RGBA readback of a bitmap at the given size — canvas is the only way back to pixels for
 // something that was scaled/decoded by the browser rather than by decodePixels
-function pixelsOf(b: ImageBitmap, w: number, h: number): Uint8ClampedArray<ArrayBuffer> {
+function pixelsOf(
+  b: ImageBitmap,
+  w: number,
+  h: number,
+  filter = "none",
+): Uint8ClampedArray<ArrayBuffer> {
   const c = new OffscreenCanvas(w, h);
   const cx = c.getContext("2d")!;
 
+  cx.filter = filter;
   cx.drawImage(b, 0, 0, w, h);
   return cx.getImageData(0, 0, w, h).data;
 }
+
+// brightness/contrast/saturation as a canvas filter — the browser's own image pipeline does
+// the pixel math, we only ever store the three numbers (Resource.adjust)
+export const filterOf = (r: Resource) =>
+  r.adjust
+    ? `brightness(${r.adjust.brightness}%) contrast(${r.adjust.contrast}%) ` +
+      `saturate(${r.adjust.saturate}%) hue-rotate(${r.adjust.hue}deg)`
+    : "none";
 
 // preview-only recolor of an accent-flagged resource: replace every non-transparent pixel's
 // RGB with the chosen color (alpha untouched) — the flag identifies the whole resource as
@@ -439,25 +457,34 @@ const replaceImageFx = createEffect(async ({ resIdx, file }: { resIdx: number; f
 // really is a rescale of the pixels. Encoding them is deferred: resize only rescales the
 // bitmap off r.srcBitmap (the untouched original), so shrinking and growing again costs no
 // quality, and flushResized re-encodes from that same source when the file is built.
-async function encodeBitmap(b: ImageBitmap, w: number, h: number, cf: number): Promise<Uint8Array> {
+async function encodeBitmap(
+  b: ImageBitmap,
+  w: number,
+  h: number,
+  cf: number,
+  filter = "none",
+): Promise<Uint8Array> {
   if (cf === 1) {
     // JPEG resource (backgrounds) — keep the codec, decodePixels/encodePixels can't touch it
     const c = new OffscreenCanvas(w, h);
+    const cx = c.getContext("2d")!;
 
-    c.getContext("2d")!.drawImage(b, 0, 0, w, h);
+    cx.filter = filter;
+    cx.drawImage(b, 0, 0, w, h);
     return new Uint8Array(
       await (await c.convertToBlob({ type: "image/jpeg", quality: 0.92 })).arrayBuffer(),
     );
   }
-  return encodePixels(pixelsOf(b, w, h), w, h, cf).data;
+  return encodePixels(pixelsOf(b, w, h, filter), w, h, cf).data;
 }
 
-// re-encode every resized resource from its original pixels — called just before buildBin, so
-// the downsampling lands only in what's exported/flashed. r.bitmap (the crisp browser-scaled
-// preview) is left alone; the editing session keeps showing the good one.
+// re-encode every resized or adjusted resource from its original pixels — called just before
+// buildBin, so the downsampling and the brightness/contrast filter land only in what's
+// exported/flashed. r.bitmap (the crisp browser-scaled preview) is left alone; the editing
+// session keeps showing the good one.
 async function flushResized(face: Face) {
   for (const r of face.resources)
-    if (r.srcBitmap) r.data = await encodeBitmap(r.srcBitmap, r.w, r.h, r.cf);
+    if (r.srcBitmap) r.data = await encodeBitmap(r.srcBitmap, r.w, r.h, r.cf, filterOf(r));
 }
 
 const resizeImageFx = createEffect(
@@ -513,6 +540,33 @@ const resizeImageFx = createEffect(
         pivot.pivotY = py;
       }
     });
+  },
+);
+
+// Brightness/contrast/saturation of a widget's frames. Non-destructive: the untouched pixels
+// are pinned in srcBitmap (same slot the resize uses) and every move re-filters from there, so
+// dragging a slider back to 100 restores the original exactly. Only the preview bitmap is
+// rebuilt here — the .bin gets the filter re-applied once, in flushResized.
+const adjustImageFx = createEffect(
+  async ({ node, adjust }: { node: FaceNode; adjust: Resource["adjust"] }) => {
+    const { face } = $editor.getState();
+    const st = node.tag === TAG.struct ? node : node.subs?.find((s) => s.tag === TAG.struct);
+
+    if (!face || !st?.images?.length) return;
+    for (const ri of new Set(st.images)) {
+      const r = face.resources[ri];
+
+      if (!r) continue;
+      r.srcBitmap ??= r.bitmap ?? (await bitmapOf(r));
+      r.adjust = adjust;
+      const c = new OffscreenCanvas(r.w, r.h);
+      const cx = c.getContext("2d")!;
+
+      cx.filter = filterOf(r);
+      cx.drawImage(r.srcBitmap, 0, 0, r.w, r.h);
+      r.bitmap = await createImageBitmap(c);
+      r.accentBitmap = undefined; // computed off the old pixels
+    }
   },
 );
 
@@ -952,10 +1006,19 @@ sample({
 });
 
 sample({
-  clock: [replaceImageFx.done, resizeImageFx.done, invertColorsFx.done],
+  clock: [replaceImageFx.done, resizeImageFx.done, invertColorsFx.done, adjustImageFx.done],
   source: $editor,
   fn: (s) => ({ ...s, dirty: true }),
   target: $editor,
+});
+sample({
+  clock: adjustImageRequested,
+  target: adjustImageFx,
+});
+sample({
+  clock: adjustImageFx.fail,
+  fn: ({ error }) => `image adjust: ${error.message}`,
+  target: errored,
 });
 sample({
   clock: invertColorsRequested,

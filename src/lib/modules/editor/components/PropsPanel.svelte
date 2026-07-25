@@ -2,6 +2,7 @@
   import { Input } from "$lib/shared/components/input";
   import { Select } from "$lib/shared/components/select";
   import { Checkbox } from "$lib/shared/components/checkbox";
+  import { Slider } from "$lib/shared/components/slider";
   import { Icon, type IconName } from "$lib/shared/components/icon";
   import { TAG, unhex, hex, type FaceNode, type Resource } from "../lib/wf";
   import { metaInfo, ID_LABELS, parseFrame, type Frame } from "../lib/render";
@@ -13,6 +14,7 @@
     patched,
     replaceImageRequested,
     resizeImageRequested,
+    adjustImageRequested,
     alignSelected,
   } = editorModel;
 
@@ -99,6 +101,27 @@
   function resize(w: number, h: number) {
     if (!resSize || !$editor.sel) return;
     resizeImageRequested({ node: $editor.sel, w, h });
+  }
+
+  // non-destructive canvas filters on the widget's frames — see adjustImageFx
+  const HUE_TRACK = "linear-gradient(90deg,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00)"; // the hue wheel itself
+  const ADJUST = [
+    { key: "brightness", label: "bright", max: 200, unit: "%" },
+    { key: "contrast", label: "contrast", max: 200, unit: "%" },
+    { key: "saturate", label: "saturate", max: 300, unit: "%" },
+    { key: "hue", label: "hue", max: 360, unit: "°", track: HUE_TRACK },
+  ] as const;
+  const NEUTRAL = { brightness: 100, contrast: 100, saturate: 100, hue: 0 };
+  const adjust = $derived.by(() => {
+    void $editor;
+    const r = sv.images?.length ? $editor.face?.resources[sv.images[0]] : null;
+
+    return r?.adjust ?? NEUTRAL;
+  });
+
+  function setAdjust(key: keyof typeof NEUTRAL, value: number) {
+    if (!$editor.sel) return;
+    adjustImageRequested({ node: $editor.sel, adjust: { ...adjust, [key]: value } });
   }
 
   const num = (s: string) => Number(s) || 0;
@@ -251,6 +274,19 @@
         </button>
       </div>
       <p class="hint-xs">rescaled from the original — re-encoded only on save/flash</p>
+      {#each ADJUST as a (a.key)}
+        <div class="row">
+          <span class="field-label w-md">{a.label}</span>
+          <Slider
+            max={a.max}
+            step={5}
+            unit={a.unit}
+            track={"track" in a ? a.track : undefined}
+            value={adjust[a.key]}
+            onInput={(v) => setAdjust(a.key, v)}
+          />
+        </div>
+      {/each}
     {/if}
     {#if frame}
       <div class="row">

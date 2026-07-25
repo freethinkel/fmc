@@ -54,7 +54,7 @@ test("invert flips the current screen's pixels without touching the other screen
   }
 
   // the main screen still sees its original pixels (cloned if the resource was shared)
-  expect([...decodePixels(face.resources[firstImage(main)!])!.slice(0, 64)]).toEqual([
-    ...mainBefore.slice(0, 64),
-  ]);
+  expect(decodePixels(face.resources[firstImage(main)!])!.slice(0, 64)).toEqual(
+    mainBefore.slice(0, 64),
+  );
 });
