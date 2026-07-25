@@ -366,42 +366,60 @@
         />
       </div>
     {/if}
-    {#if sv.images}
-      <div class="images">
-        {#each sv.images as ri}
-          {@const r = $editor.face!.resources[ri]}
-          <div class="thumb-wrap">
-            <label
-              title="res{ri} · {r.w}×{r.h} · cf{r.cf} — click to replace"
-              class="thumb"
-            >
-              <img src={thumbURL(r)} alt="res{ri}" />
-              <input
-                type="file"
-                accept="image/*"
-                hidden
-                onchange={(e) => {
-                  const file = e.currentTarget.files?.[0];
-
-                  if (file) replaceImageRequested({ resIdx: ri, file });
-                }}
-              />
-            </label>
-            <button
-              title="Download PNG"
-              onclick={() => downloadRes(ri)}
-              class="dl-btn"
-            >
-              <Icon name="download" size={14} />
-            </button>
+    {#if sv.images?.length && slotInfo}
+      <!-- 0x85 images aren't a value-indexed set: [0] is the on-watch "tap to configure"
+           placeholder, [1..count] are the companion-app picker icons, one per metric of
+           the 0x5f list — see the 0x85 note in lib/render.ts -->
+      <div>
+        <span class="muted-label">placeholder (widget-edit screen only)</span>
+        <div class="images">{@render thumb(sv.images[0])}</div>
+      </div>
+      {#if sv.images.length > 1}
+        <div>
+          <span class="muted-label">companion-app menu icons</span>
+          <div class="images">
+            {#each sv.images.slice(1) as ri, i}
+              <div class="thumb-col" class:active={i === slotInfo.activeIdx}>
+                {@render thumb(ri)}
+                <span class="thumb-cap"
+                  >{ID_LABELS[slotInfo.ids[i]] || `0x${slotInfo.ids[i]?.toString(16)}`}</span
+                >
+              </div>
+            {/each}
           </div>
-        {/each}
+        </div>
+      {/if}
+    {:else if sv.images}
+      <div class="images">
+        {#each sv.images as ri}{@render thumb(ri)}{/each}
       </div>
     {/if}
   </div>
 {:else}
   <p class="hint">Nothing selected.</p>
 {/if}
+
+{#snippet thumb(ri: number)}
+  {@const r = $editor.face!.resources[ri]}
+  <div class="thumb-wrap">
+    <label title="res{ri} · {r.w}×{r.h} · cf{r.cf} — click to replace" class="thumb">
+      <img src={thumbURL(r)} alt="res{ri}" />
+      <input
+        type="file"
+        accept="image/*"
+        hidden
+        onchange={(e) => {
+          const file = e.currentTarget.files?.[0];
+
+          if (file) replaceImageRequested({ resIdx: ri, file });
+        }}
+      />
+    </label>
+    <button title="Download PNG" onclick={() => downloadRes(ri)} class="dl-btn">
+      <Icon name="download" size={14} />
+    </button>
+  </div>
+{/snippet}
 
 <style>
   .panel {
@@ -509,6 +527,21 @@
   }
   .thumb-wrap {
     position: relative;
+  }
+  .thumb-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    max-width: 64px;
+  }
+  .thumb-cap {
+    font-size: 0.6875rem;
+    text-align: center;
+    color: oklch(from var(--color-text) l c h / 55%);
+  }
+  .thumb-col.active .thumb-cap {
+    color: var(--color-accent);
   }
   .thumb {
     display: block;

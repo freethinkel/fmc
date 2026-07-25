@@ -5,9 +5,8 @@ import { TAG, unhex, type Face, type FaceNode, type Resource } from "./wf";
 // Known data sources (meta byte 9). "?" = guess, not confirmed.
 // 0x1c/0x24/0x48/0x76/0x8b — labels corrected against Function's widget-slot menu (companion-app
 // icons: flame/calories, standing figure/stands, lightning/battery, road/distance, cloud-sun/aqi).
-// idValue() below matches for 0x24 (battery) and 0x48 (stands); 0x8b still returns steps (its
-// pre-existing bucket) and 0x1c/0x76 aren't cased at all (default 0) — no face in the corpus
-// binds a live widget to them directly, so only their widget-slot menu label was confirmed.
+// idValue() feeds each of them from the matching sim field; the unit of 0x1c/0x76/0x8b is a
+// guess (no corpus face binds a live widget to them), tweak per-face via an override.
 export const ID_LABELS: Record<number, string> = {
   0x01: "hour",
   0x04: "minute?",
@@ -27,7 +26,7 @@ export const ID_LABELS: Record<number, string> = {
   0x18: "weekday",
   0x19: "steps",
   0x1a: "heart rate",
-  0x1c: "calories",
+  0x1c: "calories (slot)",
   0x1e: "calories",
   0x22: "distance km int",
   0x23: "distance mi int",
@@ -35,17 +34,17 @@ export const ID_LABELS: Record<number, string> = {
   0x26: "steps (slot)",
   0x30: "battery",
   0x36: "temperature 2?",
-  0x48: "stands",
+  0x48: "stand hours",
   0x49: "steps (slot)",
   0x5f: "temperature",
-  0x6a: "metric (slot)?",
-  0x6c: "metric (slot)?",
+  0x6a: "steps (slot)?",
+  0x6c: "steps (slot)?",
   0x71: "second (ticking)",
   0x72: "second (ticking)",
   0x73: "24h/metric flag",
   0x74: "distance km frac",
   0x75: "distance mi frac",
-  0x76: "distance",
+  0x76: "distance km (slot)",
   0x8b: "aqi",
 };
 
@@ -60,9 +59,11 @@ export interface Sim {
   calories: SimValue;
   temp: SimValue;
   distance: SimValue;
+  aqi: SimValue;
+  stands: SimValue; // hours stood (0x48) — see ID_LABELS/idValue note, corrected from "calories"
   stepsGoal: SimValue;
   calGoal: SimValue;
-  stands: SimValue; // hours stood (0x48) — see ID_LABELS/idValue note, corrected from "calories"
+  standsGoal: SimValue; // ring denominator for 0x48, the watch's default stand goal is 12 h
   overrides: Record<number, number | string>;
   // preview override for accent-flagged widgets (see metaInfo's `accent` field / "Accent
   // color" in docs/cmf-protocol.md); null = draw the baked default. Applied async in
@@ -109,9 +110,11 @@ export function defaultSim(): Sim {
     calories: 321,
     distance: 4520,
     temp: 25,
+    aqi: 42,
+    stands: 5,
     stepsGoal: 10000,
     calGoal: 500,
-    stands: 5,
+    standsGoal: 12,
     overrides: {}, // id -> number, manual override of any source
     accentColor: null,
     showSlotPlaceholders: false,
@@ -179,14 +182,15 @@ export function idValue(id: number, sim: Sim, t: TimeParts): number {
       return Number(sim.steps);
     case 0x1a:
       return Number(sim.hr);
-    // 0x48/0x24 corrected against Function's widget-slot menu icons (standing figure/lightning
-    // bolt, not calories/steps) — 0x48 is stand hours, 0x24 is battery.
+    case 0x1c:
     case 0x1e:
       return Number(sim.calories);
     case 0x22:
       return Math.floor(Number(sim.distance) / 1000);
     case 0x23:
       return Math.floor(Number(sim.distance) / 1609.34);
+    // 0x48/0x24 corrected against Function's widget-slot menu icons (standing figure/lightning
+    // bolt, not calories/steps) — 0x48 is stand hours, 0x24 is battery.
     case 0x24:
       return Number(sim.battery);
     case 0x26:
@@ -196,7 +200,6 @@ export function idValue(id: number, sim: Sim, t: TimeParts): number {
       return Number(sim.stands);
     case 0x6a:
     case 0x6c:
-    case 0x8b:
       return Number(sim.steps); // unlabelled complication-slot metrics
     case 0x30:
       return Number(sim.battery);
@@ -209,6 +212,11 @@ export function idValue(id: number, sim: Sim, t: TimeParts): number {
       return Math.floor(Number(sim.distance) / 100) % 10;
     case 0x75:
       return Math.floor(Number(sim.distance) / 160.934) % 10;
+    // ponytail: slot-menu labels only, unit unverified — km int / plain AQI, override per face
+    case 0x76:
+      return Math.floor(Number(sim.distance) / 1000);
+    case 0x8b:
+      return Number(sim.aqi);
     default:
       return 0;
   }
@@ -444,15 +452,18 @@ function progressFrac(id: number, sim: Sim, t: TimeParts, spec: ArcSpec): number
   let v = idValue(id, sim, t);
 
   if (spec.max <= 100 && v > spec.max) {
-    // goal rings count as percent of the goal (steps/kcal), firmware divides on its own
+    // goal rings count as percent of the goal (steps/kcal/stands), firmware divides on its own.
+    // Battery (0x24/0x30) is already a percentage — no goal, so it falls through unscaled.
     const goal = (
       {
         0x19: sim.stepsGoal,
-        0x24: sim.stepsGoal,
         0x26: sim.stepsGoal,
         0x49: sim.stepsGoal,
+        0x6a: sim.stepsGoal,
+        0x6c: sim.stepsGoal,
+        0x1c: sim.calGoal,
         0x1e: sim.calGoal,
-        0x48: sim.calGoal,
+        0x48: sim.standsGoal,
       } as Record<number, SimValue>
     )[id];
 

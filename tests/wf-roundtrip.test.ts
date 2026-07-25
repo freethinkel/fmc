@@ -10,6 +10,8 @@ import {
   decodePixels,
   lz4Compress,
   lz4Decompress,
+  type Face,
+  type FaceNode,
 } from "$lib/modules/editor/lib/wf";
 
 const dir = new URL("./__fixtures__/", import.meta.url);
@@ -36,4 +38,28 @@ describe("wf.ts round-trips every real watchface .bin byte-for-byte", () => {
       expect(rt).toEqual(raw);
     }
   });
+});
+
+// Widget x/y is int16 — stock faces park nodes a few pixels off the left/top edge
+// (Digital__297__Ray sits at x=-1), so the editor must keep negatives instead of
+// reading them back as 65535.
+test("negative widget x/y survive parse -> build -> parse", () => {
+  const structs = (face: Face) => {
+    const out: FaceNode[] = [];
+    const walk = (n: FaceNode) => {
+      if (n.x != null) out.push(n);
+      n.subs?.forEach(walk);
+    };
+
+    face.screens.forEach(walk);
+    return out;
+  };
+  const face = parseBin(new Uint8Array(readFileSync(new URL(files[0], dir))));
+  const st = structs(face)[0];
+
+  st.x = -3;
+  st.y = -7;
+  const back = structs(parseBin(buildBin(face)))[0];
+
+  expect([back.x, back.y]).toEqual([-3, -7]);
 });

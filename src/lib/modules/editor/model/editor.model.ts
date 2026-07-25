@@ -418,9 +418,9 @@ export function deleteWidget() {
 // container's edge/center. The container is the parent group's frame when the node is a
 // group child (Figma aligns relative to the parent), the screen otherwise. Delta-based off
 // the render hits, so it works uniformly for groups (frame x/y), widgets (struct x/y) and
-// grouped children whose drawn position differs from their raw x/y. ponytail: clamped to
-// >=0 — a group child at the x=0 "center me" convention can't be pushed further left than
-// the format can express, and AUTO (0x8000) children ignore x/y entirely.
+// grouped children whose drawn position differs from their raw x/y. Widget x/y may go
+// negative (int16, see wf.ts); group frames stay clamped to >=0 — their x/y is unsigned in
+// the file. ponytail: AUTO (meta.w 0x8000) children ignore x/y entirely, so they don't move.
 export function alignSelected(dir: AlignDir) {
   const s = $editor.getState();
 
@@ -490,10 +490,7 @@ export function alignSelected(dir: AlignDir) {
       const st = sel.subs?.find((n) => n.tag === TAG.struct);
 
       if (!st || st.x == null) return false;
-      patched({
-        node: st,
-        patch: { x: Math.max(0, st.x + dx), y: Math.max(0, (st.y || 0) + dy) },
-      });
+      patched({ node: st, patch: { x: st.x + dx, y: (st.y || 0) + dy } });
     }
     return true;
   };

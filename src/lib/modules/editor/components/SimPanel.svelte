@@ -15,22 +15,28 @@
     | "hr"
     | "battery"
     | "calories"
-    | "temp"
     | "distance"
+    | "temp"
+    | "aqi"
+    | "stands"
     | "stepsGoal"
     | "calGoal"
-    | "stands";
+    | "standsGoal";
 
-  const fields: [NumField, string][] = [
-    ["steps", "steps"],
-    ["hr", "heart rate"],
-    ["battery", "battery"],
-    ["calories", "kcal"],
-    ["temp", "temp °"],
-    ["distance", "distance, m"],
-    ["stepsGoal", "steps goal"],
-    ["calGoal", "kcal goal"],
-    ["stands", "stand hrs"],
+  // label + the data-source ids the field feeds (see ID_LABELS/idValue in lib/render.ts);
+  // goal fields feed no id of their own, they're the denominator of the matching ring
+  const fields: [NumField, string, string][] = [
+    ["steps", "Steps", "0x19, 0x26, 0x49, 0x6a, 0x6c"],
+    ["hr", "Heart rate, bpm", "0x1a"],
+    ["battery", "Battery, %", "0x24, 0x30"],
+    ["calories", "Calories, kcal", "0x1c, 0x1e"],
+    ["distance", "Distance, m", "0x22, 0x23, 0x74, 0x75, 0x76"],
+    ["temp", "Temperature, °", "0x36, 0x5f"],
+    ["aqi", "AQI", "0x8b"],
+    ["stands", "Stand hours", "0x48"],
+    ["stepsGoal", "Steps goal", "ring denominator for steps"],
+    ["calGoal", "Calories goal, kcal", "ring denominator for calories"],
+    ["standsGoal", "Stand goal, hours", "ring denominator for stand hours"],
   ];
 
   function localISO(t: number) {
@@ -93,9 +99,9 @@
     </div>
   </div>
   <div class="fields-grid">
-    {#each fields as [key, label]}
+    {#each fields as [key, label, hint]}
       <div>
-        <span class="muted-label">{label}</span>
+        <span class="muted-label" title={hint}>{label}</span>
         <Input
           type="number"
           value={String($editor.sim[key])}
