@@ -92,9 +92,7 @@
         title="Watch accent color (recolors widgets flagged via meta[7]===4, see metaInfo in lib/render.ts)"
       />
       {#if $editor.sim.accentColor}
-        <Button kind="ghost" size="sm" onClick={() => simPatched({ accentColor: null })}
-          >Reset</Button
-        >
+        <Button kind="ghost" onClick={() => simPatched({ accentColor: null })}>Reset</Button>
       {/if}
     </div>
   </div>

@@ -7,18 +7,31 @@
 // debug: everything is logged to console with the [ble] prefix; window.fmcBleVerbose = true enables frame logging
 const dbg = (...a: unknown[]) => console.log("[ble]", new Date().toISOString().slice(11, 23), ...a);
 const verbose = () => (window as { fmcBleVerbose?: boolean } & Window).fmcBleVerbose;
+// keys are (c1 << 16) | c2 and c1 is 0xffff, so they come out negative — print them unsigned
 const cmdName = (key: number) =>
-  Object.entries(CMD).find(([, v]) => v === key)?.[0] || `0x${key.toString(16)}`;
+  Object.entries(CMD).find(([, v]) => v === key)?.[0] || `0x${(key >>> 0).toString(16)}`;
+const isKnownCmd = (key: number) => Object.values(CMD).includes(key);
 
 export interface WatchInfo {
   battery: number | null;
   firmware: string | null;
   serial: string | null;
 }
-export interface WatchDials {
-  builtin: number[];
-  gallery: number[];
-}
+// ponytail: flat list of installed dial ids — this firmware reports everything before the
+// §9.5g gallery sentinel, so the builtin/downloaded split always left one side empty.
+// Split it again if a firmware shows up that actually populates both.
+export type WatchDials = number[];
+
+// there's no room for another watchface, so the caller has to name an installed dial to
+// overwrite instead. Own class so the model can tell it from a real failure.
+export class NoFreeSlotError extends Error {}
+
+// How many watchfaces the watch holds — nothing in the protocol reports it. ponytail: taken on
+// report from a CMF Watch Pro 2 (fw 1.0.0.73), NOT measured here. The `finish: 0a` rejections
+// that looked like a full watch turned out to be the signed new_wf_id bug (see below), so the
+// count itself is the only evidence left. If an append ever succeeds with 6 installed, this
+// number is wrong — raise it or drop the gate.
+export const WF_CAPACITY = 6;
 
 const UUID = {
   cmdRead: "0000fff1-0000-1000-8000-00805f9b34fb",
@@ -124,6 +137,24 @@ const eqBytes = (a: Uint8Array, b: Uint8Array) =>
   a.length === b.length && a.every((x, i) => x === b[i]);
 const toHex = (d: Uint8Array) => [...d].map((b) => b.toString(16).padStart(2, "0")).join("");
 const fromHex = (s: string) => new Uint8Array((s.match(/../g) || []).map((b) => parseInt(b, 16)));
+
+// Watchface id derived from the face itself, so re-flashing one lands on the id it already has
+// and replaces itself instead of eating another slot. Range 10000 … 2^31-1: the top keeps it
+// positive (the firmware reads new_wf_id signed and rejects negatives — that was the random
+// finish: 0a), the bottom stays clear of the small ids the factory dials use (273…280 on a
+// reset watch), which the firmware clearly has its own table for.
+// ponytail: FNV-1a, non-cryptographic — two faces collide only if their seeds do, and the seed
+// is a PocketBase record id where there is one.
+const fnv1a = (s: string) => {
+  let h = 0x811c9dc5;
+
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
+};
+const dialId = (seed: string) => 10000 + (fnv1a(seed) % (0x7fffffff - 10000));
 
 async function sha256(d: Uint8Array): Promise<Uint8Array> {
   return new Uint8Array(await crypto.subtle.digest("SHA-256", d as BufferSource));
@@ -281,13 +312,14 @@ export class Watch {
   codec = new Codec();
   chars: Record<string, BluetoothRemoteGATTCharacteristic> = {};
   waiters = new Map<number, (p: Uint8Array) => void>(); // cmd key -> one-shot resolver
-  handlers = new Map<number, (p: Uint8Array) => void>(); // cmd key -> persistent handler (upload chunk loop)
+  // cmd key -> persistent handler (upload chunk loop); awaited, so it holds the rx chain
+  handlers = new Map<number, (p: Uint8Array) => void | Promise<void>>();
+  rx: Promise<void> = Promise.resolve(); // serializes inbound notifications, see subscribe()
   shellWaiter: ((s: string) => void) | null = null;
   battery: number | null = null;
   firmware: string | null = null;
   serial: string | null = null;
-  builtinWf: number[] = [];
-  galleryWf: number[] = []; // downloaded gallery dial ids from cmdWfInstalled (§9.5g)
+  installedWf: number[] = []; // installed dial ids from cmdWfInstalled (§9.5g)
 
   constructor(onStatus: (s: string) => void = () => {}) {
     this.onStatus = onStatus;
@@ -411,12 +443,25 @@ export class Watch {
           if (key === "shellRead") continue;
           throw new Error(`characteristic ${key} not found`);
         }
-        dbg("startNotifications", key);
+        // write vs writeWithoutResponse decides whether upload frames are acknowledged —
+        // see sendData
+        dbg("startNotifications", key, {
+          write: ch.properties.write,
+          writeNoResp: ch.properties.writeWithoutResponse,
+        });
         await ch.startNotifications();
         ch.addEventListener("characteristicvaluechanged", (e) => {
           const value = (e.target as BluetoothRemoteGATTCharacteristic).value!;
+          const bytes = new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
 
-          this.onNotify(ch.uuid, new Uint8Array(value.buffer, value.byteOffset, value.byteLength));
+          // Notifications must be handled one at a time, in arrival order. onNotify is async
+          // (it awaits decode) and so is the upload's chunk handler (it awaits encode before
+          // writing), so firing them off concurrently let two chunk responses interleave their
+          // frames on the data channel and raced the codec's own reassembly buffer — the watch
+          // then rejected the finished file at random. ponytail: one chain for both
+          // characteristics; split per channel only if cmd traffic ever needs to overtake an
+          // upload, which today it never does.
+          this.rx = this.rx.then(() => this.onNotify(ch.uuid, bytes)).catch(() => {});
         });
       }
     };
@@ -483,25 +528,34 @@ export class Watch {
       return;
     }
     if (!res) return;
+    // an unrecognised key is the whole point of probe() — always dump its payload, that's the
+    // only thing that tells you what the command means
     if (res.key !== CMD.wfChunkReq || verbose())
-      dbg("recv", cmdName(res.key), "len", res.payload.length);
+      dbg(
+        "recv",
+        cmdName(res.key),
+        "len",
+        res.payload.length,
+        !isKnownCmd(res.key) || verbose() ? toHex(res.payload) : "",
+      );
     if (res.key === CMD.battery && res.payload.length) this.battery = res.payload[0];
     if (res.key === CMD.wfInstalled) {
-      // built-ins ‖ 0xFFFFFFFF ‖ gallery ids (§9.5g)
+      // built-ins ‖ 0xFFFFFFFF ‖ gallery ids (§9.5g) — the sentinel just separates two groups
+      // the UI doesn't distinguish, so flatten
       const p = res.payload;
 
-      this.galleryWf = [];
-      this.builtinWf = [];
-      let sentinel = false;
-
+      this.installedWf = [];
       for (let off = 4; off + 4 <= p.length; off += 4) {
         const id = new DataView(p.buffer, p.byteOffset + off).getUint32(0, true);
 
-        if (id === 0xffffffff) sentinel = true;
-        else (sentinel ? this.galleryWf : this.builtinWf).push(id);
+        if (id !== 0xffffffff) this.installedWf.push(id);
       }
-      dbg("installed dials:", { builtin: this.builtinWf, gallery: this.galleryWf });
-      this.onDials?.({ builtin: [...this.builtinWf], gallery: [...this.galleryWf] });
+      // Leading 4 bytes, still unparsed. One sample so far: header 01 05 06 07 on a payload of
+      // 28 bytes = 4 + 6 ids, with 6 dials installed — so byte 2 looks like the count and byte 3
+      // (07) is the best candidate for the capacity WF_CAPACITY currently hardcodes. Needs a
+      // second sample at a different count to confirm; keep logging it.
+      dbg("installed dials:", this.installedWf, "header:", toHex(p.slice(0, 4)));
+      this.onDials?.([...this.installedWf]);
     }
     const w = this.waiters.get(res.key);
 
@@ -511,7 +565,9 @@ export class Watch {
     }
     const h = this.handlers.get(res.key);
 
-    if (h) h(res.payload);
+    // awaited: the chunk handler's writes have to finish before the next notification is
+    // decoded, or its frames interleave with the following chunk's
+    if (h) await h(res.payload);
   }
 
   waitFor(cmdKey: number, ms = 8000): Promise<Uint8Array> {
@@ -540,13 +596,24 @@ export class Watch {
     if (cmdKey !== CMD.wfChunkWrite || verbose())
       dbg("sendData", cmdName(cmdKey), "len", payload?.length ?? 0);
     const ch = this.chars[UUID.dataWrite];
-
+    // Unacknowledged writes on purpose. Acknowledged ones (writeValueWithResponse, which this
+    // characteristic does support) were tried against the random finish: 0a rejections and cost
+    // 6 minutes per 800 KB face against 55 seconds here — a round trip per frame — while
+    // failing just the same. The cause was new_wf_id, not lost frames; if silent drops ever do
+    // turn up, this is the knob.
     for (const f of await this.codec.encode(cmdKey, payload || new Uint8Array(0)))
       await ch.writeValueWithoutResponse(f as BufferSource);
   }
 
   // Watchface upload — port of upload.go (§9.5). data: Uint8Array of a valid .bin.
-  async uploadWatchface(data: Uint8Array, onProgress: (pct: number) => void = () => {}) {
+  // seed: what identifies this face across flashes — a marketplace record id where there is
+  // one, otherwise the name baked into the file. Same seed → same slot on every re-flash.
+  async uploadWatchface(
+    data: Uint8Array,
+    slot?: number,
+    seed?: string,
+    onProgress: (pct: number) => void = () => {},
+  ) {
     if (data.length > 32 << 20) throw new Error("file larger than 32 MB");
     const magicOk =
       data.length >= 36 &&
@@ -566,22 +633,25 @@ export class Watch {
 
     if (!name || name !== trailer) throw new Error("trailer name mismatch — corrupted file?");
 
-    const id = crypto.getRandomValues(new Uint32Array(1))[0];
-    // §9.5g: old_wf_id must name the installed custom dial; 0 (append) needs a free slot and
-    // works only once — useless once anything is installed, which on this firmware is always
-    // (builtin dials ship from factory). No local cache: it can drift from watch reality
-    // (factory reset, different browser, manual removal on-watch) with no way to detect it's
-    // stale. wfInstalled never lists the side-loaded dial under gallery (downloaded) — on a
-    // fresh reconnect it shows up unnamed under builtin instead — so that's the best-effort
-    // replace target; append is a last resort only when the watch reports nothing at all.
-    const oldId = this.galleryWf.length
-      ? this.galleryWf[this.galleryWf.length - 1]
-      : this.builtinWf.length
-        ? this.builtinWf[this.builtinWf.length - 1]
-        : 0;
+    const id = dialId(seed || name);
+    // §9.5g: old_wf_id names the installed dial this upload overwrites — that's the "slot".
+    // 0 means add a new one. Since the id is derived from the face, a face already on the watch
+    // overwrites *itself*: re-flashing the one you're editing costs no slot and never has to ask
+    // which dial to sacrifice, however many times you do it.
+    const oldId = slot ?? (this.installedWf.includes(id) ? id : 0);
+
+    // the watch only refuses an append at the very end of the upload, so check the count up
+    // front rather than shipping the whole file over BLE to be told no
+    if (!oldId && this.installedWf.length >= WF_CAPACITY)
+      throw new NoFreeSlotError(`all ${WF_CAPACITY} slots taken`);
 
     const attempt = async (oldId: number) => {
-      dbg("upload ids:", { newId: id, oldId, gallery: this.galleryWf });
+      dbg("upload ids:", {
+        newId: id,
+        oldId,
+        bytes: data.length,
+        installed: this.installedWf,
+      });
       this.status(`uploading “${name}”…`);
       await this.sendData(CMD.wfInit1Req, new Uint8Array([MARKER]));
       const r1 = await this.waitFor(CMD.wfInit1Rep);
@@ -600,8 +670,12 @@ export class Watch {
       await this.sendData(CMD.wfInit2Req, init2);
       const r2 = await this.waitFor(CMD.wfInit2Rep);
 
-      if (!r2.length || r2[0] !== 1)
+      if (!r2.length || r2[0] !== 1) {
+        // re-running attempt() with a real id starts a fresh init1/init2 handshake, which is
+        // why the sequence lives in a function
+        if (!oldId) throw new NoFreeSlotError(`append refused (init2: ${toHex(r2)})`);
         throw new Error(`watch rejected the upload (init2: ${toHex(r2)})`);
+      }
 
       try {
         await new Promise<void>((resolve, reject) => {
@@ -646,10 +720,22 @@ export class Watch {
               /* ack is best-effort */
             }
             if (p.length && p[0] === 1) {
-              // §9.5g: only one slot for a side-loaded dial — this session now knows it's ours
-              this.galleryWf = [id];
+              // the watch doesn't re-announce wfInstalled after an upload — patch the slot in
+              // place so the list stays right and the next flash can target another slot
+              const i = this.installedWf.indexOf(oldId);
+
+              if (i < 0) this.installedWf.push(id);
+              else this.installedWf[i] = id;
+              this.onDials?.([...this.installedWf]);
               resolve();
-            } else reject(new Error(`watch did not accept the file (finish: ${toHex(p)})`));
+            } else {
+              // the watch vetting what it received, after a transfer that completed cleanly.
+              // The known cause is a new_wf_id it won't take (see the 31-bit id above); size is
+              // reported because it's the other property worth eyeballing if this comes back.
+              const kb = Math.round(data.length / 1024);
+
+              reject(new Error(`watch did not accept the file (finish: ${toHex(p)}; ${kb} KB)`));
+            }
           });
         });
       } finally {
@@ -661,7 +747,17 @@ export class Watch {
     await attempt(oldId);
     onProgress(100);
     this.status("connected");
+    // the id is random and the name only exists inside the file — the caller needs both to
+    // record what now sits in that slot (see catalog-names)
+    return { id, name };
   }
+
+  // There was a probe()/sweep() pair here for guessing at undocumented commands. Removed after
+  // it earned its keep in reverse: 0x8050-0x8056 and 0x9054-0x9056 drew no reply at all (the
+  // firmware simply ignores commands it doesn't know), while a *known* command sent with a
+  // malformed payload — CMD.time with one byte instead of eight — answered 0xffffa082 5a and
+  // then rebooted and factory-reset the watch. Guessing at this firmware costs more than it
+  // returns; read what it volunteers instead (onNotify dumps the payload of unknown commands).
 
   async pair() {
     if (!this.chars[UUID.shellWrite]) {

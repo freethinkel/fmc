@@ -1,14 +1,17 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
   import { Button } from "$lib/shared/components/button";
-  import { Badge } from "$lib/shared/components/badge";
   import { Icon } from "$lib/shared/components/icon";
   import { bleModel } from "../model";
-  import { dialName, dialGroup } from "../lib/catalog-names";
+  import { dialLabel, dialPreview, dialTitle } from "../lib/catalog-names";
+  import { WF_CAPACITY } from "../lib/ble";
+  import WatchSelector from "./watch-selector.svelte";
 
   interface Props {
     // like Menu's trigger, but the panel doesn't auto-close on inside clicks
-    trigger: Snippet<[{ open: boolean; toggle: () => void; connected: boolean }]>;
+    trigger: Snippet<
+      [{ open: boolean; toggle: () => void; connected: boolean }]
+    >;
     placement?: "bottom" | "top";
   }
   const { trigger, placement = "bottom" }: Props = $props();
@@ -39,7 +42,11 @@
 />
 
 <div class="root" bind:this={root}>
-  {@render trigger({ open, toggle: () => (open = !open), connected: !!$bleInfo })}
+  {@render trigger({
+    open,
+    toggle: () => (open = !open),
+    connected: !!$bleInfo,
+  })}
   {#if open}
     <div class="popover placement__{placement}">
       <!-- ponytail: don't gate on navigator.bluetooth at render time — the Safari polyfill injects later; the real check is in ble.ts on click -->
@@ -59,7 +66,6 @@
             >
               <Button
                 kind="ghost"
-                size="sm"
                 onClick={() => forgetRequested()}
                 disabled={$forgetting}
               >
@@ -78,41 +84,37 @@
           </div>
           <div class="info">
             <p>
-              <Icon name="battery-full" size={16} color="var(--color-accent)" /> Battery: {$bleInfo.battery ??
-                "?"}%
+              <Icon name="battery-full" size={16} color="var(--color-accent)" />
+              Battery: {$bleInfo.battery ?? "?"}%
             </p>
-            <p><Icon name="cpu" size={16} color={muted} /> Firmware: {$bleInfo.firmware ?? "?"}</p>
-            <p><Icon name="hash" size={16} color={muted} /> Serial: {$bleInfo.serial ?? "?"}</p>
+            <p>
+              <Icon name="cpu" size={16} color={muted} /> Firmware: {$bleInfo.firmware ??
+                "?"}
+            </p>
+            <p>
+              <Icon name="hash" size={16} color={muted} /> Serial: {$bleInfo.serial ??
+                "?"}
+            </p>
           </div>
         </div>
 
         {#if $dials}
           <div class="section">
             <div class="header">
-              <h2 class="title">Watchfaces on the watch</h2>
-              <p class="desc">
-                Reported by the watch; side-loaded dials are not listed by the firmware.
-              </p>
+              <h2 class="title">
+                Watchfaces on the watch ({$dials.length}/{WF_CAPACITY})
+              </h2>
             </div>
-            <div class="dials">
-              <div>
-                <p class="group-label">Built-in ({$dials.builtin.length})</p>
-                <div class="badges">
-                  {#each $dials.builtin as id (id)}
-                    <span title={dialGroup(id)}><Badge>{dialName(id)}</Badge></span>
-                  {/each}
-                </div>
-              </div>
-              <div>
-                <p class="group-label">Downloaded ({$dials.gallery.length})</p>
-                <div class="badges">
-                  {#each $dials.gallery as id (id)}
-                    <span title={dialGroup(id)}><Badge>{dialName(id)}</Badge></span>
-                  {:else}
-                    <span class="none">none</span>
-                  {/each}
-                </div>
-              </div>
+            <div class="badges">
+              {#each $dials as id, i (id)}
+                <WatchSelector
+                  name={dialLabel(id, i)}
+                  preview={dialPreview(id)}
+                  title={dialTitle(id)}
+                />
+              {:else}
+                <span class="none">the watch reported none</span>
+              {/each}
             </div>
           </div>
         {/if}
@@ -161,7 +163,7 @@
   }
   .title {
     margin: 0;
-    font-size: 1rem;
+    font-size: 1.4rem;
     font-weight: 600;
   }
   .desc {
@@ -192,23 +194,13 @@
       margin: 0;
     }
   }
-  .dials {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    font-size: 0.875rem;
-  }
-  .group-label {
-    margin: 0 0 8px;
-    font-size: 0.75rem;
-    font-weight: 500;
-    text-transform: uppercase;
-    color: oklch(from var(--color-text) l c h / 55%);
-  }
   .badges {
     display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
+    gap: 12px;
+    /* six 64px dials never fit the 380px popover — scroll them sideways rather than wrap into
+       a block that pushes the panel past its max-height */
+    overflow-x: auto;
+    padding-bottom: 4px;
   }
   .none {
     font-size: 0.75rem;

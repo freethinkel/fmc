@@ -27,6 +27,12 @@
     onLike,
     onRemove,
   }: Props = $props();
+
+  // the whole card is a click target (onOpen) — every action inside it has to keep its click
+  const stop = (fn?: () => void) => (e: MouseEvent) => {
+    e.stopPropagation();
+    fn?.();
+  };
 </script>
 
 <Card onClick={onOpen}>
@@ -46,7 +52,7 @@
     {/if}
     <div class="actions">
       <span class="action-slot" title={canLike ? "Like" : "Sign in to like"}>
-        <Button kind="ghost" size="sm" disabled={!canLike} onClick={onLike}>
+        <Button kind="ghost" disabled={!canLike} onClick={stop(onLike)}>
           <Icon
             name="heart"
             size={16}
@@ -56,13 +62,18 @@
           <span class="count">{likeCount}</span>
         </Button>
       </span>
-      <a class="link-action" href={downloadUrl(wf)} title="Download .bin">
+      <a
+        class="link-action"
+        href={downloadUrl(wf)}
+        title="Download .bin"
+        onclick={(e) => e.stopPropagation()}
+      >
         <Icon name="download" size={16} />
         <span class="count">{wf.downloads || 0}</span>
       </a>
       {#if canRemove}
         <span class="action-slot remove-slot" title="Delete">
-          <Button kind="ghost" size="sm" onClick={onRemove}>
+          <Button kind="ghost" onClick={stop(onRemove)}>
             <Icon name="trash" size={16} color="var(--color-error)" />
           </Button>
         </span>

@@ -125,7 +125,7 @@
 <div class="tree-panel">
   <div class="toolbar">
     <span class="tool-slot" title="Add image widget">
-      <Button kind="secondary" size="sm" disabled={!$editor.face}>
+      <Button kind="secondary" disabled={!$editor.face}>
         <label class="file-label">
           <Icon name="image-plus" size={16} />
           <input
@@ -139,7 +139,7 @@
       </Button>
     </span>
     <span class="tool-slot" title="Add number widget — select 10 digit images (0…9)">
-      <Button kind="secondary" size="sm" disabled={!$editor.face}>
+      <Button kind="secondary" disabled={!$editor.face}>
         <label class="file-label">
           <Icon name="hash" size={16} />
           <input
@@ -154,7 +154,7 @@
       </Button>
     </span>
     <span class="tool-slot" title="Add hand widget">
-      <Button kind="secondary" size="sm" disabled={!$editor.face}>
+      <Button kind="secondary" disabled={!$editor.face}>
         <label class="file-label">
           <Icon name="clock-3" size={16} />
           <input
@@ -173,18 +173,13 @@
         ? "Invert colors of the selected layer"
         : "Invert colors of the whole screen"}
     >
-      <Button
-        kind="secondary"
-        size="sm"
-        disabled={!$editor.face}
-        onClick={() => invertColorsRequested()}
-      >
+      <Button kind="secondary" disabled={!$editor.face} onClick={() => invertColorsRequested()}>
         <Icon name="contrast" size={16} />
       </Button>
     </span>
     <div class="spacer"></div>
     <span class="tool-slot" title="Delete selected widget">
-      <Button kind="ghost" size="sm" disabled={!$editor.sel} onClick={deleteWidget}>
+      <Button kind="ghost" disabled={!$editor.sel} onClick={deleteWidget}>
         <Icon name="trash" size={16} color="var(--color-error)" />
       </Button>
     </span>

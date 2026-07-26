@@ -9,7 +9,13 @@
     onClose?: () => void;
     children?: Snippet;
   }
-  const { open = false, title, side = false, onClose, children }: Props = $props();
+  const {
+    open = false,
+    title,
+    side = false,
+    onClose,
+    children,
+  }: Props = $props();
 
   let el = $state<HTMLDialogElement>();
 
@@ -98,7 +104,7 @@
     padding: 16px 16px 0;
     h2 {
       margin: 0;
-      font-size: 1.05rem;
+      font-size: 2rem;
     }
   }
   .close {

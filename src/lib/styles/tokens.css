@@ -2,9 +2,12 @@
    Components derive every shade via oklch(from …); never add per-shade tokens. */
 
 :root {
-  /* Nothing palette (playground.nothing.tech): yellow accent on grey monochrome */
+  /* Nothing palette (playground.nothing.tech): yellow accent on grey monochrome.
+     The brand yellow is built for the dark background — on the light one it sits at 1.4:1
+     against --color-background, so accent text and the light-on-accent primary button are
+     both unreadable. Light mode gets it darkened to 4.5:1 (AA); dark mode keeps the original. */
   font-size: 14px;
-  --color-accent: #ffc700;
+  --color-accent: oklch(from #ffc700 0.54 c h);
   --color-text: #1c1c1c;
   --color-background: #f2f2f2;
   --color-error: #d71921;
@@ -126,6 +129,7 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
+    --color-accent: #ffc700;
     --color-text: #f2f2f2;
     --color-background: #131313;
   }

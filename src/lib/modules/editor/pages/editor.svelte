@@ -43,6 +43,7 @@
     exportBin,
     buildCurrentBin,
     previewBlob,
+    previewThumb,
     $rightPanel: rightPanel,
     rightPanelSet,
   } = editorModel;
@@ -396,7 +397,13 @@
   }
 
   async function flashWatch() {
-    flashRequested(await buildCurrentBin());
+    // thumbnail so the watch popover can show this face by picture rather than by id; key so
+    // re-flashing it lands on the slot it already occupies instead of taking another one
+    flashRequested({
+      bin: await buildCurrentBin(),
+      preview: previewThumb(),
+      key: $openedWf?.id,
+    });
   }
 
   const hasAOD = $derived($editor.face?.screens.some((s) => s.tag === TAG.aod));
@@ -423,7 +430,7 @@
 
 <div class="page">
   <div class="toolbar">
-    <Button kind="secondary" size="sm">
+    <Button kind="secondary">
       <label class="file-label">
         <Icon name="folder-input" size={16} />
         <span class="btn-label">Import bin</span>
@@ -431,7 +438,7 @@
       </label>
     </Button>
     <span class="tool-slot" title="Import a Facer or WatchMaker export folder">
-      <Button kind="secondary" size="sm">
+      <Button kind="secondary">
         <label class="file-label">
           <Icon name="watch" size={16} />
           <span class="btn-label">Import folder</span>
@@ -442,7 +449,6 @@
     <span class="tool-slot" title="New">
       <Button
         kind="secondary"
-        size="sm"
         onClick={() => {
           faceDetached();
           newFaceRequested();
@@ -459,30 +465,30 @@
         onChange={(v) => screenTagSet(v === "aod" ? TAG.aod : TAG.main)}
       />
       <span class="tool-slot" title="Undo (⌘Z)">
-        <Button kind="ghost" size="sm" disabled={!$editor.undoN} onClick={() => undo()}>
+        <Button kind="ghost" disabled={!$editor.undoN} onClick={() => undo()}>
           <Icon name="undo" size={16} />
         </Button>
       </span>
       <span class="tool-slot" title="Redo (⇧⌘Z)">
-        <Button kind="ghost" size="sm" disabled={!$editor.redoN} onClick={() => redo()}>
+        <Button kind="ghost" disabled={!$editor.redoN} onClick={() => redo()}>
           <Icon name="redo" size={16} />
         </Button>
       </span>
       <span class="tool-slot" title="Export .bin">
-        <Button kind="primary" size="sm" onClick={exportBin}>
+        <Button kind="primary" onClick={exportBin}>
           <Icon name="download" size={16} />
           <span class="btn-label">Export .bin</span>
         </Button>
       </span>
       {#if $user}
         <span class="tool-slot" title={$openedWf ? "Save changes" : "Save as draft"}>
-          <Button kind="ghost" size="sm" onClick={saveDraft} disabled={$saving}>
+          <Button kind="ghost" onClick={saveDraft} disabled={$saving}>
             <Icon name="save" size={16} />
             <span class="btn-label">{$saving ? "Saving…" : "Save"}</span>
           </Button>
         </span>
         <span class="tool-slot" title="Publish">
-          <Button kind="secondary" size="sm" onClick={() => publishDialogOpened()}>
+          <Button kind="secondary" onClick={() => publishDialogOpened()}>
             <Icon name="upload-cloud" size={16} />
             <span class="btn-label">Publish</span>
           </Button>
@@ -491,7 +497,7 @@
     {/if}
     {#if $bleInfo && $editor.face}
       <span class="tool-slot" title="Upload to the watch">
-        <Button kind="primary" size="sm" onClick={flashWatch} disabled={$flashing}>
+        <Button kind="primary" onClick={flashWatch} disabled={$flashing}>
           <Icon name="zap" size={16} />
           {$flashing ? "Flashing…" : "Flash"}
         </Button>

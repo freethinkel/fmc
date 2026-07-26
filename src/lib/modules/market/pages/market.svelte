@@ -46,8 +46,11 @@
       .filter((wf) => Boolean(wf.owner))
       .filter((wf) => wf.name.toLowerCase().includes(query.trim().toLowerCase()))
       .toSorted((a, b) =>
+        // popular = most liked; downloads used to be mixed in here, which just made this
+        // a duplicate of "Most downloaded" (downloads dwarf likes). Ties keep the
+        // newest-first order the api returns — toSorted is stable.
         sort === "popular"
-          ? (b.downloads || 0) + likeCount(b.id) - (a.downloads || 0) - likeCount(a.id)
+          ? likeCount(b.id) - likeCount(a.id)
           : sort === "downloads"
             ? (b.downloads || 0) - (a.downloads || 0)
             : b.created.localeCompare(a.created),

@@ -64,12 +64,12 @@
             {/if}
             <div class="buttons">
               <span class="action-slot" title="Edit">
-                <Button kind="ghost" size="sm" onClick={() => editRequested(wf)}>
+                <Button kind="ghost" onClick={() => editRequested(wf)}>
                   <Icon name="pencil" size={16} />
                 </Button>
               </span>
               <span class="action-slot" title={wf.published ? "Unpublish" : "Publish"}>
-                <Button kind="ghost" size="sm" onClick={() => publishToggleRequested(wf)}>
+                <Button kind="ghost" onClick={() => publishToggleRequested(wf)}>
                   {#if wf.published}<Icon name="globe-lock" size={16} />{:else}<Icon
                       name="globe"
                       size={16}
@@ -77,7 +77,7 @@
                 </Button>
               </span>
               <span class="action-slot" title="Delete">
-                <Button kind="ghost" size="sm" onClick={() => remove(wf)}>
+                <Button kind="ghost" onClick={() => remove(wf)}>
                   <Icon name="trash" size={16} color="var(--color-error)" />
                 </Button>
               </span>

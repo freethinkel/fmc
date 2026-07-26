@@ -4,7 +4,7 @@
   interface Props {
     type?: "submit" | "reset" | "button";
     kind?: "primary" | "secondary" | "ghost" | "danger";
-    size?: "md" | "sm";
+    size?: "large" | "default";
     disabled?: boolean;
     onClick?: (e: MouseEvent) => void;
     children?: Snippet;
@@ -12,14 +12,19 @@
   const {
     type = "button",
     kind = "primary",
-    size = "md",
+    size = "default",
     disabled,
     onClick,
     children,
   }: Props = $props();
 </script>
 
-<button class="btn kind__{kind} size__{size}" {type} {disabled} onclick={onClick}>
+<button
+  class="btn kind__{kind} size__{size}"
+  {type}
+  {disabled}
+  onclick={onClick}
+>
   {@render children?.()}
 </button>
 
@@ -51,11 +56,11 @@
       cursor: default;
     }
   }
-  .size__md {
+  .size__large {
     height: 40px;
     padding: 0 16px;
   }
-  .size__sm {
+  .size__default {
     height: 30px;
     padding: 0 10px;
     font-size: 0.85rem;

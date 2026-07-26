@@ -480,11 +480,12 @@ export interface Frame {
   y: number;
   w: number;
   h: number;
-  // byte 8, low 2 bits: how the auto-laid-out children align along the packing axis
-  // (0 = START, 2 = CENTER — LVGL's lv_flex_align_t; END/SPACE_* never occur in the corpus).
-  // The high bits are presumably the cross-axis field of the same enum (0x0a = main CENTER +
-  // something), unverified — we still center the cross axis unconditionally, see drawGroup.
+  // byte 8 packs three lv_flex_align_t fields (0 = START, 2 = CENTER; END/SPACE_* never occur
+  // in the corpus): main = bits 0-1, track = bits 2-3, cross = bits 4-5. The field order isn't
+  // LVGL's own argument order (main, cross, track) — see drawGroup for the evidence that the
+  // middle field is the track's placement in the frame, not the children's within the track.
   main: number;
+  track: number;
   node: FaceNode;
 }
 export function parseFrame(node: FaceNode): Frame | null {
@@ -504,6 +505,7 @@ export function parseFrame(node: FaceNode): Frame | null {
     w: v[4] | (v[5] << 8),
     h: v[6] | (v[7] << 8),
     main: v[8] & 3,
+    track: (v[8] >> 2) & 3,
     node: f,
   };
 }
@@ -959,19 +961,24 @@ function drawGroup(
   // ponytail: only START/CENTER exist in the corpus — END (1) and SPACE_* (3) would need
   // their own arm here, add one if a face ever carries them.
   let c = (vertical ? y : x) + (fr.main ? (mainAvail - total) / 2 : 0);
+  // Cross axis: children sit at the START of their track, and the track is what gets centered
+  // in the frame (fr.track). Centering each child on its own instead is indistinguishable
+  // whenever the children are all the same height — which every corpus row is, e.g. Function's
+  // "24%" battery row (two 26px children in a 48px frame, both readings put them at y=221).
+  // A row of *unequal* children separates the two, and a real device disagreed with per-child
+  // centering there: a Pebble blue 116px digit next to the 144px colon that fills the group's
+  // 144px frame renders at the frame top on the watch (track 144 = frame 144, no slack to
+  // center), not 14px down as per-child centering would have it.
+  const trackSize = shown.reduce((m, z) => Math.max(m, vertical ? z.w : z.h), 0);
+  const crossAvail = vertical ? fr.w : fr.h;
+  const cross = (vertical ? x : y) + (fr.track ? (crossAvail - trackSize) / 2 : 0);
 
   if (ctx) {
     kids.forEach((k, i) => {
       const z = sizes[i];
 
       if (z) {
-        // cross axis stays centered on every face: byte 8's high bits presumably carry it,
-        // but every corpus group whose vertical placement the previews actually pin down
-        // reads 0x0a there, and AEGIS's frames are exactly one child tall — nothing to
-        // distinguish START from CENTER on that axis yet.
-        const pos = vertical
-          ? { x: x + (fr.w - z.w) / 2, y: c }
-          : { x: c, y: rowCross ?? y + (fr.h - z.h) / 2 };
+        const pos = vertical ? { x: cross, y: c } : { x: c, y: rowCross ?? cross };
 
         drawWidget(ctx, k, res, sim, t, 0, 0, pos, hits, arcsById);
         c += vertical ? z.h : z.w;

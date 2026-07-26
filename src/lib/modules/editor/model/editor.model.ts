@@ -782,6 +782,22 @@ export function previewBlob(): Promise<Blob> {
   return new Promise((res) => c.toBlob((b) => res(b!), "image/png"));
 }
 
+// Tiny JPEG data URL of the main screen, stored next to the flashed dial id so the watch's
+// id-only list can show what each slot holds (see device/lib/catalog-names). 96px keeps it
+// around 5 KB — previewBlob's full 466px PNG is ~100× that and localStorage is the sink.
+export function previewThumb(): string {
+  const { face, sim } = $editor.getState();
+  const full = document.createElement("canvas");
+
+  full.width = full.height = 466;
+  render(full.getContext("2d")!, face!, TAG.main, sim);
+  const thumb = document.createElement("canvas");
+
+  thumb.width = thumb.height = 96;
+  thumb.getContext("2d")!.drawImage(full, 0, 0, 96, 96);
+  return thumb.toDataURL("image/jpeg", 0.7);
+}
+
 export async function exportBin() {
   try {
     const out = await buildCurrentBin();
