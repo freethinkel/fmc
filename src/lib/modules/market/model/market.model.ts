@@ -1,5 +1,5 @@
 // Marketplace: effector stores on top of PocketBase.
-import { attach, createEffect, createEvent, createStore, sample } from "effector";
+import { attach, combine, createEffect, createEvent, createStore, sample } from "effector";
 import { reset } from "patronum";
 import type { RecordModel } from "pocketbase";
 import { goto } from "$app/navigation";
@@ -24,6 +24,15 @@ export const $openedWf = createStore<RecordModel | null>(null);
 // else's design should still count as a download. Cleared on New/drag-drop import (faceDetached),
 // which have no backing record at all.
 export const $loadedWf = createStore<RecordModel | null>(null);
+// Someone else's (or the stock catalog's) watchface, open in the editor: editing, flashing and
+// exporting the .bin are all fine, uploading it under a new owner is not — that's how the
+// marketplace filled up with copies of the same dial. Starting from it deliberately still
+// works: export the .bin and open that file, which detaches the record (faceDetached).
+export const $foreignWf = combine(
+  $loadedWf,
+  $openedWf,
+  (loaded, opened) => Boolean(loaded) && !opened,
+);
 // editorModel.loadDone also fires for unrelated loads (drag-drop import on /editor) — only
 // navigate when the load we're waiting on is specifically the one editRequested started
 const $awaitingEdit = createStore(false);
@@ -191,14 +200,41 @@ sample({
   clock: saveFx.doneData,
   target: $loadedWf,
 });
+// Saving replaces the record's bin AND its preview file, so the cached catalog lists would
+// keep showing the old art (and old name) until a full page reload — $items is only fetched
+// once per session on purpose. Patch the saved record in wherever it already is.
+const replaceSaved = (list: RecordModel[], r: RecordModel) =>
+  list.map((i) => (i.id === r.id ? r : i));
 
 sample({
-  clock: saveDraftRequested,
+  clock: saveFx.doneData,
+  source: $items,
+  fn: replaceSaved,
+  target: $items,
+});
+sample({
+  clock: saveFx.doneData,
+  source: $myItems,
+  fn: replaceSaved,
+  target: $myItems,
+});
+
+// the two buttons are disabled for a foreign face (see $foreignWf), but the rule lives here —
+// a component can't be the thing that enforces it. A dropped save says so instead of looking
+// like a dead button: silently swallowing the click is how "it just doesn't save" bugs start.
+sample({
+  clock: [saveDraftRequested, publishRequested],
+  source: $foreignWf,
+  filter: (foreign) => !foreign,
+  fn: (_foreign, p) => p,
   target: saveFx,
 });
 sample({
-  clock: publishRequested,
-  target: saveFx,
+  clock: [saveDraftRequested, publishRequested],
+  source: $foreignWf,
+  filter: Boolean,
+  fn: () => "this watchface belongs to someone else — export the .bin to start your own from it",
+  target: editorModel.errored,
 });
 
 sample({

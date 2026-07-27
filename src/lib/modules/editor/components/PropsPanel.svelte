@@ -5,7 +5,7 @@
   import { Slider } from "$lib/shared/components/slider";
   import { Icon, type IconName } from "$lib/shared/components/icon";
   import { TAG, unhex, hex, type FaceNode, type Resource } from "../lib/wf";
-  import { metaInfo, ID_LABELS, parseFrame, type Frame } from "../lib/render";
+  import { metaInfo, ID_LABELS, FRAME_LABELS, parseFrame, type Frame } from "../lib/render";
   import { editorModel } from "../model";
   import type { AlignDir } from "../model/editor.model";
   const {
@@ -16,9 +16,13 @@
     resizeImageRequested,
     adjustImageRequested,
     alignSelected,
+    moveImage,
   } = editorModel;
 
   let lockAspect = $state(true);
+  // native HTML5 drag & drop over the frame list, same shape as TreePanel's layer reorder
+  let dragIdx = $state<number | null>(null);
+  let dropIdx = $state<number | null>(null);
 
   // frame byte 8's main-axis alignment (see parseFrame) — only these two values occur
   // across the corpus, so END/SPACE_* aren't offered. [value, icon, title]
@@ -56,7 +60,6 @@
     return {
       x: st?.x,
       y: st?.y,
-      metaHex: st?.meta,
       images: st?.images,
       pivotX: pivot?.pivotX,
       pivotY: pivot?.pivotY,
@@ -82,6 +85,7 @@
     if (!v || v.length < 3) return null;
     return { activeIdx: v[2], ids: [...v.subarray(3, 3 + v[1])] };
   });
+  const frameLabels = $derived(meta ? FRAME_LABELS[meta.id] : null);
   const slotOptions = $derived(
     slotInfo?.ids.map((id, i) => ({
       value: String(i),
@@ -195,13 +199,26 @@
       [0x71, 0x72].includes(meta.id),
   );
 
-  function setSecondId(id: number) {
+  // meta byte 9 is the data source the widget reads — what the watch feeds it. Changing it is
+  // the only edit the raw meta hex was ever used for, so it's a select over the known sources
+  // (an id we have no label for stays selectable, so an unknown one isn't silently rewritten).
+  function setSourceId(id: number) {
     if (!st) return;
     const v = unhex(st.meta || "");
 
     v[9] = id;
     set(st, { meta: hex(v) });
   }
+  const sourceOption = (id: number, label: string) => ({
+    value: String(id),
+    label: `0x${id.toString(16)} — ${label}`,
+  });
+  const sourceOptions = $derived(
+    Object.entries(ID_LABELS)
+      .map(([id, label]) => sourceOption(Number(id), label))
+      .concat(meta && !ID_LABELS[meta.id] ? [sourceOption(meta.id, "unknown")] : []),
+  );
+
   function thumbURL(r: Resource) {
     const c = document.createElement("canvas");
 
@@ -336,12 +353,21 @@
       </div>
       <p class="hint-xs">screen center = 233,233 (x+pivotX, y+pivotY)</p>
     {/if}
-    {#if meta?.id}
-      <p class="hint">
-        source: <span class="text-emph">0x{meta.id.toString(16)} — {ID_LABELS[meta.id] || "?"}</span
-        >
-        {#if meta.max}, max {meta.max}{/if}
-      </p>
+    {#if st?.meta}
+      <div>
+        <span class="muted-label">source{meta?.max ? ` — max ${meta.max}` : ""}</span>
+        <Select
+          value={String(meta?.id ?? 0)}
+          options={sourceOptions}
+          onChange={(v) => setSourceId(+v)}
+        />
+        {#if frameLabels && sv.images && sv.images.length !== frameLabels.length}
+          <p class="hint-xs">
+            {ID_LABELS[meta!.id]} needs {frameLabels.length} frames, this widget has {sv.images
+              .length}
+          </p>
+        {/if}
+      </div>
     {/if}
     {#if st?.meta}
       <div class="check-row">
@@ -355,32 +381,21 @@
       <div class="check-row">
         <Checkbox
           checked={meta?.id === 0x0f || meta?.id === 0x12}
-          onChange={(v) => setSecondId(v ? 0x12 : 0x72)}
+          onChange={(v) => setSourceId(v ? 0x12 : 0x72)}
         />
         <button
           type="button"
           class="check-label"
-          onclick={() => setSecondId(meta?.id === 0x0f || meta?.id === 0x12 ? 0x72 : 0x12)}
+          onclick={() => setSourceId(meta?.id === 0x0f || meta?.id === 0x12 ? 0x72 : 0x12)}
         >
           smooth sweep (unchecked — ticks once per second)
         </button>
       </div>
     {/if}
     {#if isBrokenRing}
-      <button type="button" class="text-btn" onclick={() => setSecondId(0x0f)}>
+      <button type="button" class="text-btn" onclick={() => setSourceId(0x0f)}>
         broken second source (0x{meta?.id.toString(16)}) — restore ticking 0x0f
       </button>
-    {/if}
-    {#if st?.meta}
-      <div>
-        <span class="muted-label">meta (hex)</span>
-        <Input
-          value={sv.metaHex}
-          onInput={(v) => {
-            if (/^[0-9a-f]{28}$/i.test(v)) set(st, { meta: v });
-          }}
-        />
-      </div>
     {/if}
     {#if fmtNode}
       <div class="row">
@@ -446,6 +461,50 @@
           </div>
         </div>
       {/if}
+    {:else if sv.images && sv.images.length > 1}
+      <!-- A multi-frame widget is indexed BY VALUE (images[value % count]), so the order is
+           data, not decoration — a set imported in the wrong order shows the wrong day/month
+           on the watch. Listed with its index (and, where the format fixes them, the value
+           each slot must hold) and reorderable by drag. -->
+      <div>
+        <span class="muted-label">frames — index = value</span>
+        <div class="frames">
+          {#each sv.images as ri, i}
+            <div
+              class="frame-row"
+              class:dragging={dragIdx === i}
+              draggable="true"
+              role="listitem"
+              ondragstart={(e) => {
+                dragIdx = i;
+                e.dataTransfer?.setData("text/plain", ""); // Firefox needs a payload to start a drag
+              }}
+              ondragover={(e) => {
+                if (dragIdx !== null && dragIdx !== i) {
+                  e.preventDefault();
+                  dropIdx = i;
+                }
+              }}
+              ondrop={(e) => {
+                e.preventDefault();
+                if (dragIdx !== null && dropIdx === i && $editor.sel && st)
+                  moveImage(st, dragIdx, i);
+                dragIdx = dropIdx = null;
+              }}
+              ondragend={() => (dragIdx = dropIdx = null)}
+            >
+              <Icon name="grip" size={14} class="grip" />
+              <span class="frame-idx">{i}</span>
+              {@render thumb(ri)}
+              {#if frameLabels}<span class="thumb-cap">{frameLabels[i] ?? ""}</span>{/if}
+              {#if dropIdx === i}
+                <!-- own element, not a row border: the line marks the gap the frame lands in -->
+                <span class="drop-line" class:below={i > (dragIdx ?? -1)}></span>
+              {/if}
+            </div>
+          {/each}
+        </div>
+      </div>
     {:else if sv.images}
       <div class="images">
         {#each sv.images as ri}{@render thumb(ri)}{/each}
@@ -517,9 +576,6 @@
     font-size: 0.75rem;
     color: oklch(from var(--color-text) l c h / 55%);
   }
-  .text-emph {
-    color: var(--color-text);
-  }
   .w-num {
     display: inline-block;
     width: 64px;
@@ -589,6 +645,52 @@
   }
   .thumb-wrap {
     position: relative;
+  }
+  .frames {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .frame-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-radius: var(--border-radius);
+    padding: 2px 4px;
+    cursor: grab;
+
+    &:hover {
+      background: oklch(from var(--color-text) l c h / 6%);
+    }
+    &.dragging {
+      opacity: 0.4;
+    }
+  }
+  /* sits in the 2px gap between rows, so no row is resized or outlined while dragging */
+  .drop-line {
+    position: absolute;
+    inset-inline: 0;
+    top: -2px;
+    height: 2px;
+    border-radius: 1px;
+    background: var(--color-accent);
+
+    &.below {
+      top: auto;
+      bottom: -2px;
+    }
+  }
+  :global(.grip) {
+    flex-shrink: 0;
+    color: oklch(from var(--color-text) l c h / 40%);
+  }
+  .frame-idx {
+    width: 16px;
+    flex-shrink: 0;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: oklch(from var(--color-text) l c h / 55%);
   }
   .thumb-col {
     display: flex;

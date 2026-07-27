@@ -48,6 +48,16 @@ export const ID_LABELS: Record<number, string> = {
   0x8b: "aqi",
 };
 
+// Value-indexed frame sets: the firmware picks images[value % count], so frame order is part
+// of the format. What each index MUST hold, for the sources where the value isn't the frame's
+// own meaning (see drawWidget's "pick by value" branch) — shown next to the thumbnails in
+// PropsPanel so a wrong order is visible instead of only showing up on the watch.
+export const FRAME_LABELS: Record<number, string[]> = {
+  0x13: ["AM", "PM"],
+  0x16: ["Dec", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov"],
+  0x18: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+};
+
 type SimValue = number | "";
 export interface Sim {
   live: boolean;
@@ -129,7 +139,7 @@ export function timeParts(sim: Sim): TimeParts {
     m: d.getMinutes(),
     s: d.getSeconds() + d.getMilliseconds() / 1000,
     day: d.getDate(),
-    wd: (d.getDay() + 6) % 7,
+    wd: d.getDay(),
     mon: d.getMonth() + 1,
   };
 }
@@ -177,7 +187,9 @@ export function idValue(id: number, sim: Sim, t: TimeParts): number {
     case 0x17:
       return t.day;
     case 0x18:
-      return t.wd; // ponytail: 0=Monday — not confirmed, tweak via override
+      // 0=Sunday: stock Combo/Elaborate_2 weekday sprite lists start at "Sun", so the
+      // firmware's index for this source is plain getDay()
+      return t.wd;
     case 0x19:
       return Number(sim.steps);
     case 0x1a:

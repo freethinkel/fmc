@@ -87,7 +87,7 @@ function opacityOf(l: Layer): number | null {
 // value to the index the watch counts from. #WCCI# (weather condition) has no source, so
 // those icon sets still drop.
 const SEL_SRC: Record<string, { id: number; n: number; index: (v: string) => number }> = {
-  DOWB: { id: 0x18, n: 7, index: (v) => (Number(v) + 5) % 7 }, // 1 = Sun -> WEEKDAYS (0 = Mon)
+  DOWB: { id: 0x18, n: 7, index: (v) => (Number(v) + 6) % 7 }, // 1 = Sun -> WEEKDAYS (0 = Sun)
   DE: { id: 0x18, n: 7, index: (v) => WEEKDAYS.indexOf(v.toUpperCase()) },
   DMM: { id: 0x16, n: 12, index: (v) => Number(v) % 12 }, // 12 = Dec -> MONTHS (0 = Dec)
   DMMM: { id: 0x16, n: 12, index: (v) => MONTHS.indexOf(v.toUpperCase()) },
@@ -326,7 +326,9 @@ function renderGlyphs(labels: string[], family: string, sizePx: number, color: s
 }
 
 const DIGITS = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
-const WEEKDAYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
+// Sunday-first — device order, read off the stock Combo/Elaborate_2 weekday sprite lists
+// (frame 0 = "Sun"), i.e. the watch indexes with JS getDay().
+const WEEKDAYS = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
 const MONTHS = ["DEC", "JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV"];
 
 type Live =

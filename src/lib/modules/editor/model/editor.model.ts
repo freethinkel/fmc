@@ -670,6 +670,53 @@ export function moveNode(node: FaceNode, target: FaceNode, after: boolean) {
   });
 }
 
+// The name lives in three places: the 16-byte header field (NUL-terminated; nameRaw keeps its
+// trailing byte, meaning unknown, for an exact round-trip), the 0x86 node the watch's own face
+// list reads, and face.name — which is what the marketplace record and the exported filename
+// use. The header field is the tight one: 15 bytes, so long names are cut there and only there.
+export function renameFace(name: string) {
+  const s = $editor.getState();
+
+  if (!s.face || name === s.face.name) return;
+  checkpoint();
+  treeChanged((st) => {
+    const face = st.face!;
+    const tail = face.nameRaw ? unhex(face.nameRaw)[15] : 0x0a;
+    const head = new Uint8Array(16);
+
+    new TextEncoder().encodeInto(name.slice(0, 14), head.subarray(0, 15));
+    head[15] = tail;
+    face.name = name;
+    face.nameRaw = hex(head);
+    for (const scr of face.screens)
+      for (const n of scr.subs ?? []) if (n.tag === TAG.name) n.text = name.slice(0, 63);
+  });
+}
+
+// Reorder a widget's frames — for value-indexed sets (weekday, month, AM/PM, digits) the
+// index IS the value, so this is how a set imported in the wrong order gets fixed.
+// A widget's frames are stored as a base resource offset + count, so `images` HAS to stay a
+// consecutive ascending run (buildBin's refTailBytes rejects anything else). Permuting the
+// index list would therefore build a file the format can't express — what moves is the
+// resources themselves, inside the window the widget already owns.
+// ponytail: assumes the run isn't shared with another widget (nothing in the corpus shares
+// one) — scan the tree for overlapping runs here if a face ever turns up that does.
+export function moveImage(node: FaceNode, from: number, to: number) {
+  const imgs = node.images;
+  const face = $editor.getState().face;
+
+  if (!face || !imgs || from === to) return;
+  if (imgs[from] === undefined || to < 0 || to >= imgs.length) return;
+  checkpoint(0);
+  treeChanged(() => {
+    const frames = imgs.map((ri) => face.resources[ri]);
+    const [moved] = frames.splice(from, 1);
+
+    frames.splice(to, 0, moved);
+    imgs.forEach((ri, i) => (face.resources[ri] = frames[i]));
+  });
+}
+
 // Figma-style alignment: nudge the selected node so its RENDERED bounding box lands on the
 // container's edge/center. The container is the parent group's frame when the node is a
 // group child (Figma aligns relative to the parent), the screen otherwise. Delta-based off

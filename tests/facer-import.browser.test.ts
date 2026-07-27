@@ -3,7 +3,7 @@
 // ids, the frame's alignment byte, meta's auto-width marker), not any particular artwork.
 import { test, expect } from "vitest";
 import { facerToFace } from "$lib/modules/editor/lib/facer";
-import { TAG, type FaceNode } from "$lib/modules/editor/lib/wf";
+import { TAG, decodePixels, type FaceNode } from "$lib/modules/editor/lib/wf";
 import { parseFrame, metaInfo } from "$lib/modules/editor/lib/render";
 
 const LAYERS = [
@@ -91,7 +91,9 @@ const LAYERS = [
     opacity: `$#WCCI#=${c}?100:0$`,
     hash_round: "h",
   })),
-  // a weekday image set: one sprite per value of the same tag, all at one spot
+  // a weekday image set: one sprite per value of the same tag, all at one spot. Each frame
+  // gets its own image (hash "d<value>", filled with gray d*20) so the ORDER is checkable:
+  // Facer counts #DOWB# from 1 = Sunday, the watch indexes the set with getDay().
   ...[1, 2, 3, 4, 5, 6, 7].map((d) => ({
     type: "dynamic_image",
     x: 160,
@@ -99,21 +101,32 @@ const LAYERS = [
     width: 40,
     height: 20,
     opacity: `$#DOWB#=${d}?100:0$`,
-    hash_round: "h",
+    hash_round: `d${d}`,
   })),
 ];
 
-async function fakeExport(): Promise<File[]> {
+const b64 = (s: string) => btoa(s).replace(/=+$/, ""); // Facer ships its base64 unpadded
+
+async function sprite(fill: string): Promise<string> {
   const c = new OffscreenCanvas(8, 8);
+  const cx = c.getContext("2d")!;
 
-  c.getContext("2d")!.fillRect(2, 2, 4, 4); // transparent margin — hands must be cropped to the ink
+  cx.fillStyle = fill;
+  cx.fillRect(2, 2, 4, 4); // transparent margin — hands must be cropped to the ink
   const png = new Uint8Array(await (await c.convertToBlob()).arrayBuffer());
-  const b64 = (s: string) => btoa(s).replace(/=+$/, ""); // Facer ships its base64 unpadded
 
+  return b64(String.fromCharCode(...png));
+}
+
+async function fakeExport(): Promise<File[]> {
   return [
     new File([JSON.stringify({ size: { width: 320 }, title: "Probe" })], "description.json"),
     new File([b64(JSON.stringify(LAYERS))], "watchface.json"),
-    new File([b64(String.fromCharCode(...png))], "h"),
+    new File([await sprite("#000")], "h"),
+    // one distinguishable sprite per weekday value: red channel = value * 20
+    ...(await Promise.all(
+      [1, 2, 3, 4, 5, 6, 7].map(async (d) => new File([await sprite(`rgb(${d * 20},0,0)`)], `d${d}`)),
+    )),
   ];
 }
 
@@ -175,6 +188,21 @@ test("facerToFace maps tags, hands and alignment", async () => {
 
   expect(sel.subs![0].images).toHaveLength(7);
   expect(skipped.some((s) => s.includes("#DOWB#"))).toBe(false);
+
+  // ...in the order the WATCH indexes them: images[getDay()], so frame 0 is Facer's
+  // #DOWB#=1 (Sunday). The fixture's sprites brighten with the Facer value, so a set built
+  // Monday-first (the old order, a day off on the device) breaks the sort.
+  const red = (ri: number) => {
+    const px = decodePixels(face.resources[ri])!;
+    let m = 0;
+
+    for (let i = 0; i < px.length; i += 4) m = Math.max(m, px[i]);
+    return m;
+  };
+  const reds = sel.subs![0].images!.map(red);
+
+  expect(reds).toEqual([...reds].sort((a, b) => a - b));
+  expect(new Set(reds).size).toBe(7);
 
   // hands come from the rotation tag, and carry the corpus-verified sources
   const hands = all(main, (n) => n.tag === TAG.hand);

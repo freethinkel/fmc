@@ -23,6 +23,7 @@
   } = bleModel;
   const {
     $openedWf: openedWf,
+    $foreignWf: foreignWf,
     faceDetached,
     saveDraftRequested,
     $savePending: saving,
@@ -41,6 +42,8 @@
     newFaceRequested,
     importFacerRequested,
     exportBin,
+    errored,
+    renameFace,
     buildCurrentBin,
     previewBlob,
     previewThumb,
@@ -58,33 +61,54 @@
       (t instanceof HTMLInputElement ? t.files?.[0] : undefined) ||
       (e as DragEvent).dataTransfer?.files?.[0];
 
-    if (f) f.arrayBuffer().then((buf) => loadRequested({ buf, label: f.name }));
-    faceDetached();
-    e.preventDefault();
     if (t instanceof HTMLInputElement) t.value = "";
+    // this is also the window-level ondrop, so every in-app drag ends up here (layer reorder,
+    // frame reorder) — only a drop carrying a file is an import. Detaching unconditionally
+    // made the toolbar forget which record is open the moment you dragged anything.
+    if (!f) return;
+    e.preventDefault();
+    f.arrayBuffer().then((buf) => loadRequested({ buf, label: f.name }));
+    faceDetached();
   }
 
   // Facer exports are directories, so this takes a whole folder rather than one file
   function openFacer(e: Event) {
     const t = e.target;
+    const files = t instanceof HTMLInputElement ? [...(t.files ?? [])] : [];
 
-    if (t instanceof HTMLInputElement && t.files?.length) importFacerRequested([...t.files]);
-    faceDetached();
     if (t instanceof HTMLInputElement) t.value = "";
+    if (!files.length) return; // cancelled picker — same as above, don't detach the record
+    importFacerRequested(files);
+    faceDetached();
   }
 
-  // Save: new watchface → draft; already-open own watchface → update, keeping its status
+  // see marketModel's $foreignWf — the rule itself lives there, this is what the greyed-out
+  // Save/Publish say when you hover them
+  const FOREIGN_HINT =
+    "Someone else's watchface — edit and flash it freely, but it can't be re-uploaded under your name. Export the .bin and open that file to start your own from it.";
+
+  // An own, already-published watchface updates in place on Save (saveFx keeps its published
+  // flag), so Publish would only open a dialog that does the same thing under another name.
+  const isPublishedMine = $derived(Boolean($openedWf?.published) && $openedWf?.owner === $user?.id);
+
+  // Save: new watchface → draft; already-open own watchface → update, keeping its status.
+  // buildCurrentBin re-encodes and self-checks the whole file, so it can throw — without the
+  // catch that reads as a dead button: no request, no message.
   async function saveDraft() {
     const u = $user;
 
     if (!u) return;
-    saveDraftRequested({
-      name: $editor.face?.name || "Custom",
-      ownerId: u.id,
-      published: $openedWf?.published ?? false,
-      bin: await buildCurrentBin(),
-      preview: await previewBlob(),
-    });
+    try {
+      saveDraftRequested({
+        name: $editor.face?.name || "Custom",
+        ownerId: u.id,
+        published: $openedWf?.published ?? false,
+        bin: await buildCurrentBin(),
+        preview: await previewBlob(),
+      });
+    } catch (e) {
+      errored(`save: ${e instanceof Error ? e.message : e}`);
+    }
   }
 
   // ---- rendering ----
@@ -458,7 +482,16 @@
       </Button>
     </span>
     {#if $editor.face}
-      <span class="wf-name">{$editor.face.name}</span>
+      <!-- commits on blur/Enter, not per keystroke: every rename is one undo step, and the
+           header field only holds 15 bytes anyway (see renameFace) -->
+      <input
+        class="wf-name"
+        value={$editor.face.name}
+        title="Watchface name — the watch's own list shows the first 15 characters"
+        maxlength="63"
+        onchange={(e) => renameFace(e.currentTarget.value.trim())}
+        onkeydown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+      />
       <Tabs
         items={screenItems}
         value={$editor.screenTag === TAG.aod ? "aod" : "main"}
@@ -481,18 +514,35 @@
         </Button>
       </span>
       {#if $user}
-        <span class="tool-slot" title={$openedWf ? "Save changes" : "Save as draft"}>
-          <Button kind="ghost" onClick={saveDraft} disabled={$saving}>
+        <span
+          class="tool-slot"
+          title={$foreignWf
+            ? FOREIGN_HINT
+            : isPublishedMine
+              ? "Update the published watchface"
+              : $openedWf
+                ? "Save changes"
+                : "Save as draft"}
+        >
+          <Button
+            kind={isPublishedMine ? "secondary" : "ghost"}
+            onClick={saveDraft}
+            disabled={$saving || $foreignWf}
+          >
             <Icon name="save" size={16} />
-            <span class="btn-label">{$saving ? "Saving…" : "Save"}</span>
+            <span class="btn-label"
+              >{$saving ? "Saving…" : isPublishedMine ? "Update" : "Save"}</span
+            >
           </Button>
         </span>
-        <span class="tool-slot" title="Publish">
-          <Button kind="secondary" onClick={() => publishDialogOpened()}>
-            <Icon name="upload-cloud" size={16} />
-            <span class="btn-label">Publish</span>
-          </Button>
-        </span>
+        {#if !isPublishedMine}
+          <span class="tool-slot" title={$foreignWf ? FOREIGN_HINT : "Publish"}>
+            <Button kind="secondary" onClick={() => publishDialogOpened()} disabled={$foreignWf}>
+              <Icon name="upload-cloud" size={16} />
+              <span class="btn-label">Publish</span>
+            </Button>
+          </span>
+        {/if}
       {/if}
     {/if}
     {#if $bleInfo && $editor.face}
@@ -606,13 +656,26 @@
   }
   .wf-name {
     display: none;
-    max-width: 160px;
+    width: 160px;
     overflow: hidden;
+    border: 1px solid transparent;
+    border-radius: var(--border-radius);
+    background: transparent;
     padding-inline: 4px;
+    font: inherit;
     font-size: 0.875rem;
     font-weight: 500;
+    color: var(--color-text);
     text-overflow: ellipsis;
     white-space: nowrap;
+
+    &:hover {
+      border-color: oklch(from var(--color-text) l c h / 12%);
+    }
+    &:focus {
+      border-color: var(--color-accent);
+      outline: none;
+    }
   }
   .tool-slot {
     display: inline-flex;

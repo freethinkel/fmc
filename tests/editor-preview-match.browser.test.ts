@@ -102,16 +102,18 @@ const CASES = [
   // same screen position), unlike Elaborate_2's ring (see drawGroup's ringPos) — left alone.
   // Remaining gap is the ring's fill fraction, which depends on live steps/goal that the
   // baked preview captured at an unknowable real value (same caveat as the cases above).
+  // Date is a Tuesday the 9th because that's what the bake shows ("Tue 09").
   {
     name: "Multifunction__366__Combo",
     url: comboUrl,
-    time: "2026-01-09T10:09:30",
+    time: "2025-12-09T10:09:30",
     sim: { steps: 10000 },
     maxDiffRatio: 0.02,
   },
   // sim time matches the baked preview's actual capture date/second (found by inspection —
-  // "July 09", not this file's other cases' "January 09"), so date/weekday-highlight line up
-  // exactly; sim.calories likewise set to the baked preview's own displayed count (156, read
+  // "July 09", not this file's other cases' "January 09", and the ring's highlighted letter is
+  // the second T, i.e. a Tuesday: July 9 2024), so date/weekday-highlight line up exactly;
+  // sim.calories likewise set to the baked preview's own displayed count (156, read
   // straight off the file's embedded preview image) via the per-case `sim` override below —
   // the widget-slot ring/number combo here reads id 0x1e (calories), same mechanism used for
   // steps/hr/battery/etc. on any other case. Three real bugs found along the way:
@@ -136,7 +138,7 @@ const CASES = [
   {
     name: "Multifunction__304__Elaborate_2",
     url: elaborate2Url,
-    time: "2025-07-09T10:12:30",
+    time: "2024-07-09T10:12:30",
     sim: { calories: 156 },
     maxDiffRatio: 0.02,
   },
