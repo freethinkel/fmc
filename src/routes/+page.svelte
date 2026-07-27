@@ -123,19 +123,19 @@
       oklch(from var(--color-text) l c h / 15%) 1px,
       transparent 1px
     );
-    background-size: 28px 28px;
+    background-size: 1.75rem 1.75rem;
   }
 
   .glow {
     position: fixed;
     top: 25%;
     right: -160px;
-    width: 600px;
-    height: 600px;
+    width: 37.5rem;
+    height: 37.5rem;
     border-radius: 50%;
     pointer-events: none;
     background: oklch(from var(--color-accent) l c h / 10%);
-    filter: blur(120px);
+    filter: blur(7.5rem);
   }
 
   header {
@@ -144,16 +144,16 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 20px 24px;
+    padding: 1.25rem 1.5rem;
 
     @media (min-width: 768px) {
-      padding: 20px 48px;
+      padding: 1.25rem 3rem;
     }
   }
 
   .logo {
     font-family: var(--font-display);
-    font-size: 0.875rem;
+    font-size: 0.75rem;
     font-weight: 400;
     letter-spacing: 0.1em;
   }
@@ -164,9 +164,9 @@
 
   nav {
     display: flex;
-    gap: 24px;
+    gap: 1.5rem;
     font-family: var(--font-mono);
-    font-size: 0.75rem;
+    font-size: 0.625rem;
     color: oklch(from var(--color-text) l c h / 55%);
 
     a {
@@ -185,33 +185,33 @@
     z-index: 1;
     display: grid;
     align-items: center;
-    gap: 64px;
-    max-width: 1152px;
+    gap: 4rem;
+    max-width: 72rem;
     margin: 0 auto;
-    padding: 48px 24px 96px;
+    padding: 3rem 1.5rem 6rem;
 
     @media (min-width: 768px) {
       grid-template-columns: 1.2fr 1fr;
-      padding: 96px 48px 96px;
+      padding: 6rem 3rem 6rem;
     }
   }
 
   .pitch h1 {
-    margin: 24px 0 0;
+    margin: 1.5rem 0 0;
     font-family: var(--font-display);
-    font-size: 2.25rem;
+    font-size: 2rem;
     font-weight: 400;
     line-height: 1.05;
 
     @media (min-width: 768px) {
-      font-size: 3.75rem;
+      font-size: 3.25rem;
     }
   }
 
   .lede {
-    max-width: 448px;
-    margin: 24px 0 0;
-    font-size: 0.875rem;
+    max-width: 28rem;
+    margin: 1.5rem 0 0;
+    font-size: 0.75rem;
     line-height: 1.6;
     color: oklch(from var(--color-text) l c h / 55%);
   }
@@ -219,8 +219,8 @@
   .cta-row {
     display: flex;
     flex-wrap: wrap;
-    gap: 16px;
-    margin-top: 40px;
+    gap: 1rem;
+    margin-top: 2.5rem;
   }
 
   .watch-wrap {
@@ -231,22 +231,22 @@
   .watch {
     position: relative;
     aspect-ratio: 1 / 1;
-    width: 288px;
+    width: 18rem;
     border-radius: 50%;
     border: 1px solid oklch(from var(--color-text) l c h / 12%);
     background: var(--color-background);
     box-shadow:
-      0 0 0 10px oklch(from var(--color-text) l c h / 6%),
-      0 0 80px oklch(from var(--color-accent) l c h / 15%);
+      0 0 0 0.625rem oklch(from var(--color-text) l c h / 6%),
+      0 0 5rem oklch(from var(--color-accent) l c h / 15%);
 
     @media (min-width: 768px) {
-      width: 320px;
+      width: 20rem;
     }
   }
 
   .ticks {
     position: absolute;
-    inset: 8px;
+    inset: 0.5rem;
     border-radius: 50%;
     background: repeating-conic-gradient(
       oklch(from var(--color-text) l c h / 30%) 0deg 0.6deg,
@@ -262,9 +262,9 @@
     place-items: center;
 
     span {
-      margin-top: 96px;
+      margin-top: 6rem;
       font-family: var(--font-mono);
-      font-size: 10px;
+      font-size: 0.5625rem;
       letter-spacing: 0.4em;
       color: oklch(from var(--color-text) l c h / 40%);
     }
@@ -295,8 +295,8 @@
     position: absolute;
     top: 50%;
     left: 50%;
-    width: 12px;
-    height: 12px;
+    width: 0.75rem;
+    height: 0.75rem;
     translate: -50% -50%;
     border-radius: 50%;
     border: 2px solid var(--color-accent);
@@ -313,7 +313,7 @@
     display: grid;
     grid-template-columns: 1fr;
     gap: 1px;
-    max-width: 1152px;
+    max-width: 72rem;
     margin: 0 auto;
     background: oklch(from var(--color-text) l c h / 10%);
 
@@ -323,7 +323,7 @@
   }
 
   article {
-    padding: 32px;
+    padding: 2rem;
     background: var(--color-background);
     transition: background-color 0.15s ease;
 
@@ -332,15 +332,15 @@
     }
 
     h3 {
-      margin: 12px 0 0;
+      margin: 0.75rem 0 0;
       font-family: var(--font-display);
-      font-size: 1.5rem;
+      font-size: 1.3125rem;
       font-weight: 400;
     }
 
     .desc {
-      margin: 12px 0 0;
-      font-size: 0.75rem;
+      margin: 0.75rem 0 0;
+      font-size: 0.625rem;
       line-height: 1.6;
       color: oklch(from var(--color-text) l c h / 55%);
     }
@@ -349,7 +349,7 @@
   .num {
     margin: 0;
     font-family: var(--font-mono);
-    font-size: 0.75rem;
+    font-size: 0.625rem;
     color: var(--color-accent);
   }
 
@@ -357,16 +357,16 @@
     position: relative;
     z-index: 1;
     border-top: 1px solid oklch(from var(--color-text) l c h / 10%);
-    padding: 24px;
+    padding: 1.5rem;
 
     @media (min-width: 768px) {
-      padding: 24px 48px;
+      padding: 1.5rem 3rem;
     }
 
     p {
       margin: 0;
       font-family: var(--font-mono);
-      font-size: 10px;
+      font-size: 0.5625rem;
       letter-spacing: 0.1em;
       color: oklch(from var(--color-text) l c h / 40%);
     }

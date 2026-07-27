@@ -50,9 +50,9 @@
     color: var(--color-text);
     background: var(--color-background);
     border-radius: var(--border-radius);
-    width: min(480px, calc(100vw - 32px));
+    width: min(30rem, calc(100vw - 2rem));
     opacity: 0;
-    transform: translateY(12px) scale(0.98);
+    transform: translateY(0.75rem) scale(0.98);
     transition:
       opacity 0.2s ease,
       transform var(--spring-transition),
@@ -64,7 +64,7 @@
       transform: none;
       @starting-style {
         opacity: 0;
-        transform: translateY(12px) scale(0.98);
+        transform: translateY(0.75rem) scale(0.98);
       }
     }
     &::backdrop {
@@ -75,11 +75,11 @@
     margin: 0 0 0 auto;
     height: 100svh;
     max-height: 100svh;
-    width: min(420px, 90vw);
+    width: min(26.25rem, 90vw);
     border-radius: 0;
     display: flex;
     flex-direction: column;
-    transform: translateX(24px);
+    transform: translateX(1.5rem);
     &:not([open]) {
       display: none;
     }
@@ -87,7 +87,7 @@
       transform: none;
       @starting-style {
         opacity: 0;
-        transform: translateX(24px);
+        transform: translateX(1.5rem);
       }
     }
     /* header stays put, body scrolls independently — needed once content can exceed the viewport */
@@ -101,10 +101,10 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 16px 16px 0;
+    padding: 1rem 1rem 0;
     h2 {
       margin: 0;
-      font-size: 2rem;
+      font-size: 1.75rem;
     }
   }
   .close {
@@ -113,13 +113,13 @@
     background: transparent;
     cursor: pointer;
     color: oklch(from var(--color-text) l c h / 55%);
-    padding: 4px;
-    border-radius: 6px;
+    padding: 0.25rem;
+    border-radius: 0.375rem;
     &:hover {
       background: oklch(from var(--color-text) l c h / 8%);
     }
   }
   .body {
-    padding: 16px;
+    padding: 1rem;
   }
 </style>

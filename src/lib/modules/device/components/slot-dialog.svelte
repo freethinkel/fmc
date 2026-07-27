@@ -37,14 +37,14 @@
 
 <style>
   .desc {
-    margin: 0 0 16px;
-    font-size: 0.875rem;
+    margin: 0 0 1rem;
+    font-size: 0.75rem;
     color: oklch(from var(--color-text) l c h / 55%);
   }
   .dials {
     display: flex;
-    gap: 16px;
+    gap: 1rem;
     overflow-x: auto;
-    padding: 10px 0;
+    padding: 0.625rem 0;
   }
 </style>

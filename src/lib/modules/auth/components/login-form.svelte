@@ -51,12 +51,12 @@
   form {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 0.75rem;
   }
   .divider {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 0.5rem;
 
     &::before,
     &::after {
@@ -67,19 +67,19 @@
     }
 
     span {
-      font-size: 0.75rem;
+      font-size: 0.625rem;
       color: oklch(from var(--color-text) l c h / 55%);
     }
   }
   .error {
     margin: 0;
-    font-size: 0.875rem;
+    font-size: 0.75rem;
     color: var(--color-error);
   }
   .link {
     margin: 0;
     text-align: center;
-    font-size: 0.875rem;
+    font-size: 0.75rem;
     color: oklch(from var(--color-text) l c h / 55%);
 
     a {

@@ -45,10 +45,10 @@
   }
   .menu {
     position: absolute;
-    top: calc(100% + 6px);
+    top: calc(100% + 0.375rem);
     z-index: 50;
-    min-width: 180px;
-    padding: 4px;
+    min-width: 11.25rem;
+    padding: 0.25rem;
     display: flex;
     flex-direction: column;
     border-radius: var(--border-radius);

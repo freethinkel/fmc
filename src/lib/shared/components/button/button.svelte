@@ -33,7 +33,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
+    gap: 0.5rem;
     border: none;
     cursor: pointer;
     font: inherit;
@@ -57,13 +57,13 @@
     }
   }
   .size__large {
-    height: 40px;
-    padding: 0 16px;
+    height: 2.5rem;
+    padding: 0 1rem;
   }
   .size__default {
-    height: 30px;
-    padding: 0 10px;
-    font-size: 0.85rem;
+    height: 1.875rem;
+    padding: 0 0.625rem;
+    font-size: 0.75rem;
   }
   .kind__primary {
     background-color: var(--color-accent);

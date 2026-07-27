@@ -31,14 +31,14 @@
   .panel {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 1rem;
     width: 100%;
-    max-width: 380px;
+    max-width: 23.75rem;
   }
   h1 {
     margin: 0;
     text-align: center;
     font-family: var(--font-display);
-    font-size: 1.5rem;
+    font-size: 1.3125rem;
   }
 </style>

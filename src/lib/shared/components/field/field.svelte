@@ -23,18 +23,18 @@
   .field {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 0.375rem;
   }
   .label {
-    font-size: 0.875rem;
+    font-size: 0.75rem;
     font-weight: 500;
   }
   .error {
-    font-size: 0.75rem;
+    font-size: 0.625rem;
     color: var(--color-error);
   }
   .hint {
-    font-size: 0.75rem;
+    font-size: 0.625rem;
     color: oklch(from var(--color-text) l c h / 55%);
   }
 </style>

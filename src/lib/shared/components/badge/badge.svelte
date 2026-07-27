@@ -12,9 +12,9 @@
   .badge {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-    padding: 2px 10px;
-    font-size: 0.75rem;
+    gap: 0.25rem;
+    padding: 0.125rem 0.625rem;
+    font-size: 0.625rem;
     font-weight: 500;
     border-radius: calc(var(--border-radius) / 2);
     color: var(--color-accent);

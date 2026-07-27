@@ -16,15 +16,15 @@
   .item {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 0.5rem;
     border: none;
     background: transparent;
     font: inherit;
-    font-size: 0.875rem;
+    font-size: 0.75rem;
     color: var(--color-text);
     cursor: pointer;
-    padding: 8px 10px;
-    border-radius: calc(var(--border-radius) - 4px);
+    padding: 0.5rem 0.625rem;
+    border-radius: calc(var(--border-radius) - 0.25rem);
     text-align: start;
 
     &:hover {

@@ -64,9 +64,9 @@
   header {
     display: flex;
     align-items: center;
-    gap: 24px;
-    height: 56px;
-    padding: 0 16px;
+    gap: 1.5rem;
+    height: 3.5rem;
+    padding: 0 1rem;
     border-bottom: 1px solid oklch(from var(--color-text) l c h / 10%);
   }
   .logo {
@@ -77,7 +77,7 @@
   }
   nav {
     display: flex;
-    gap: 4px;
+    gap: 0.25rem;
 
     a,
     button {
@@ -86,8 +86,8 @@
       cursor: pointer;
       font: inherit;
       text-decoration: none;
-      font-size: 0.9rem;
-      padding: 6px 12px;
+      font-size: 0.8125rem;
+      padding: 0.375rem 0.75rem;
       border-radius: calc(var(--border-radius) / 1.5);
       color: oklch(from var(--color-text) l c h / 60%);
 
@@ -107,25 +107,25 @@
   }
   .dot {
     position: absolute;
-    top: 5px;
-    inset-inline-end: 7px;
-    width: 6px;
-    height: 6px;
+    top: 0.3125rem;
+    inset-inline-end: 0.4375rem;
+    width: 0.375rem;
+    height: 0.375rem;
     border-radius: 50%;
     background: var(--color-accent);
   }
   .user {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 0.75rem;
     margin-inline-start: auto;
   }
   .help-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 32px;
-    height: 32px;
+    width: 2rem;
+    height: 2rem;
     border-radius: 50%;
     color: oklch(from var(--color-text) l c h / 55%);
 
@@ -142,7 +142,7 @@
     display: inline-flex;
   }
   .signin {
-    font-size: 0.9rem;
+    font-size: 0.8125rem;
     color: var(--color-accent);
     text-decoration: none;
   }

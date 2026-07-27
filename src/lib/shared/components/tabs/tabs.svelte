@@ -25,8 +25,8 @@
 <style>
   .tabs {
     display: flex;
-    gap: 4px;
-    padding: 4px;
+    gap: 0.25rem;
+    padding: 0.25rem;
     border-radius: var(--border-radius);
     background: oklch(from var(--color-text) l c h / 6%);
     width: fit-content;
@@ -34,10 +34,10 @@
   button {
     border: none;
     font: inherit;
-    font-size: 0.875rem;
+    font-size: 0.75rem;
     cursor: pointer;
-    padding: 6px 14px;
-    border-radius: calc(var(--border-radius) - 4px);
+    padding: 0.375rem 0.875rem;
+    border-radius: calc(var(--border-radius) - 0.25rem);
     background: transparent;
     color: oklch(from var(--color-text) l c h / 60%);
     transition: background-color 0.15s ease;

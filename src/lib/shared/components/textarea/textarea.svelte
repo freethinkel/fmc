@@ -14,7 +14,7 @@
 <style>
   textarea {
     width: 100%;
-    padding: 10px 12px;
+    padding: 0.625rem 0.75rem;
     font: inherit;
     color: var(--color-text);
     background: oklch(from var(--color-text) l c h / 5%);

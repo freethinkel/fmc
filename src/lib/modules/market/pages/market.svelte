@@ -98,9 +98,9 @@
     <main class="grid">
       {#each Array(8) as _, i (i)}
         <div class="skeleton-card">
-          <Skeleton height="140px" />
-          <Skeleton height="14px" width="70%" />
-          <Skeleton height="12px" width="40%" />
+          <Skeleton height="8.75rem" />
+          <Skeleton height="0.875rem" width="70%" />
+          <Skeleton height="0.75rem" width="40%" />
         </div>
       {/each}
     </main>
@@ -135,47 +135,47 @@
   }
   .error {
     margin: 0;
-    padding: 12px 16px 0;
-    font-size: 0.875rem;
+    padding: 0.75rem 1rem 0;
+    font-size: 0.75rem;
     color: var(--color-error);
   }
   .toolbar {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 12px;
-    padding: 12px 16px;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
     border-bottom: 1px solid oklch(from var(--color-text) l c h / 10%);
   }
   .search {
     position: relative;
-    width: 220px;
+    width: 13.75rem;
     margin-inline-start: auto;
 
     :global(svg) {
       position: absolute;
       top: 50%;
-      left: 10px;
+      left: 0.625rem;
       transform: translateY(-50%);
       color: oklch(from var(--color-text) l c h / 55%);
       pointer-events: none;
     }
     :global(input) {
-      padding-inline-start: 34px;
+      padding-inline-start: 2.125rem;
     }
   }
   .sort {
-    width: 130px;
+    width: 8.125rem;
   }
   main {
     overflow-y: auto;
   }
   .grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(11.875rem, 1fr));
     align-items: start;
-    gap: 16px;
-    padding: 16px;
+    gap: 1rem;
+    padding: 1rem;
 
     & > :global(*) {
       min-height: auto;
@@ -185,12 +185,12 @@
   .skeleton-card {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 0.5rem;
   }
   .empty {
-    padding: 64px 0;
+    padding: 4rem 0;
     text-align: center;
-    font-size: 0.875rem;
+    font-size: 0.75rem;
     color: oklch(from var(--color-text) l c h / 55%);
   }
   .empty.full {

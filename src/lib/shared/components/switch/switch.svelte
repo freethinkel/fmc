@@ -24,17 +24,17 @@
     height: 0;
   }
   .switch {
-    width: 40px;
-    height: 24px;
-    padding: 2px;
-    border-radius: 12px;
+    width: 2.5rem;
+    height: 1.5rem;
+    padding: 0.125rem;
+    border-radius: 0.75rem;
     background: oklch(from var(--color-text) l c h / 15%);
     transition: background-color 0.2s ease;
   }
   .thumb {
     display: block;
-    width: 20px;
-    height: 20px;
+    width: 1.25rem;
+    height: 1.25rem;
     border-radius: 50%;
     background: oklch(1 0 0);
     transition: transform var(--spring-transition);
@@ -42,7 +42,7 @@
   input:checked + .switch {
     background: var(--color-accent);
     .thumb {
-      transform: translateX(16px);
+      transform: translateX(1rem);
     }
   }
   input:disabled + .switch {

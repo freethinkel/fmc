@@ -6,13 +6,15 @@
      The brand yellow is built for the dark background — on the light one it sits at 1.4:1
      against --color-background, so accent text and the light-on-accent primary button are
      both unreadable. Light mode gets it darkened to 4.5:1 (AA); dark mode keeps the original. */
-  font-size: 14px;
+  /* The one scale knob: every size in the app is `rem`, so this multiplies the whole UI.
+     It is the sizing grid, not the text size — body text sits at 0.875rem (global.css). */
+  font-size: 16px;
   --color-accent: oklch(from #ffc700 0.54 c h);
   --color-text: #1c1c1c;
   --color-background: #f2f2f2;
   --color-error: #d71921;
 
-  --border-radius: 8px;
+  --border-radius: 0.5rem;
 
   --font-family: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --font-display: "Instrument Serif", Georgia, serif;
@@ -135,8 +137,10 @@
   }
 }
 
+/* Touch: one notch up, so body text lands on 16px. Boxes grow with it — bigger tap
+   targets are the point, and only this line has to change to retune the whole phone UI. */
 @media (max-width: 768px) {
   :root {
-    font-size: 16px;
+    font-size: 18px;
   }
 }

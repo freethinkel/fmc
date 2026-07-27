@@ -99,8 +99,8 @@
   }
   .error {
     margin: 0;
-    padding: 12px 16px 0;
-    font-size: 0.875rem;
+    padding: 0.75rem 1rem 0;
+    font-size: 0.75rem;
     color: var(--color-error);
   }
   main {
@@ -109,15 +109,15 @@
   }
   .grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
     align-items: start;
-    gap: 16px;
-    padding: 16px;
+    gap: 1rem;
+    padding: 1rem;
   }
   .content {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 0.5rem;
     height: 100%;
   }
   .preview {
@@ -142,27 +142,27 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
+    gap: 0.5rem;
   }
   .name {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 0.875rem;
+    font-size: 0.75rem;
     font-weight: 500;
   }
   .actions {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 0.25rem;
     margin-top: auto;
   }
   .stats {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-    font-size: 0.75rem;
+    gap: 0.25rem;
+    font-size: 0.625rem;
     color: oklch(from var(--color-text) l c h / 55%);
   }
   .buttons {
@@ -175,9 +175,9 @@
   }
   .empty {
     grid-column: 1 / -1;
-    padding: 64px 0;
+    padding: 4rem 0;
     text-align: center;
-    font-size: 0.875rem;
+    font-size: 0.75rem;
     color: oklch(from var(--color-text) l c h / 55%);
   }
 </style>

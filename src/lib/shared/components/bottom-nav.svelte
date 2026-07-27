@@ -42,7 +42,7 @@
     bottom: 0;
     z-index: 50;
     display: flex;
-    height: calc(56px + env(safe-area-inset-bottom));
+    height: calc(3.5rem + env(safe-area-inset-bottom));
     padding-bottom: env(safe-area-inset-bottom);
     background: var(--color-background);
     border-top: 1px solid oklch(from var(--color-text) l c h / 10%);
@@ -55,8 +55,8 @@
     position: absolute;
     top: -1px;
     inset-inline-end: -3px;
-    width: 6px;
-    height: 6px;
+    width: 0.375rem;
+    height: 0.375rem;
     border-radius: 50%;
     background: var(--color-accent);
   }
@@ -79,8 +79,8 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 2px;
-    font-size: 0.7rem;
+    gap: 0.125rem;
+    font-size: 0.625rem;
     text-decoration: none;
     color: oklch(from var(--color-text) l c h / 50%);
 

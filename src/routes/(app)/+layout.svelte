@@ -26,7 +26,7 @@
   @media (max-width: 767px) {
     main {
       /* keep content clear of the fixed bottom tab bar */
-      padding-bottom: calc(56px + env(safe-area-inset-bottom));
+      padding-bottom: calc(3.5rem + env(safe-area-inset-bottom));
     }
   }
 </style>

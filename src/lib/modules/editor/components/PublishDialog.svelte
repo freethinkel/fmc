@@ -57,19 +57,19 @@
 
 <style>
   .desc {
-    margin: 0 0 12px;
-    font-size: 0.875rem;
+    margin: 0 0 0.75rem;
+    font-size: 0.75rem;
     color: oklch(from var(--color-text) l c h / 55%);
   }
   .fields {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 0.75rem;
   }
   .footer {
     display: flex;
     justify-content: flex-end;
-    gap: 8px;
-    margin-top: 16px;
+    gap: 0.5rem;
+    margin-top: 1rem;
   }
 </style>

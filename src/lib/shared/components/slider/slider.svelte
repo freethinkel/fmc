@@ -54,13 +54,13 @@
     display: flex;
     flex: 1;
     align-items: center;
-    gap: 10px;
+    gap: 0.625rem;
     min-width: 0;
   }
   input {
     flex: 1;
     min-width: 0;
-    height: 22px;
+    height: 1.375rem;
     margin: 0;
     background: transparent;
     appearance: none;
@@ -76,19 +76,19 @@
   }
   /* track: accent fill up to the value, or whatever `track` painted instead */
   input::-webkit-slider-runnable-track {
-    height: 4px;
+    height: 0.25rem;
     border-radius: 999px;
     background: var(--rail);
   }
   input::-moz-range-track {
-    height: 4px;
+    height: 0.25rem;
     border-radius: 999px;
     background: var(--rail);
   }
   input::-webkit-slider-thumb {
     appearance: none;
-    width: 18px;
-    height: 18px;
+    width: 1.125rem;
+    height: 1.125rem;
     margin-top: -7px; /* centres the thumb on the 4px track */
     border: none;
     border-radius: 50%;
@@ -97,8 +97,8 @@
     transition: transform var(--spring-transition, 0.15s ease);
   }
   input::-moz-range-thumb {
-    width: 18px;
-    height: 18px;
+    width: 1.125rem;
+    height: 1.125rem;
     border: none;
     border-radius: 50%;
     background: var(--color-background);
@@ -127,7 +127,7 @@
   .readout {
     flex-shrink: 0;
     width: 4.5ch;
-    font-size: 0.75rem;
+    font-size: 0.625rem;
     text-align: end;
     color: oklch(from var(--color-text) l c h / 55%);
     font-variant-numeric: tabular-nums;

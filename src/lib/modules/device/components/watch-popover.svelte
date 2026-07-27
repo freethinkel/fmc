@@ -131,79 +131,79 @@
   .popover {
     position: absolute;
     z-index: 50;
-    width: min(380px, calc(100vw - 24px));
-    max-height: min(70vh, 480px);
+    width: min(23.75rem, calc(100vw - 1.5rem));
+    max-height: min(70vh, 30rem);
     overflow-y: auto;
-    padding: 16px;
+    padding: 1rem;
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: 1.25rem;
     border-radius: var(--border-radius);
     background: var(--color-background);
     border: 1px solid oklch(from var(--color-text) l c h / 10%);
     box-shadow: 0 8px 24px oklch(0 0 0 / 12%);
   }
   .placement__bottom {
-    top: calc(100% + 6px);
+    top: calc(100% + 0.375rem);
     inset-inline-start: 0;
   }
   .placement__top {
-    bottom: calc(100% + 6px);
-    inset-inline-end: 4px;
+    bottom: calc(100% + 0.375rem);
+    inset-inline-end: 0.25rem;
   }
   .section {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 0.75rem;
   }
   .header {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 0.25rem;
   }
   .title {
     margin: 0;
-    font-size: 1.4rem;
+    font-size: 1.25rem;
     font-weight: 600;
   }
   .desc {
     margin: 0;
-    font-size: 0.875rem;
+    font-size: 0.75rem;
     color: oklch(from var(--color-text) l c h / 55%);
   }
   .row {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 12px;
+    gap: 0.75rem;
   }
   .status {
-    font-size: 0.75rem;
+    font-size: 0.625rem;
     color: oklch(from var(--color-text) l c h / 55%);
   }
   .info {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    font-size: 0.875rem;
+    gap: 0.5rem;
+    font-size: 0.75rem;
 
     p {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 0.5rem;
       margin: 0;
     }
   }
   .badges {
     display: flex;
-    gap: 12px;
+    gap: 0.75rem;
     /* six 64px dials never fit the 380px popover — scroll them sideways rather than wrap into
        a block that pushes the panel past its max-height */
     overflow-x: auto;
-    padding-bottom: 4px;
+    padding-bottom: 0.25rem;
   }
   .none {
-    font-size: 0.75rem;
+    font-size: 0.625rem;
     color: oklch(from var(--color-text) l c h / 55%);
   }
 </style>

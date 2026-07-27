@@ -17,12 +17,12 @@
 <style>
   select {
     width: 100%;
-    height: 40px;
-    padding: 0 32px 0 12px;
+    height: 2.5rem;
+    padding: 0 2rem 0 0.75rem;
     font: inherit;
     color: var(--color-text);
     background:
-      no-repeat right 10px center / 14px
+      no-repeat right 0.625rem center / 0.875rem
         url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="gray" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>'),
       oklch(from var(--color-text) l c h / 5%);
     border: 1px solid transparent;

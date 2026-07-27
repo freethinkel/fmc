@@ -17,6 +17,8 @@ body {
   background: var(--color-background);
   color: var(--color-text);
   font-family: var(--font-family);
+  /* type runs a notch below the 1rem sizing grid — see tokens.css */
+  font-size: 0.875rem;
 }
 
 h1,

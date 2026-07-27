@@ -3,7 +3,7 @@
     width?: string;
     height?: string;
   }
-  const { width = "100%", height = "16px" }: Props = $props();
+  const { width = "100%", height = "1rem" }: Props = $props();
 </script>
 
 <div class="skeleton" style:width style:height></div>

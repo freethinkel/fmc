@@ -86,7 +86,7 @@
   .content {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 0.25rem;
     height: 100%;
   }
   .preview {
@@ -99,7 +99,7 @@
     border: none;
     overflow: hidden;
     cursor: pointer;
-    border-radius: 10000px;
+    border-radius: 625rem;
     background: oklch(0 0 0);
 
     img {
@@ -113,7 +113,7 @@
     display: flex;
     align-items: baseline;
     justify-content: space-between;
-    gap: 8px;
+    gap: 0.5rem;
   }
   .name {
     margin: 0;
@@ -121,10 +121,10 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 1.25rem;
+    font-size: 1.125rem;
   }
   .author {
-    font-size: 0.75rem;
+    font-size: 0.625rem;
     color: oklch(from var(--color-text) l c h / 55%);
   }
   .desc {
@@ -134,13 +134,13 @@
     line-clamp: 1;
     -webkit-box-orient: vertical;
     overflow: hidden;
-    font-size: 0.75rem;
+    font-size: 0.625rem;
     color: oklch(from var(--color-text) l c h / 55%);
   }
   .actions {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 0.25rem;
     margin-top: auto;
   }
   .action-slot {
@@ -150,18 +150,18 @@
     margin-inline-start: auto;
   }
   .count {
-    font-size: 0.75rem;
+    font-size: 0.625rem;
   }
   .link-action {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
-    height: 30px;
-    padding: 0 10px;
+    gap: 0.5rem;
+    height: 1.875rem;
+    padding: 0 0.625rem;
     border-radius: var(--border-radius);
     color: var(--color-text);
     text-decoration: none;
-    font-size: 0.85rem;
+    font-size: 0.75rem;
     transition: background-color 0.15s ease;
 
     &:hover {

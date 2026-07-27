@@ -29,7 +29,7 @@
 
 <style>
   .loader {
-    --size: 20px;
+    --size: 1.25rem;
     height: var(--size);
     width: var(--size);
     mask-image: conic-gradient(from 20deg, transparent, white);

@@ -54,8 +54,8 @@
 <style>
   input {
     width: 100%;
-    height: 40px;
-    padding: 0 12px;
+    height: 2.5rem;
+    padding: 0 0.75rem;
     font: inherit;
     color: var(--color-text);
     background: oklch(from var(--color-text) l c h / 5%);

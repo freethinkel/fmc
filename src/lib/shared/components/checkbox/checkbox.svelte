@@ -28,9 +28,9 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 20px;
-    height: 20px;
-    border-radius: 6px;
+    width: 1.25rem;
+    height: 1.25rem;
+    border-radius: 0.375rem;
     border: 1.5px solid oklch(from var(--color-text) l c h / 25%);
     color: transparent;
     transition: all 0.15s ease;

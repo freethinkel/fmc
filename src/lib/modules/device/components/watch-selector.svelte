@@ -38,13 +38,13 @@
 
 <style>
   .watch {
-    --size: 60px;
+    --size: 3.75rem;
     flex: 0 0 auto;
     width: var(--size);
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 6px;
+    gap: 0.375rem;
     padding: 0;
     border: none;
     background: none;
@@ -71,13 +71,13 @@
     }
   }
   .initial {
-    font-size: 1.25rem;
+    font-size: 1.125rem;
     font-weight: 600;
     color: oklch(from var(--color-text) l c h / 45%);
   }
   .label {
     width: 100%;
-    font-size: 0.7rem;
+    font-size: 0.625rem;
     line-height: 1.3;
     color: oklch(from var(--color-text) l c h / 55%);
     /* names run long ("Activity Mood"); keep every dial the same width and clip instead */
