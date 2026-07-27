@@ -1,491 +1,26 @@
-// Watch face emulator: walk the face.json tree and render onto a 466×466 canvas.
-// Tag/id semantics reversed from a corpus of 100 faces (see docs/cmf-protocol.md §9.6a).
+// Watch face emulator: walk the face tree and render onto a 466×466 canvas.
+// Tag semantics reversed from a corpus of 100 faces (see docs/cmf-protocol.md §9.6a);
+// what each data source feeds lives in sources.ts, ring geometry in arc.ts.
 import { TAG, unhex, type Face, type FaceNode, type Resource } from "./wf";
-
-// Known data sources (meta byte 9). "?" = guess, not confirmed.
-// 0x1c/0x24/0x48/0x76/0x8b — labels corrected against Function's widget-slot menu (companion-app
-// icons: flame/calories, standing figure/stands, lightning/battery, road/distance, cloud-sun/aqi).
-// idValue() feeds each of them from the matching sim field; the unit of 0x1c/0x76/0x8b is a
-// guess (no corpus face binds a live widget to them), tweak per-face via an override.
-export const ID_LABELS: Record<number, string> = {
-  0x01: "hour",
-  0x04: "minute?",
-  0x07: "hour (24h)",
-  0x08: "hour tens",
-  0x09: "hour ones",
-  0x0a: "hour (hand)",
-  0x0b: "minute",
-  0x0c: "min tens",
-  0x0d: "min ones",
-  0x0e: "minute (hand)",
-  0x0f: "second (smooth hand)",
-  0x12: "second (smooth hand)",
-  0x13: "AM/PM",
-  0x16: "month",
-  0x17: "day of month",
-  0x18: "weekday",
-  0x19: "steps",
-  0x1a: "heart rate",
-  0x1c: "calories (slot)",
-  0x1e: "calories",
-  0x22: "distance km int",
-  0x23: "distance mi int",
-  0x24: "battery",
-  0x26: "steps (slot)",
-  0x30: "battery",
-  0x36: "temperature 2?",
-  0x48: "stand hours",
-  0x49: "steps (slot)",
-  0x5f: "temperature",
-  0x6a: "steps (slot)?",
-  0x6c: "steps (slot)?",
-  0x71: "second (ticking)",
-  0x72: "second (ticking)",
-  0x73: "24h/metric flag",
-  0x74: "distance km frac",
-  0x75: "distance mi frac",
-  0x76: "distance km (slot)",
-  0x8b: "aqi",
-};
-
-// Value-indexed frame sets: the firmware picks images[value % count], so frame order is part
-// of the format. What each index MUST hold, for the sources where the value isn't the frame's
-// own meaning (see drawWidget's "pick by value" branch) — shown next to the thumbnails in
-// PropsPanel so a wrong order is visible instead of only showing up on the watch.
-export const FRAME_LABELS: Record<number, string[]> = {
-  0x13: ["AM", "PM"],
-  0x16: ["Dec", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov"],
-  0x18: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
-};
-
-type SimValue = number | "";
-export interface Sim {
-  live: boolean;
-  time: number;
-  is24h: boolean;
-  steps: SimValue;
-  hr: SimValue;
-  battery: SimValue;
-  calories: SimValue;
-  temp: SimValue;
-  distance: SimValue;
-  aqi: SimValue;
-  stands: SimValue; // hours stood (0x48) — see ID_LABELS/idValue note, corrected from "calories"
-  stepsGoal: SimValue;
-  calGoal: SimValue;
-  standsGoal: SimValue; // ring denominator for 0x48, the watch's default stand goal is 12 h
-  overrides: Record<number, number | string>;
-  // preview override for accent-flagged widgets (see metaInfo's `accent` field / "Accent
-  // color" in docs/cmf-protocol.md); null = draw the baked default. Applied async in
-  // editor.model.ts's applyAccent().
-  accentColor: string | null;
-  // widget-slot (0x85) imgs[0] is an on-watch "tap to configure" placeholder — the real
-  // device only draws it in its own edit mode, never during normal time-telling, so the
-  // live sim skips it by default. This is an editor-only preview toggle, not real data.
-  showSlotPlaceholders: boolean;
-}
-
-export interface TimeParts {
-  h: number;
-  m: number;
-  s: number;
-  day: number;
-  wd: number;
-  mon: number;
-}
-
-export interface Hit {
-  node: FaceNode;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-}
-
-interface Size {
-  w: number;
-  h: number;
-}
-
-type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
-
-export function defaultSim(): Sim {
-  return {
-    live: true,
-    time: Date.now(),
-    is24h: true,
-    steps: 6789,
-    hr: 72,
-    battery: 80,
-    calories: 321,
-    distance: 4520,
-    temp: 25,
-    aqi: 42,
-    stands: 5,
-    stepsGoal: 10000,
-    calGoal: 500,
-    standsGoal: 12,
-    overrides: {}, // id -> number, manual override of any source
-    accentColor: null,
-    showSlotPlaceholders: false,
-  };
-}
-
-export function timeParts(sim: Sim): TimeParts {
-  const d = sim.live ? new Date() : new Date(sim.time);
-
-  return {
-    h: d.getHours(),
-    m: d.getMinutes(),
-    s: d.getSeconds() + d.getMilliseconds() / 1000,
-    day: d.getDate(),
-    wd: d.getDay(),
-    mon: d.getMonth() + 1,
-  };
-}
-
-const h12 = (h: number) => ((h + 11) % 12) + 1;
-
-// idValue: value of data source id for the simulation
-export function idValue(id: number, sim: Sim, t: TimeParts): number {
-  if (sim.overrides[id] !== undefined && sim.overrides[id] !== "") return Number(sim.overrides[id]);
-  const dh = sim.is24h ? t.h : h12(t.h);
-
-  switch (id) {
-    case 0x01:
-      return dh;
-    case 0x04:
-      return t.m;
-    case 0x07:
-      return t.h;
-    case 0x08:
-      return Math.floor(dh / 10);
-    case 0x09:
-      return dh % 10;
-    case 0x0a:
-      return (t.h % 12) * 5 + t.m / 12;
-    case 0x0b:
-      return t.m;
-    case 0x0c:
-      return Math.floor(t.m / 10);
-    case 0x0d:
-      return t.m % 10;
-    case 0x0e:
-      return t.m + t.s / 60;
-    // Second sources tick at 1 Hz here — HANDS on 0x0f/0x12 are the one exception, they
-    // sweep smoothly (device-verified: Elegant_Sweep's 0x12 hand is smooth, Sundial's 0x72
-    // hand ticks, rings tick on every id) — drawWidget's hand branch un-quantizes them.
-    case 0x0f:
-    case 0x12:
-    case 0x71:
-    case 0x72:
-      return Math.floor(t.s);
-    case 0x13:
-      return t.h < 12 ? 0 : 1;
-    case 0x16:
-      return t.mon;
-    case 0x17:
-      return t.day;
-    case 0x18:
-      // 0=Sunday: stock Combo/Elaborate_2 weekday sprite lists start at "Sun", so the
-      // firmware's index for this source is plain getDay()
-      return t.wd;
-    case 0x19:
-      return Number(sim.steps);
-    case 0x1a:
-      return Number(sim.hr);
-    case 0x1c:
-    case 0x1e:
-      return Number(sim.calories);
-    case 0x22:
-      return Math.floor(Number(sim.distance) / 1000);
-    case 0x23:
-      return Math.floor(Number(sim.distance) / 1609.34);
-    // 0x48/0x24 corrected against Function's widget-slot menu icons (standing figure/lightning
-    // bolt, not calories/steps) — 0x48 is stand hours, 0x24 is battery.
-    case 0x24:
-      return Number(sim.battery);
-    case 0x26:
-    case 0x49:
-      return Number(sim.steps);
-    case 0x48:
-      return Number(sim.stands);
-    case 0x6a:
-    case 0x6c:
-      return Number(sim.steps); // unlabelled complication-slot metrics
-    case 0x30:
-      return Number(sim.battery);
-    case 0x36:
-    case 0x5f:
-      return Number(sim.temp);
-    case 0x73:
-      return sim.is24h ? 1 : 0;
-    case 0x74:
-      return Math.floor(Number(sim.distance) / 100) % 10;
-    case 0x75:
-      return Math.floor(Number(sim.distance) / 160.934) % 10;
-    // ponytail: slot-menu labels only, unit unverified — km int / plain AQI, override per face
-    case 0x76:
-      return Math.floor(Number(sim.distance) / 1000);
-    case 0x8b:
-      return Number(sim.aqi);
-    default:
-      return 0;
-  }
-}
-
-export function metaInfo(node: FaceNode) {
-  const m = unhex(node.meta || "");
-
-  if (m.length < 14) return { w: 0, h: 0, id: 0, sub: 0, max: 0, accent: false };
-  return {
-    w: m[0] | (m[1] << 8),
-    h: m[2] | (m[3] << 8),
-    id: m[9],
-    sub: m[10],
-    max: m[11] | (m[12] << 8) | (m[13] << 16),
-    // meta[7] (m[7], byte 11 of the struct) === 4 marks this widget's resource(s) as
-    // accent-tintable — confirmed against 7 real-device test cases (Theatre, Digits_time,
-    // Tumbler, Elaborate_2 positive; Trailing, Disc, Vortex negative), including cases where
-    // the accent widget is baked plain white (Dots' hour hand, Large_Number's digits) — this
-    // is a real per-widget capability flag, independent of baked pixel color. Supersedes the
-    // old color-proximity guessing (isAccentSentinel/ACCENT_REFERENCES) entirely — see
-    // docs/cmf-protocol.md "Accent color".
-    accent: m[7] === 4,
-  };
-}
-
-// Visibility conditions (tag 0x02): count × (id u8, op u8, val u24 LE).
-// op 0x01 = show on equality (OR), 0x02 = hide on equality.
-export function parseBind(hexStr?: string) {
-  const v = unhex(hexStr || "");
-
-  if (!v.length) return [];
-  const out: { id: number; op: number; val: number }[] = [];
-
-  for (let k = 0; k < v[0] && 1 + 5 * k + 5 <= v.length; k++) {
-    const e = v.subarray(1 + 5 * k, 6 + 5 * k);
-    let val = e[2] | (e[3] << 8) | (e[4] << 16);
-
-    if (val & 0x800000) val -= 0x1000000;
-    out.push({ id: e[0], op: e[1], val });
-  }
-  return out;
-}
-
-function visible(node: FaceNode, sim: Sim, t: TimeParts): boolean {
-  const bind = node.subs?.find((s) => s.tag === TAG.bind);
-
-  if (!bind) return true;
-  const eq: { id: number; val: number }[] = [],
-    neq: { id: number; val: number }[] = [];
-  const ge: { id: number; val: number }[] = [],
-    le: { id: number; val: number }[] = [];
-
-  for (const e of parseBind(bind.hex)) {
-    // bit 0x80 in op shows up on exclusive variants (0x81) — semantically the same equality.
-    // op 0x03 = "value == no-data marker" (e.g. heart rate 1000), also equality.
-    // op 0x05/0x06 = inclusive range bounds (>=/<=) — seen paired on minute-bucket highlights
-    // (e.g. Digital__281__Metaball's metaball chain, each node lit for its 5-minute window).
-    const op = e.op & 0x7f;
-
-    if (op === 0x01 || op === 0x03) eq.push(e);
-    else if (op === 0x02) neq.push(e);
-    else if (op === 0x05) ge.push(e);
-    else if (op === 0x06) le.push(e);
-  }
-  let ok = true;
-
-  if (eq.length) ok = eq.some((e) => idValue(e.id, sim, t) === e.val);
-  if (ok && neq.length) ok = neq.every((e) => idValue(e.id, sim, t) !== e.val);
-  if (ok && ge.length) ok = ge.every((e) => idValue(e.id, sim, t) >= e.val);
-  if (ok && le.length) ok = le.every((e) => idValue(e.id, sim, t) <= e.val);
-  return ok;
-}
-
-// Arcs 0x5a (procedural, on 0x80) and 0x5b (ring image, on 0x81):
-// min i32 ‖ max i32 ‖ start i16 (0.1°) ‖ end i16 (0.1°) ‖ width u16 ‖ radius u16 (0x5a only).
-// 0° = 3 o'clock, clockwise (LVGL). Reversed from corpus, checked against previews.
-export interface ArcSpec {
-  kind: number;
-  min: number;
-  max: number;
-  start: number;
-  end: number;
-  width: number;
-  radius: number;
-}
-export function parseArcSpec(node: FaceNode): ArcSpec | null {
-  const sp = node.subs?.find((n) => n.tag === 0x5a || n.tag === 0x5b);
-
-  if (!sp) return null;
-  const v = unhex(sp.hex || "");
-
-  if (v.length < 14) return null;
-  const i32 = (o: number) => v[o] | (v[o + 1] << 8) | (v[o + 2] << 16) | (v[o + 3] << 24);
-  const i16 = (o: number) => {
-    const x = v[o] | (v[o + 1] << 8);
-
-    return x & 0x8000 ? x - 0x10000 : x;
-  };
-
-  return {
-    kind: sp.tag,
-    min: i32(0),
-    max: i32(4),
-    start: i16(8) / 10,
-    end: i16(10) / 10,
-    width: v[12] | (v[13] << 8),
-    radius: sp.tag === 0x5a && v.length >= 16 ? v[14] | (v[15] << 8) : 0,
-  };
-}
-
-function sectorImage(
-  ctx: Ctx,
-  b: ImageBitmap | OffscreenCanvas,
-  x: number,
-  y: number,
-  spec: ArcSpec,
-  frac: number,
-  mw = 0,
-  mh = 0,
-) {
-  // meta.w/h is the widget's full circle diameter; the bitmap may be cropped to the arc's
-  // bounding box (Dichotomy's 284x214 half-rings on a 284x284 circle). The sector pivot is
-  // the CIRCLE's center, and a cropped bitmap anchors to the side of the circle its arc
-  // midpoint lies on (top/bottom via cos, left/right via sin — angles are 12-o'clock-relative,
-  // see a0 below). An uncropped (or oversized, e.g. Sport_Mode's 132px-on-128px) bitmap just
-  // centers on the circle. Falls back to bitmap size when meta carries no w/h.
-  const W = mw || b.width,
-    H = mh || b.height;
-  const mid = (((spec.start + spec.end) / 2) * Math.PI) / 180;
-  const bx = x + (b.width >= W ? (W - b.width) / 2 : Math.sin(mid) > 0 ? W - b.width : 0);
-  const by = y + (b.height >= H ? (H - b.height) / 2 : Math.cos(mid) > 0 ? 0 : H - b.height);
-  const cx = x + W / 2,
-    cy = y + H / 2;
-  // ponytail: image-backed arcs (0x5b) start at 12 o'clock, not the 3-o'clock/LVGL convention
-  // documented for procedural arcs (0x5a) near parseArcSpec — measured against Function's
-  // battery ring (id 0x24): our gap centered ~90° clockwise of the baked preview's at start=0.
-  // Only verified on this one ring; revisit if another 0x5b face disagrees.
-  const a0 = ((spec.start - 90) * Math.PI) / 180;
-  const sweep = ((spec.end - spec.start) * Math.PI) / 180;
-
-  ctx.save();
-  if (frac < 0.999 || Math.abs(sweep) < 2 * Math.PI - 0.01) {
-    ctx.beginPath();
-    ctx.moveTo(cx, cy);
-    ctx.arc(cx, cy, Math.hypot(b.width, b.height), a0, a0 + sweep * frac, sweep < 0);
-    ctx.closePath();
-    ctx.clip();
-  }
-  ctx.drawImage(b, bx, by);
-  ctx.restore();
-}
-
-// ring stroke color for imageless progress rings: meta bytes 4-6 are an explicit RGB,
-// gated by byte 7 === 1 (byte 7 === 4 on the plain steps ring means "no explicit color").
-// Confirmed against Combo/SportPulse/ActiveTrio: the same metric id carries the same RGB
-// across all three independent files (id 0x26 -> fb471f, id 0x6c -> e3e1e6).
-function ringRGB(struct: FaceNode): [number, number, number] | null {
-  const m = unhex(struct.meta || "");
-
-  return m.length >= 14 && m[7] === 1 ? [m[4], m[5], m[6]] : null;
-}
-
-// byte 7 !== 1 (no baked RGB) doesn't mean "no color" — it means "follow the device's own
-// accent/theme setting", which isn't in the file at all: confirmed by Combo's plain steps
-// ring baking orange while Activity_Mood's identical-pattern ring bakes blue — two different
-// devices' accent choices, not two different renderers. Route it through sim.accentColor,
-// same as hand/image sentinel recolor, so it stays consistent with the live editor's picker.
-function hexRGB(hex: string | null): [number, number, number] | null {
-  if (!hex) return null;
-  const n = parseInt(hex.slice(1), 16);
-
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
-
-// no ring image resolved (short struct form with no image ref, or undecoded bitmap) — stroke the arc instead
-function drawProceduralArc(
-  ctx: Ctx | null,
-  spec: ArcSpec,
-  x: number,
-  y: number,
-  frac: number,
-  hits: Hit[] | null,
-  node: FaceNode,
-  w = 0,
-  rgb: [number, number, number] | null = null,
-): Size {
-  // radius: meta.w/h (the widget's own diameter) when known, spec.radius (0x5a only)
-  // as an override, 60 as a last-resort guess for older/short structs with w=0
-  const r = spec.radius || (w ? Math.round(w / 2) : 60);
-  const cx = r >= 230 ? 233 : x + r,
-    cy = r >= 230 ? 233 : y + r;
-  // same 12-o'clock-relative start as sectorImage's image-backed arcs (see its own note) —
-  // confirmed on Combo's 3 nested procedural goal rings, whose gaps must all land in the same
-  // spot (upper-left) to look concentric; without the -90 they instead opened to the upper
-  // right and drifted out of alignment with each other ring to ring.
-  const a0 = ((spec.start - 90) * Math.PI) / 180;
-  const sweep = ((spec.end - spec.start) * Math.PI) / 180;
-  // no explicit meta color (byte 7 !== 1, e.g. the plain steps ring) — falls back to a
-  // plain orange rather than white when there's no sim.accentColor either; confirmed
-  // orange on Combo's ungrouped goal ring (Activity_Mood's identical byte pattern baked
-  // blue on its own device — genuinely undecidable from the file, see the test comment).
-  const [cr, cg, cb] = rgb ?? [255, 44, 0];
-  const lw = spec.width || 6;
-  // canvas strokes center on the path — drawing at r would bleed lw/2 past the widget's own
-  // radius (meta.w/2), making the ring visibly bigger than its bounding box. Inset so the
-  // OUTER edge lands on r instead, matching the baked preview's ring size.
-  const ringR = r - lw / 2;
-
-  if (ctx) {
-    ctx.save();
-    ctx.lineWidth = lw;
-    // butt, not round — the baked preview cuts the arc's start/end with a flat radial
-    // edge (visible on Combo's 270°-sweep goal rings), not a rounded stroke cap
-    ctx.lineCap = "butt";
-    ctx.strokeStyle = `rgba(${cr},${cg},${cb},0.03)`;
-    ctx.beginPath();
-    ctx.arc(cx, cy, ringR, a0, a0 + sweep, sweep < 0);
-    ctx.stroke();
-    if (frac > 0.002) {
-      ctx.strokeStyle = `rgb(${cr},${cg},${cb})`;
-      ctx.beginPath();
-      ctx.arc(cx, cy, ringR, a0, a0 + sweep * frac, sweep < 0);
-      ctx.stroke();
-    }
-    ctx.restore();
-    hits?.push({ node, x: cx - r, y: cy - r, w: 2 * r, h: 2 * r });
-  }
-  return { w: 2 * r, h: 2 * r };
-}
-
-function progressFrac(id: number, sim: Sim, t: TimeParts, spec: ArcSpec): number {
-  let v = idValue(id, sim, t);
-
-  if (spec.max <= 100 && v > spec.max) {
-    // goal rings count as percent of the goal (steps/kcal/stands), firmware divides on its own.
-    // Battery (0x24/0x30) is already a percentage — no goal, so it falls through unscaled.
-    const goal = (
-      {
-        0x19: sim.stepsGoal,
-        0x26: sim.stepsGoal,
-        0x49: sim.stepsGoal,
-        0x6a: sim.stepsGoal,
-        0x6c: sim.stepsGoal,
-        0x1c: sim.calGoal,
-        0x1e: sim.calGoal,
-        0x48: sim.standsGoal,
-      } as Record<number, SimValue>
-    )[id];
-
-    if (goal) v = (v / Number(goal)) * 100;
-  }
-  if (spec.max === 3600) v *= 60; // scales in seconds of the hour
-  const d = spec.max - spec.min || 1;
-
-  return Math.max(0, Math.min(1, (v - spec.min) / d));
-}
+import {
+  idValue,
+  isVisible,
+  metaInfo,
+  timeParts,
+  withSlotOverrides,
+  type Sim,
+  type TimeParts,
+} from "./sources";
+import { bmp, ringBmp, type Ctx, type Drawable, type Hit, type Point, type Size } from "./canvas";
+import {
+  collectArcsById,
+  drawProceduralArc,
+  drawSector,
+  hexRGB,
+  parseArcSpec,
+  progressFrac,
+  ringRGB,
+} from "./arc";
 
 export interface Frame {
   x: number;
@@ -500,6 +35,7 @@ export interface Frame {
   track: number;
   node: FaceNode;
 }
+
 export function parseFrame(node: FaceNode): Frame | null {
   const f = node.subs?.find((s) => s.tag === TAG.frame);
 
@@ -522,336 +58,252 @@ export function parseFrame(node: FaceNode): Frame | null {
   };
 }
 
-// accentBitmap (if set — see editor.model.ts's applyAccent) takes priority over the baked bitmap
-const bmp = (res: Resource[], i: number) => res[i]?.accentBitmap ?? res[i]?.bitmap;
+/** Everything a draw pass carries around. `ctx: null` measures without drawing. */
+interface DrawEnv {
+  ctx: Ctx | null;
+  res: Resource[];
+  sim: Sim;
+  t: TimeParts;
+  hits: Hit[] | null;
+  arcs: Map<number, FaceNode>; // screen-wide source id -> progress ring, see digitsOf
+}
 
-// cf=4 (RGB565, no alpha channel — see wf.ts's decodePixels) ring/arc fill images bake their
-// "empty" background as opaque black, which is fine for a genuine full-bleed background image
-// but wrong for a ring meant to sit transparently over other content: confirmed on Dichotomy,
-// where this exact bitmap — drawn as a literal opaque rectangle by sectorImage/the 0x80 bar
-// path — blotted out a "BATT" text label sharing its group, and clipped into the background's
-// own baked "10" hour-marker glyph at the ring's edge. Chroma-key near-black to transparent,
-// lazily once per bitmap (keyed on the bitmap itself, not the resource, so an accent-recolored
-// swap naturally invalidates it). Only cf=4 is touched — cf=5 already carries real alpha.
-const ringMaskCache = new WeakMap<ImageBitmap, OffscreenCanvas>();
+/** Where a widget goes: at `origin` when a group placed it, else its own x/y plus `offset`. */
+interface Place {
+  offset?: Point;
+  origin?: Point | null;
+}
 
-function ringBmp(res: Resource[], i: number): ImageBitmap | OffscreenCanvas | undefined {
-  const b = bmp(res, i);
+/** A widget resolved down to what every draw function needs. */
+interface Target {
+  node: FaceNode;
+  struct: FaceNode;
+  imgs: number[];
+  x: number;
+  y: number;
+}
 
-  if (!b || res[i]?.cf !== 4) return b;
-  let masked = ringMaskCache.get(b);
+const ORIGIN: Point = { x: 0, y: 0 };
 
-  if (!masked) {
-    masked = new OffscreenCanvas(b.width, b.height);
-    const mctx = masked.getContext("2d")!;
+const measure = (env: DrawEnv, node: FaceNode): Size | null =>
+  drawWidget({ ...env, ctx: null, hits: null }, node, { origin: ORIGIN });
 
-    mctx.drawImage(b, 0, 0);
-    const px = mctx.getImageData(0, 0, b.width, b.height);
-    const d = px.data;
-
-    for (let k = 0; k < d.length; k += 4) {
-      if (d[k] < 12 && d[k + 1] < 12 && d[k + 2] < 12) d[k + 3] = 0;
-    }
-    mctx.putImageData(px, 0, 0);
-    ringMaskCache.set(b, masked);
+function blit(env: DrawEnv, w: Target, b: Drawable): Size {
+  if (env.ctx) {
+    env.ctx.drawImage(b, w.x, w.y);
+    env.hits?.push({ node: w.node, x: w.x, y: w.y, w: b.width, h: b.height });
   }
-  return masked;
+  return { w: b.width, h: b.height };
 }
 
-// goal-relative ids (steps/calories "slot" aliases) read as a raw count everywhere, EXCEPT
-// when a NUMBER shares the screen with a progress ring bound to the same id — there it must
-// show that ring's own percent-of-goal (e.g. "80%"), not the raw counter, or it overflows the
-// ring's digit budget (fmt caps it at ~3 digits) and no longer matches the design. The ring and
-// its number aren't nested together (each is positioned independently by x/y), so the lookup
-// is screen-wide, not just among the number's immediate siblings.
-function collectArcsById(nodes: FaceNode[]): Map<number, FaceNode> {
-  const out = new Map<number, FaceNode>();
-  const walk = (n: FaceNode) => {
-    if (n.tag === 0x80 || n.tag === 0x81) {
-      const struct = n.subs?.find((s) => s.tag === TAG.struct);
-      const { id } = struct ? metaInfo(struct) : { id: 0 };
-
-      if (id && !out.has(id)) out.set(id, n);
-    }
-    n.subs?.forEach(walk);
-  };
-
-  nodes.forEach(walk);
-  return out;
-}
-
-// widget-slot (0x85) tiles: each slot's sibling "skin" Groups (per-metric alternates sharing one
-// frame position, e.g. Function's temperature/steps/heart-rate tiles) are gated by a bind
-// condition on a synthetic id — confirmed on the real device: 0x79 + slotIndex (0x5f's own
-// byte 0), compared for equality against the metric's position in that slot's own list (0x5f's
-// activeIdx). Neither side is a real sim data source, so synthesize it as an override before
-// drawing — the existing visible()/parseBind machinery does the rest, unchanged.
-function withSlotOverrides(nodes: FaceNode[], sim: Sim): Sim {
-  const extra: Record<number, number> = {};
-  const walk = (n: FaceNode) => {
-    if (n.tag === 0x85) {
-      const sf = n.subs?.find((s) => s.tag === 0x5f);
-      const v = sf ? unhex(sf.hex || "") : null;
-
-      if (v && v.length >= 3) extra[0x79 + v[0]] = v[2]; // v[0]=slotIndex, v[2]=activeIdx
-    }
-    n.subs?.forEach(walk);
-  };
-
-  nodes.forEach(walk);
-  return Object.keys(extra).length ? { ...sim, overrides: { ...extra, ...sim.overrides } } : sim;
-}
-
-function numberString(
-  node: FaceNode,
-  sim: Sim,
-  t: TimeParts,
-  arcsById: Map<number, FaceNode>,
-): string {
-  const struct = node.subs?.find((s) => s.tag === TAG.struct);
-  const fmt = node.subs?.find((s) => s.tag === TAG.fmt);
-  const { id } = metaInfo(struct!);
-  const f = fmt ? unhex(fmt.hex!)[0] || 0 : 0;
-  const digits = f & 0x1f,
-    pad = f & 0x80;
-  const arcSpec = arcsById.has(id) ? parseArcSpec(arcsById.get(id)!) : null;
-  const value = arcSpec
-    ? Math.round(progressFrac(id, sim, t, arcSpec) * 100)
-    : Math.round(idValue(id, sim, t));
-  let s = String(Math.abs(value));
-
-  if (pad && digits) s = s.padStart(digits, "0");
-  return s;
-}
-
-// measure/draw a single widget. ctx=null — measure only (for group layout).
-// origin: if set, draw at this point (auto-layout), otherwise at the struct's x/y.
-// arcsById: screen-wide id -> progress-ring lookup, see numberString.
-function drawWidget(
-  ctx: Ctx | null,
-  node: FaceNode,
-  res: Resource[],
-  sim: Sim,
-  t: TimeParts,
-  ox: number,
-  oy: number,
-  origin: { x: number; y: number } | null,
-  hits: Hit[] | null,
-  arcsById: Map<number, FaceNode>,
-): Size | null {
+function drawWidget(env: DrawEnv, node: FaceNode, place: Place = {}): Size | null {
   if (node.tag === TAG.preview || node.tag === TAG.name) return null;
-  if (!visible(node, sim, t)) return null;
-
-  if (node.tag === TAG.group) {
-    return drawGroup(ctx, node, res, sim, t, ox, oy, origin, hits, arcsById);
-  }
+  if (!isVisible(node, env.sim, env.t)) return null;
+  if (node.tag === TAG.group) return drawGroup(env, node, place);
 
   const struct = node.subs?.find((s) => s.tag === TAG.struct);
   // progress rings (0x80/0x81) can be procedural — a short struct form carries no image ref at all
-  const isArc = node.tag === 0x80 || node.tag === 0x81;
+  const isRing = node.tag === 0x80 || node.tag === 0x81;
 
-  if (!struct || (!struct.images && !isArc)) return null;
-  const imgs = struct.images ?? [];
-  const x = origin ? origin.x : ox + (struct.x || 0);
-  const y = origin ? origin.y : oy + (struct.y || 0);
+  if (!struct || (!struct.images && !isRing)) return null;
+  const { offset = ORIGIN, origin } = place;
+  const w: Target = {
+    node,
+    struct,
+    imgs: struct.images ?? [],
+    x: origin ? origin.x : offset.x + (struct.x || 0),
+    y: origin ? origin.y : offset.y + (struct.y || 0),
+  };
 
-  if (node.tag === TAG.hand) {
-    const pivot = node.subs!.find((s) => s.tag === TAG.pivot);
-    const b = bmp(res, imgs[0]);
+  if (node.tag === TAG.hand) return drawHand(env, w);
+  if (isDigitStrip(node, w.imgs)) return drawDigits(env, w);
+  if (isRing) return drawRing(env, w);
+  if (node.tag === 0x85) return drawSlotPlaceholder(env, w);
+  return drawPicked(env, w);
+}
 
-    if (!b || !pivot || !ctx) return null;
-    const { id, max } = metaInfo(struct);
-    // hands on 0x0f/0x12 sweep smoothly on the real device (Elegant_Sweep vs Sundial,
-    // verified on hardware) — every other widget/source ticks, see idValue
-    const noOv = sim.overrides[id] === undefined || sim.overrides[id] === "";
-    const v = (id === 0x0f || id === 0x12) && noOv ? t.s : idValue(id, sim, t);
-    const angle = (v / (max || 60)) * 2 * Math.PI;
-    const px0 = pivot.pivotX!,
-      py0 = pivot.pivotY!;
+function drawHand(env: DrawEnv, w: Target): null {
+  const pivot = w.node.subs?.find((s) => s.tag === TAG.pivot);
+  const b = bmp(env.res, w.imgs[0]);
+  const ctx = env.ctx;
 
-    ctx.save();
-    ctx.translate(x + px0, y + py0);
-    ctx.rotate(angle);
-    ctx.drawImage(b, -px0, -py0);
-    ctx.restore();
-    if (hits) {
-      // hitbox — AABB of the image rotated around the pivot
-      const cs = Math.cos(angle),
-        sn = Math.sin(angle);
-      const pts = [
-        [0, 0],
-        [b.width, 0],
-        [0, b.height],
-        [b.width, b.height],
-      ].map(([px, py]) => [(px - px0) * cs - (py - py0) * sn, (px - px0) * sn + (py - py0) * cs]);
-      const xs = pts.map((p) => p[0]),
-        ys = pts.map((p) => p[1]);
+  if (!b || !pivot || !ctx) return null;
+  const { id, max } = metaInfo(w.struct);
+  // hands on 0x0f/0x12 sweep smoothly on the real device (Elegant_Sweep vs Sundial,
+  // verified on hardware) — every other widget/source ticks, see idValue
+  const overridden = env.sim.overrides[id] !== undefined && env.sim.overrides[id] !== "";
+  const v = (id === 0x0f || id === 0x12) && !overridden ? env.t.s : idValue(id, env.sim, env.t);
+  const angle = (v / (max || 60)) * 2 * Math.PI;
+  const px = pivot.pivotX!,
+    py = pivot.pivotY!;
 
-      hits.push({
-        node,
-        x: x + px0 + Math.min(...xs),
-        y: y + py0 + Math.min(...ys),
-        w: Math.max(...xs) - Math.min(...xs),
-        h: Math.max(...ys) - Math.min(...ys),
-      });
+  ctx.save();
+  ctx.translate(w.x + px, w.y + py);
+  ctx.rotate(angle);
+  ctx.drawImage(b, -px, -py);
+  ctx.restore();
+  env.hits?.push({ node: w.node, ...rotatedBox(b, px, py, angle, w) });
+  return null;
+}
+
+/** AABB of the hand image rotated around its pivot. */
+function rotatedBox(b: Drawable, px: number, py: number, angle: number, at: Point): Point & Size {
+  const cs = Math.cos(angle),
+    sn = Math.sin(angle);
+  const pts = [
+    [0, 0],
+    [b.width, 0],
+    [0, b.height],
+    [b.width, b.height],
+  ].map(([x, y]) => [(x - px) * cs - (y - py) * sn, (x - px) * sn + (y - py) * cs]);
+  const xs = pts.map((p) => p[0]),
+    ys = pts.map((p) => p[1]);
+
+  return {
+    x: at.x + px + Math.min(...xs),
+    y: at.y + py + Math.min(...ys),
+    w: Math.max(...xs) - Math.min(...xs),
+    h: Math.max(...ys) - Math.min(...ys),
+  };
+}
+
+/** A live number: tagged 0x60, or anything carrying a digit-count byte over a 10-glyph atlas. */
+const isDigitStrip = (node: FaceNode, imgs: number[]) =>
+  node.tag === TAG.number || (node.subs?.some((s) => s.tag === TAG.fmt) && imgs.length >= 10);
+
+function drawDigits(env: DrawEnv, w: Target): Size {
+  const glyph = (ch: string) => bmp(env.res, w.imgs[Number(ch)] ?? w.imgs[0]);
+  const str = digitsOf(env, w);
+  let width = 0,
+    height = 0,
+    cx = w.x;
+
+  for (const ch of str) {
+    const b = glyph(ch);
+
+    if (!b) continue;
+    width += b.width;
+    height = Math.max(height, b.height);
+    if (env.ctx) {
+      env.ctx.drawImage(b, cx, w.y);
+      cx += b.width;
     }
-    return null;
   }
+  if (env.ctx) env.hits?.push({ node: w.node, x: w.x, y: w.y, w: width, h: height });
+  return { w: width, h: height };
+}
 
-  if (node.tag === TAG.number || (node.subs?.some((s) => s.tag === TAG.fmt) && imgs.length >= 10)) {
-    const str = numberString(node, sim, t, arcsById);
-    let w = 0,
-      h = 0;
+function digitsOf(env: DrawEnv, w: Target): string {
+  const { id } = metaInfo(w.struct);
+  const fmt = w.node.subs?.find((s) => s.tag === TAG.fmt);
+  const f = fmt ? unhex(fmt.hex!)[0] || 0 : 0;
+  const digits = f & 0x1f,
+    pad = f & 0x80;
+  const ring = env.arcs.get(id);
+  const spec = ring ? parseArcSpec(ring) : null;
+  // a number sharing its id with a ring shows that ring's percent, not the raw count (see arc.ts)
+  const value = spec
+    ? Math.round(progressFrac(id, env.sim, env.t, spec) * 100)
+    : Math.round(idValue(id, env.sim, env.t));
+  const s = String(Math.abs(value));
 
-    for (const ch of str) {
-      const b = bmp(res, imgs[Number(ch)] ?? imgs[0]);
+  return pad && digits ? s.padStart(digits, "0") : s;
+}
 
-      if (b) {
-        w += b.width;
-        h = Math.max(h, b.height);
-      }
-    }
-    if (ctx) {
-      let cx = x;
+const ringColor = (struct: FaceNode, sim: Sim) => ringRGB(struct) ?? hexRGB(sim.accentColor);
 
-      for (const ch of str) {
-        const b = bmp(res, imgs[Number(ch)] ?? imgs[0]);
+// 0x81: ring image clipped to a sector by value. 0x80: the same, plus a vertical-bar form
+// (a bitmap far taller than it is wide fills bottom-up) and min/max/radius in its 0x5a spec.
+// Either tag falls back to a stroked arc when it carries no usable image.
+function drawRing(env: DrawEnv, w: Target): Size | null {
+  const spec = parseArcSpec(w.node);
 
-        if (b) {
-          ctx.drawImage(b, cx, y);
-          cx += b.width;
-        }
-      }
-      hits?.push({ node, x, y, w, h });
-    }
-    return { w, h };
-  }
+  if (!spec) return null;
+  const { id, w: mw, h: mh } = metaInfo(w.struct);
+  const frac = progressFrac(id, env.sim, env.t, spec);
+  const b = ringBmp(env.res, w.imgs[0]);
 
-  // 0x81: progress ring — ring image clipped to a sector by value, procedural arc if imageless
-  if (node.tag === 0x81) {
-    const spec = parseArcSpec(node);
-
-    if (!spec) return null;
-    const b = ringBmp(res, imgs[0]);
-    const { id, w, h } = metaInfo(struct);
-    const frac = progressFrac(id, sim, t, spec);
-
-    if (!b)
-      return drawProceduralArc(
-        ctx,
-        spec,
-        x,
-        y,
-        frac,
-        hits,
-        node,
-        w,
-        ringRGB(struct) ?? hexRGB(sim.accentColor),
-      );
-    if (ctx && frac > 0.002) sectorImage(ctx, b, x, y, spec, frac, w, h);
-    if (ctx) hits?.push({ node, x, y, w: b.width, h: b.height });
-    return { w: b.width, h: b.height };
-  }
-
-  // 0x80: same progress image, but with min/max/radius fields in 0x5a;
-  // vertical bars fill by height, rings by sector, no image — procedural arc
-  if (node.tag === 0x80) {
-    const spec = parseArcSpec(node);
-
-    if (!spec) return null;
-    const b = ringBmp(res, imgs[0]);
-    const { id, w, h } = metaInfo(struct);
-    const frac = progressFrac(id, sim, t, spec);
-
-    if (b && b.height > 3 * b.width) {
-      // vertical bar
-      if (ctx && frac > 0.002) {
-        ctx.save();
-        ctx.beginPath();
-        ctx.rect(x, y + b.height * (1 - frac), b.width, b.height * frac);
-        ctx.clip();
-        ctx.drawImage(b, x, y);
-        ctx.restore();
-      }
-      if (ctx) hits?.push({ node, x, y, w: b.width, h: b.height });
-      return { w: b.width, h: b.height };
-    }
-    if (b) {
-      if (ctx && frac > 0.002) sectorImage(ctx, b, x, y, spec, frac, w, h);
-      if (ctx) hits?.push({ node, x, y, w: b.width, h: b.height });
-      return { w: b.width, h: b.height };
-    }
+  if (!b)
     return drawProceduralArc(
-      ctx,
+      env.ctx,
       spec,
-      x,
-      y,
+      w.x,
+      w.y,
       frac,
-      hits,
-      node,
-      w,
-      ringRGB(struct) ?? hexRGB(sim.accentColor),
+      env.hits,
+      w.node,
+      mw,
+      ringColor(w.struct, env.sim),
     );
-  }
 
-  // 0x85: widget slot — user assigns one of several metrics to this slot in the companion app.
-  // sibling 0x5f: [slotIndex][count][activeIdx][count × metric id][zero padding]. slotIndex is
-  // this node's 0-based position among sibling 0x85 nodes (verified, zero exceptions in the
-  // corpus) — presumably how the companion app numbers slots in its settings UI; unused for
-  // rendering. struct.meta.id is always 0 for this tag across the corpus — it carries no live
-  // value of its own.
-  // imgs[1..count] are the per-metric icons shown in the companion app's OWN picker menu —
-  // confirmed against the real device, they never appear on the watch face itself, in any
-  // slot state; a sibling Group elsewhere in the tree is the real on-watch visual for the
-  // selected metric, gated by a bind on id 0x79+slotIndex (see withSlotOverrides above — this
-  // node's activeIdx picks which sibling Group shows, not which image this node draws).
-  // imgs[0] is the "tap to configure" placeholder shown for every slot on-watch only in the
-  // widget-edit screen, never during normal time-telling — so this node draws nothing unless
-  // the sim's showSlotPlaceholders preview toggle is on, in which case it's always imgs[0],
-  // regardless of activeIdx.
-  if (node.tag === 0x85) {
-    if (!sim.showSlotPlaceholders) return null;
-    const b = bmp(res, imgs[0]);
+  const isBar = w.node.tag === 0x80 && b.height > 3 * b.width;
 
-    if (!b) return null;
-    if (ctx) {
-      ctx.drawImage(b, x, y);
-      hits?.push({ node, x, y, w: b.width, h: b.height });
+  if (env.ctx && frac > 0.002) {
+    if (isBar) {
+      env.ctx.save();
+      env.ctx.beginPath();
+      env.ctx.rect(w.x, w.y + b.height * (1 - frac), b.width, b.height * frac);
+      env.ctx.clip();
+      env.ctx.drawImage(b, w.x, w.y);
+      env.ctx.restore();
+    } else {
+      drawSector(env.ctx, b, w.x, w.y, spec, frac, mw, mh);
     }
-    return { w: b.width, h: b.height };
   }
+  if (env.ctx) env.hits?.push({ node: w.node, x: w.x, y: w.y, w: b.width, h: b.height });
+  return { w: b.width, h: b.height };
+}
 
-  // sub===4 (and, seen only on Elaborate_2, a duplicated sub===3) with a single image: a "−"
-  // sign glyph for a value that can go negative — no bind sibling gates it, so the device must
-  // show it purely from the value's sign. Confirmed against Function's baked preview (sub===4
-  // only there) and Elaborate_2's (sub===4 plus two sub===3 copies of the same glyph): sim.temp
-  // =25 (positive) bakes with no minus sign at all on either file, not a blank glyph swapped in.
-  // ponytail: sub===3's own meaning is still unconfirmed (no other corpus face uses it on a
-  // single-image widget) — treated the same as sub===4 since that's what both real bakes show.
-  {
-    const { id, sub } = metaInfo(struct);
+// 0x85: widget slot — the user assigns one of several metrics to it in the companion app.
+// sibling 0x5f: [slotIndex][count][activeIdx][count × metric id][zero padding]. slotIndex is
+// this node's 0-based position among sibling 0x85 nodes (verified, zero exceptions in the
+// corpus) — presumably how the companion app numbers slots in its settings UI; unused for
+// rendering. struct.meta.id is always 0 for this tag across the corpus — it carries no live
+// value of its own.
+// imgs[1..count] are the per-metric icons shown in the companion app's OWN picker menu —
+// confirmed against the real device, they never appear on the watch face itself, in any
+// slot state; a sibling Group elsewhere in the tree is the real on-watch visual for the
+// selected metric, gated by a bind on id 0x79+slotIndex (see withSlotOverrides — this node's
+// activeIdx picks which sibling Group shows, not which image this node draws).
+// imgs[0] is the "tap to configure" placeholder shown for every slot on-watch only in the
+// widget-edit screen, never during normal time-telling — so this node draws nothing unless
+// the sim's showSlotPlaceholders preview toggle is on, in which case it's always imgs[0],
+// regardless of activeIdx.
+function drawSlotPlaceholder(env: DrawEnv, w: Target): Size | null {
+  if (!env.sim.showSlotPlaceholders) return null;
+  const b = bmp(env.res, w.imgs[0]);
 
-    if ((sub === 4 || sub === 3) && imgs.length === 1 && idValue(id, sim, t) >= 0) return null;
-  }
+  return b ? blit(env, w, b) : null;
+}
 
-  // 0x30 and others: a single image or a pick by value (7 days / 12 months / 2 AM-PM)
+// sub===4 (and, seen only on Elaborate_2, a duplicated sub===3) with a single image: a "−"
+// sign glyph for a value that can go negative — no bind sibling gates it, so the device must
+// show it purely from the value's sign. Confirmed against Function's baked preview (sub===4
+// only there) and Elaborate_2's (sub===4 plus two sub===3 copies of the same glyph): sim.temp
+// =25 (positive) bakes with no minus sign at all on either file, not a blank glyph swapped in.
+// ponytail: sub===3's own meaning is still unconfirmed (no other corpus face uses it on a
+// single-image widget) — treated the same as sub===4 since that's what both real bakes show.
+const isHiddenMinusSign = (env: DrawEnv, w: Target) => {
+  const { id, sub } = metaInfo(w.struct);
+
+  return (sub === 4 || sub === 3) && w.imgs.length === 1 && idValue(id, env.sim, env.t) >= 0;
+};
+
+/** 0x30 and friends: one static image, or one picked by value (7 days / 12 months / AM-PM). */
+function drawPicked(env: DrawEnv, w: Target): Size | null {
+  if (isHiddenMinusSign(env, w)) return null;
   let idx = 0;
 
-  if (imgs.length > 1) {
-    const { id } = metaInfo(struct);
+  if (w.imgs.length > 1) {
+    const { id } = metaInfo(w.struct);
     // index = value % frame count: lists start at "zero" (months [DEC,JAN..NOV], days [31,1..30])
-    const v = Math.floor(idValue(id, sim, t));
+    const v = Math.floor(idValue(id, env.sim, env.t));
 
-    idx = ((v % imgs.length) + imgs.length) % imgs.length;
+    idx = ((v % w.imgs.length) + w.imgs.length) % w.imgs.length;
   }
-  const b = bmp(res, imgs[idx]);
+  const b = bmp(env.res, w.imgs[idx]);
 
-  if (!b) return null;
-  if (ctx) {
-    ctx.drawImage(b, x, y);
-    hits?.push({ node, x, y, w: b.width, h: b.height });
-  }
-  return { w: b.width, h: b.height };
+  return b ? blit(env, w, b) : null;
 }
 
 // 0x68: frame 0x48 (x,y,w,h,align) + children. Layout model (reversed from the 101-face
@@ -876,26 +328,17 @@ function drawWidget(
 // ponytail: exact firmware direction rule for AUTO rows is unverified — guessed from the
 // 0x8000 children's own x/y spread (bigger vertical spread = column); flip to a real flag
 // if one turns up.
-function drawGroup(
-  ctx: Ctx | null,
-  node: FaceNode,
-  res: Resource[],
-  sim: Sim,
-  t: TimeParts,
-  ox: number,
-  oy: number,
-  origin: { x: number; y: number } | null,
-  hits: Hit[] | null,
-  arcsById: Map<number, FaceNode>,
-): Size | null {
+function drawGroup(env: DrawEnv, node: FaceNode, place: Place): Size | null {
   const fr = parseFrame(node);
 
   if (!fr) return null;
-  const x = origin ? origin.x : ox + fr.x;
-  const y = origin ? origin.y : oy + fr.y;
+  const { offset = ORIGIN, origin } = place;
+  const x = origin ? origin.x : offset.x + fr.x;
+  const y = origin ? origin.y : offset.y + fr.y;
   const kids = (node.subs || []).filter((s) => s.tag !== TAG.frame && s.tag !== TAG.bind);
+  const structOf = (k: FaceNode) => k.subs?.find((s) => s.tag === TAG.struct);
   const isTrueAuto = (k: FaceNode) => {
-    const st = k.subs?.find((s) => s.tag === TAG.struct);
+    const st = structOf(k);
 
     return st != null && metaInfo(st).w === 0x8000;
   };
@@ -914,13 +357,11 @@ function drawGroup(
   const isAuto = (k: FaceNode) => {
     if (isTrueAuto(k)) return true;
     if (!hasTrueAutoSibling || k.tag !== TAG.number) return false;
-    const st = k.subs?.find((s) => s.tag === TAG.struct);
+    const st = structOf(k);
 
     return st != null && !st.x;
   };
-  const sizes = kids.map((k) =>
-    isAuto(k) ? drawWidget(null, k, res, sim, t, 0, 0, { x: 0, y: 0 }, null, arcsById) : null,
-  );
+  const sizes = kids.map((k) => (isAuto(k) ? measure(env, k) : null));
   const shown = sizes.filter((z): z is Size => Boolean(z));
 
   // only genuinely 0x8000-flagged structs feed direction inference — a hugged NUMBER's own
@@ -929,7 +370,7 @@ function drawGroup(
   // mixing it in previously misread Elaborate_2's horizontal "80%" pairing as a vertical stack
   // (NUMBER y=46 vs "%" y=0 spread > 0).
   const autoStructs = kids
-    .map((k, i) => (sizes[i] && isTrueAuto(k) ? k.subs?.find((s) => s.tag === TAG.struct) : null))
+    .map((k, i) => (sizes[i] && isTrueAuto(k) ? structOf(k) : null))
     .filter((s): s is FaceNode => Boolean(s));
   const spread = (vals: number[]) => (vals.length ? Math.max(...vals) - Math.min(...vals) : 0);
   const vertical =
@@ -943,25 +384,9 @@ function drawGroup(
   // own confirmed case has this NUMBER at y=0, so it's naturally skipped (falsy) and keeps its
   // prior (already-correct) frame-centered behavior untouched.
   const numberRowStruct = kids
-    .find((k, i) => Boolean(sizes[i]) && !isTrueAuto(k) && k.tag === TAG.number)
-    ?.subs?.find((s) => s.tag === TAG.struct);
+    .filter((k, i) => Boolean(sizes[i]) && !isTrueAuto(k) && k.tag === TAG.number)
+    .map(structOf)[0];
   const rowCross = !vertical && numberRowStruct?.y ? y + numberRowStruct.y : null;
-
-  // a nested Group child (e.g. the icon+digits+degree auto-row inside Function's temperature
-  // tile) has no TAG.struct of its own — its position is its OWN frame's x/y instead. Read
-  // either uniformly so a Group child can be measured/centered the same way a struct-bearing
-  // one is below.
-  const localOrigin = (k: FaceNode): { x: number; y: number } | null => {
-    const st = k.subs?.find((s) => s.tag === TAG.struct);
-
-    if (st) return { x: st.x || 0, y: st.y || 0 };
-    if (k.tag === TAG.group) {
-      const kfr = parseFrame(k);
-
-      return kfr ? { x: kfr.x, y: kfr.y } : null;
-    }
-    return null;
-  };
 
   const total = shown.reduce((s, z) => s + (vertical ? z.h : z.w), 0);
   // frame.w/h === 0 on the packing axis means "auto-size to content" (seen on Function's
@@ -972,7 +397,7 @@ function drawGroup(
   const mainAvail = Math.max(vertical ? fr.h : fr.w, total);
   // ponytail: only START/CENTER exist in the corpus — END (1) and SPACE_* (3) would need
   // their own arm here, add one if a face ever carries them.
-  let c = (vertical ? y : x) + (fr.main ? (mainAvail - total) / 2 : 0);
+  let main = (vertical ? y : x) + (fr.main ? (mainAvail - total) / 2 : 0);
   // Cross axis: children sit at the START of their track, and the track is what gets centered
   // in the frame (fr.track). Centering each child on its own instead is indistinguishable
   // whenever the children are all the same height — which every corpus row is, e.g. Function's
@@ -982,94 +407,98 @@ function drawGroup(
   // 144px frame renders at the frame top on the watch (track 144 = frame 144, no slack to
   // center), not 14px down as per-child centering would have it.
   const trackSize = shown.reduce((m, z) => Math.max(m, vertical ? z.w : z.h), 0);
-  const crossAvail = vertical ? fr.w : fr.h;
-  const cross = (vertical ? x : y) + (fr.track ? (crossAvail - trackSize) / 2 : 0);
+  const cross = (vertical ? x : y) + (fr.track ? ((vertical ? fr.w : fr.h) - trackSize) / 2 : 0);
 
-  if (ctx) {
+  if (env.ctx) {
     kids.forEach((k, i) => {
       const z = sizes[i];
 
       if (z) {
-        const pos = vertical ? { x: cross, y: c } : { x: c, y: rowCross ?? cross };
+        const pos = vertical ? { x: cross, y: main } : { x: main, y: rowCross ?? cross };
 
-        drawWidget(ctx, k, res, sim, t, 0, 0, pos, hits, arcsById);
-        c += vertical ? z.h : z.w;
+        drawWidget(env, k, { origin: pos });
+        main += vertical ? z.h : z.w;
       } else if (!isAuto(k)) {
-        // progress rings (0x80/0x81) inside a group carry already-absolute struct x/y —
-        // confirmed on Combo, where a grouped ring's x/y is byte-identical to an ungrouped
-        // sibling ring at the same screen position. Adding the frame origin on top (as the
-        // other non-auto widgets need) pushes them off-canvas.
-        const isRing = k.tag === 0x80 || k.tag === 0x81;
-        // ...except when one axis reads a literal 0 — same "unset, center me" signal as the
-        // boxed non-ring case below, just never seen on a ring until Elaborate_2's calorie/
-        // steps widget-slot ring (frame 160x160, ring image also 160x160 meant to exactly
-        // fill it): a raw x=0 left it flush against the canvas's left edge instead of
-        // centered. Combo/Function's rings all carry real nonzero x AND y (the Combo evidence
-        // above), so this only fires on the axis that's actually 0.
-        const ringStruct = isRing ? k.subs?.find((s) => s.tag === TAG.struct) : null;
-        const ringMeta = ringStruct ? metaInfo(ringStruct) : null;
-        const ringPos =
-          ringMeta && (!ringStruct!.x || !ringStruct!.y)
-            ? {
-                x: ringStruct!.x || x + (fr.w - ringMeta.w) / 2,
-                y: ringStruct!.y || y + (fr.h - ringMeta.h) / 2,
-              }
-            : null;
-        // any other non-auto child: y is always literal (frame.y + y — Dichotomy's ring
-        // labels sit at authored y=0/y=70, never vertically centered; a real offset like
-        // Progress_Day's dot circle is nonzero and kept). x===0 means "not positioned,
-        // center me horizontally" — confirmed on Combo's weekday/day, Function's tiles,
-        // Elaborate_2's Battery label and Glare_2's stacked kcal block, all x=0 + real y.
-        // The declared meta.w isn't the widget's pixel width, so measure the drawn size.
-        // Applies to nested Group children too (Function's icon+digits+degree row) via
-        // localOrigin's frame.x/y.
-        const o = !isRing ? localOrigin(k) : null;
-        const measured =
-          o && !o.x ? drawWidget(null, k, res, sim, t, 0, 0, { x: 0, y: 0 }, null, arcsById) : null;
-        const pos = ringPos ?? (measured ? { x: x + (fr.w - measured.w) / 2, y: y + o!.y } : null);
-
-        drawWidget(ctx, k, res, sim, t, isRing ? 0 : x, isRing ? 0 : y, pos, hits, arcsById);
+        drawBoxedChild(env, k, fr, x, y);
       }
     });
-    hits?.push({ node, x, y, w: fr.w, h: fr.h });
+    env.hits?.push({ node, x, y, w: fr.w, h: fr.h });
   }
   // along the packing axis, an auto-sized frame (fr.w/h===0) reports its declared 0 here
   // unless we report the clamped mainAvail instead — otherwise a parent measuring this group
-  // as one of ITS OWN boxed children (see drawGroup's own boxed-child branch above) would
-  // center it as if it had no content at all (Function's temperature tile: the icon+digits+
-  // degree row measured as width 0, over-centering it within the outer 128px tile).
+  // as one of ITS OWN boxed children would center it as if it had no content at all
+  // (Function's temperature tile: the icon+digits+degree row measured as width 0,
+  // over-centering it within the outer 128px tile).
   return { w: vertical ? fr.w : mainAvail, h: vertical ? mainAvail : fr.h };
 }
 
-// render: returns hitboxes (in draw order; topmost is last)
-export function render(ctx: Ctx, face: Face, screenTag: number, sim: Sim): Hit[] {
-  const t = timeParts(sim);
-  const hits: Hit[] = [];
+/** A group child that isn't part of the packed auto row: positioned, centered or both. */
+function drawBoxedChild(env: DrawEnv, k: FaceNode, fr: Frame, x: number, y: number) {
+  // progress rings (0x80/0x81) inside a group carry already-absolute struct x/y —
+  // confirmed on Combo, where a grouped ring's x/y is byte-identical to an ungrouped
+  // sibling ring at the same screen position. Adding the frame origin on top (as the
+  // other non-auto widgets need) pushes them off-canvas.
+  const isRing = k.tag === 0x80 || k.tag === 0x81;
+  // ...except when one axis reads a literal 0 — same "unset, center me" signal as the
+  // boxed non-ring case below, just never seen on a ring until Elaborate_2's calorie/
+  // steps widget-slot ring (frame 160x160, ring image also 160x160 meant to exactly
+  // fill it): a raw x=0 left it flush against the canvas's left edge instead of
+  // centered. Combo/Function's rings all carry real nonzero x AND y (the Combo evidence
+  // above), so this only fires on the axis that's actually 0.
+  const ringStruct = isRing ? k.subs?.find((s) => s.tag === TAG.struct) : null;
+  const ringMeta = ringStruct ? metaInfo(ringStruct) : null;
+  const ringPos =
+    ringMeta && (!ringStruct!.x || !ringStruct!.y)
+      ? {
+          x: ringStruct!.x || x + (fr.w - ringMeta.w) / 2,
+          y: ringStruct!.y || y + (fr.h - ringMeta.h) / 2,
+        }
+      : null;
+  // any other non-auto child: y is always literal (frame.y + y — Dichotomy's ring
+  // labels sit at authored y=0/y=70, never vertically centered; a real offset like
+  // Progress_Day's dot circle is nonzero and kept). x===0 means "not positioned,
+  // center me horizontally" — confirmed on Combo's weekday/day, Function's tiles,
+  // Elaborate_2's Battery label and Glare_2's stacked kcal block, all x=0 + real y.
+  // The declared meta.w isn't the widget's pixel width, so measure the drawn size.
+  // Applies to nested Group children too (Function's icon+digits+degree row) via localOrigin.
+  const o = isRing ? null : localOrigin(k);
+  const measured = o && !o.x ? measure(env, k) : null;
+  const pos = ringPos ?? (measured ? { x: x + (fr.w - measured.w) / 2, y: y + o!.y } : null);
 
-  ctx.clearRect(0, 0, 466, 466);
-  const scr = face.screens.find((s) => s.tag === screenTag) || face.screens[0];
-  const top = scr?.subs || [];
-  const arcsById = collectArcsById(top);
-  const effSim = withSlotOverrides(top, sim);
-
-  for (const w of top) drawWidget(ctx, w, face.resources, effSim, t, 0, 0, null, hits, arcsById);
-  return hits;
+  drawWidget(env, k, { offset: isRing ? ORIGIN : { x, y }, origin: pos });
 }
 
-// all data sources appearing in the face (for the overrides panel)
-export function collectIds(face: Face): { id: number; max: number }[] {
-  const ids = new Map<number, number>();
-  const walk = (n: FaceNode) => {
-    if (n.tag === TAG.struct && n.meta) {
-      const { id, max } = metaInfo(n);
+// a nested Group child (e.g. the icon+digits+degree auto-row inside Function's temperature
+// tile) has no TAG.struct of its own — its position is its OWN frame's x/y instead. Read
+// either uniformly so a Group child can be measured/centered the same way a struct-bearing
+// one is.
+function localOrigin(k: FaceNode): Point | null {
+  const st = k.subs?.find((s) => s.tag === TAG.struct);
 
-      if (id) ids.set(id, max || ids.get(id) || 0);
-    }
-    if (n.tag === TAG.bind)
-      for (const e of parseBind(n.hex)) if (e.id) ids.set(e.id, ids.get(e.id) || 0);
-    n.subs?.forEach(walk);
+  if (st) return { x: st.x || 0, y: st.y || 0 };
+  if (k.tag === TAG.group) {
+    const fr = parseFrame(k);
+
+    return fr ? { x: fr.x, y: fr.y } : null;
+  }
+  return null;
+}
+
+/** Draw a screen; returns hitboxes in draw order (topmost last). */
+export function render(ctx: Ctx, face: Face, screenTag: number, sim: Sim): Hit[] {
+  const hits: Hit[] = [];
+  const screen = face.screens.find((s) => s.tag === screenTag) || face.screens[0];
+  const top = screen?.subs || [];
+  const env: DrawEnv = {
+    ctx,
+    res: face.resources,
+    sim: withSlotOverrides(top, sim),
+    t: timeParts(sim),
+    hits,
+    arcs: collectArcsById(top),
   };
 
-  face.screens.forEach(walk);
-  return [...ids.entries()].map(([id, max]) => ({ id, max })).sort((a, b) => a.id - b.id);
+  ctx.clearRect(0, 0, 466, 466);
+  for (const node of top) drawWidget(env, node);
+  return hits;
 }

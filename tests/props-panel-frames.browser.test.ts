@@ -44,6 +44,11 @@ test("dragging a frame row reorders the widget's images", async () => {
   const rows = document.querySelectorAll(".frame-row");
 
   expect(rows.length).toBe(7);
+  // the inspector sections are separate components, so the shared field chrome only reaches
+  // them through PropsPanel's `:global` block — a plain scoped rule would silently drop it
+  const label = document.querySelector(".muted-label")!;
+
+  expect(getComputedStyle(label).display).toBe("block");
   expect([...document.querySelectorAll(".frame-row .thumb-cap")].map((e) => e.textContent)).toEqual(
     ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
   );

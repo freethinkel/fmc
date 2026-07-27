@@ -24,17 +24,40 @@ src/lib/
                   # app chrome: app-header/, bottom-nav.svelte
   modules/<feature>/   # auth, market, editor, device
     model/        # <feature>.model.ts + index.ts (export * as fooModel)
-    lib/          # module domain libraries (editor: wf, render, facer; device: ble)
+    lib/          # module domain libraries (see the editor/device maps below)
     components/   # module components
     pages/        # pages + index.ts (export { default as FooPage })
 src/routes/       # thin: import a page from the module and render it
 ```
 
+Editor libs, one concern each — keep them that way instead of growing one file:
+
+```
+editor/lib/
+  wf.ts        # .bin <-> Face tree: TLV parse/build, LZ4, pixel codecs
+  tree.ts      # tree navigation + the node shapes the editor creates (pure)
+  sources.ts   # data sources: id labels, Sim, idValue, meta/bind decoding
+  arc.ts       # progress rings: 0x5a/0x5b spec, fill fraction, both draw paths
+  canvas.ts    # renderer types (Ctx/Point/Size/Hit) + Resource -> drawable bitmap
+  render.ts    # draw a screen: per-tag draw functions + group auto-layout
+  pixels.ts    # Resource pixels: decode, resize/adjust, accent tint, previews
+  facer/       # Facer import — assets.ts (files/images/fonts), text.ts (tags), index.ts
+  watchmaker.ts
+
+device/lib/
+  ble-protocol.ts  # GATT ids, command table, 0xF5 frame codec (AES/CRC)
+  ble.ts           # Web Bluetooth session: connect, pair, upload
+```
+
+The editor inspector is split the same way: `components/props/` holds `geometry`, `source`
+and `frames` sections; `PropsPanel.svelte` is the container and owns the shared field CSS
+(via a `:global` block, so the sections only carry styles that are theirs).
+
 - **All logic lives in effector models** (`modules/*/model/*.model.ts`). Components are
   view only: `import { editorModel } from '../model'`, destructure stores/events at the
   top, subscribe via `$store`. Don't put business logic or data loading in components.
 - Domain types: `Face`, `FaceNode`, `Resource` — in `modules/editor/lib/wf.ts`;
-  `Sim`, `Hit` — in `modules/editor/lib/render.ts`.
+  `Sim` — in `lib/sources.ts`, `Hit` — in `lib/canvas.ts`.
 - All Svelte components use `<script lang="ts">` — TypeScript everywhere, no plain-JS `<script>`.
 - Cross-module imports — through barrels: `$lib/modules/auth/model`, `$lib/modules/device/model`.
 
@@ -57,6 +80,13 @@ src/routes/       # thin: import a page from the module and render it
   `--spring-transition`. Never hardcode a hex in a component — derive every shade via
   relative color: `oklch(from var(--color-text) l c h / 55%)` (muted text), `/ 12%`
   (borders), `/ 6%` (tinted surfaces).
+- All sizes — `rem`, never `px`: `:root { font-size: 16px }` in tokens.css is the single
+  scale knob for the whole UI (1rem = 16px, so 8px → `0.5rem`, 12px → `0.75rem`). Exceptions
+  that stay in `px`: hairline borders/outlines (`1px`, `2px`) and media-query breakpoints
+  (they measure the viewport, not the type scale).
+- The 1rem grid sizes boxes; text runs a notch below it — `body { font-size: 0.875rem }`
+  (14px) in global.css, and per-component `font-size` snaps to the same 1px step
+  (`0.75rem` = 12px, `0.625rem` = 10px). Both move together when `:root` changes.
 - Components: Svelte 5 runes, typed `interface Props` + `$props()`, `Snippet` children
   via `{@render}`, callback props (`onClick`, `onChange`), `$bindable()` for form values;
   no event dispatchers. Scoped `<style>` with native `&`-nesting (Lightning CSS via Vite

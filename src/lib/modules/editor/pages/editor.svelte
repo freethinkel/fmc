@@ -8,7 +8,8 @@
   import PublishDialog from "../components/PublishDialog.svelte";
   import { bleModel } from "$lib/modules/device/model";
   import { TAG, unhex, hex, type FaceNode } from "../lib/wf";
-  import { render, parseFrame, type Hit } from "../lib/render";
+  import { render, parseFrame } from "../lib/render";
+  import type { Hit } from "../lib/canvas";
   import { editorModel } from "../model";
   import TreePanel from "../components/TreePanel.svelte";
   import PropsPanel from "../components/PropsPanel.svelte";
@@ -641,14 +642,14 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 8px;
-    padding: 8px 12px;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
     border-bottom: 1px solid oklch(from var(--color-text) l c h / 12%);
   }
   .file-label {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 0.375rem;
     cursor: pointer;
   }
   .btn-label {
@@ -656,14 +657,14 @@
   }
   .wf-name {
     display: none;
-    width: 160px;
+    width: 10rem;
     overflow: hidden;
     border: 1px solid transparent;
     border-radius: var(--border-radius);
     background: transparent;
-    padding-inline: 4px;
+    padding-inline: 0.25rem;
     font: inherit;
-    font-size: 0.875rem;
+    font-size: 0.75rem;
     font-weight: 500;
     color: var(--color-text);
     text-overflow: ellipsis;
@@ -688,8 +689,8 @@
   }
   .statusbar {
     margin: 0;
-    padding: 6px 12px;
-    font-size: 0.875rem;
+    padding: 0.375rem 0.75rem;
+    font-size: 0.75rem;
     color: oklch(from var(--color-text) l c h / 55%);
     border-bottom: 1px solid oklch(from var(--color-text) l c h / 12%);
 
@@ -721,21 +722,21 @@
     }
   }
   .tree-panel {
-    width: 280px;
+    width: 17.5rem;
     border-inline-end: 1px solid oklch(from var(--color-text) l c h / 12%);
   }
   .right-panel {
-    width: 330px;
+    width: 20.625rem;
     border-inline-start: 1px solid oklch(from var(--color-text) l c h / 12%);
   }
   .tabs-row {
-    padding: 8px;
+    padding: 0.5rem;
   }
   .panel-body {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
-    padding: 0 12px 12px;
+    padding: 0 0.75rem 0.75rem;
   }
   .canvas-section {
     display: flex;
@@ -743,21 +744,21 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 8px;
+    gap: 0.5rem;
     overflow: hidden;
-    padding: 16px;
+    padding: 1rem;
     background: oklch(from var(--color-text) l c h / 4%);
   }
   .canvas-frame {
     aspect-ratio: 1;
-    width: min(70vh, 90%, 560px);
+    width: min(70vh, 90%, 35rem);
     max-height: 100%;
     overflow: hidden;
     border-radius: 50%;
     background: oklch(0 0 0);
     box-shadow:
-      0 0 0 8px oklch(0.28 0 0),
-      0 0 50px oklch(0 0 0 / 60%);
+      0 0 0 0.5rem oklch(0.28 0 0),
+      0 0 3.125rem oklch(0 0 0 / 60%);
     margin-top: auto;
     margin-bottom: auto;
   }
@@ -770,7 +771,7 @@
   .hint {
     display: none;
     margin: 0;
-    font-size: 0.75rem;
+    font-size: 0.625rem;
     color: oklch(from var(--color-text) l c h / 55%);
   }
   @media (min-width: 768px) {
@@ -780,8 +781,8 @@
   }
   .mobile-actions {
     display: flex;
-    gap: 8px;
-    padding: 8px;
+    gap: 0.5rem;
+    padding: 0.5rem;
     border-top: 1px solid oklch(from var(--color-text) l c h / 12%);
   }
   .mobile-actions :global(.btn) {

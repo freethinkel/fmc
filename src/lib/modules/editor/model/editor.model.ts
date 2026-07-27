@@ -5,8 +5,6 @@ import { createEffect, createEvent, createStore, sample } from "effector";
 import {
   parseBin,
   buildBin,
-  decodePixels,
-  encodePixels,
   TAG,
   hex,
   unhex,
@@ -14,7 +12,28 @@ import {
   type FaceNode,
   type Resource,
 } from "../lib/wf";
-import { defaultSim, collectIds, render, metaInfo, type Sim } from "../lib/render";
+import { render } from "../lib/render";
+import { collectIds, defaultSim, type Sim } from "../lib/sources";
+import {
+  accentBitmapFor,
+  accentFlaggedResources,
+  bitmapOf,
+  filterOf,
+  flushResized,
+  invertResource,
+  opaqueBlack,
+  regenPreviews,
+  resourceFromFile,
+} from "../lib/pixels";
+import {
+  blankFace,
+  findParent,
+  imagesUnder,
+  newWidget,
+  setFaceName,
+  structOf,
+  type WidgetKind,
+} from "../lib/tree";
 
 export type { Face, FaceNode, Resource, Sim };
 
@@ -91,10 +110,13 @@ export const loadRequested = createEvent<{
 export const loadDone = createEvent<{ face: Face; label: string }>();
 export const newFaceRequested = createEvent<string | void>();
 export const importFacerRequested = createEvent<File[]>();
-export const addWidgetRequested = createEvent<{
-  kind: "image" | "number" | "hand";
+
+export interface AddWidget {
+  kind: WidgetKind;
   files: File[];
-}>();
+}
+
+export const addWidgetRequested = createEvent<AddWidget>();
 export const replaceImageRequested = createEvent<{
   resIdx: number;
   file: File;
@@ -110,123 +132,6 @@ export const resizeImageRequested = createEvent<{
   w: number;
   h: number;
 }>();
-
-// ---- helpers (module-scope: reused across effects, recursive, or carry their own "why") ----
-export async function bitmapOf(r: Resource): Promise<ImageBitmap> {
-  const px = decodePixels(r);
-
-  return px
-    ? createImageBitmap(new ImageData(px, r.w, r.h))
-    : createImageBitmap(new Blob([r.data as BlobPart], { type: "image/jpeg" }));
-}
-
-// which resource indices are accent-tintable: struct.meta[7]===4 (metaInfo's `accent` field)
-// — a real per-widget capability flag, confirmed against 7 real-device test cases including
-// ones where the accent widget is baked plain white (not a color to pattern-match at all).
-// Supersedes the old pixel-color guessing entirely — see docs/cmf-protocol.md "Accent color".
-function accentFlaggedResources(face: Face): Set<number> {
-  const flagged = new Set<number>();
-  const walk = (n: FaceNode) => {
-    if (n.tag === TAG.struct && n.images && metaInfo(n).accent) {
-      n.images.forEach((i) => flagged.add(i));
-    }
-    n.subs?.forEach(walk);
-  };
-
-  face.screens.forEach(walk);
-  return flagged;
-}
-
-// RGBA readback of a bitmap at the given size — canvas is the only way back to pixels for
-// something that was scaled/decoded by the browser rather than by decodePixels
-function pixelsOf(
-  b: ImageBitmap,
-  w: number,
-  h: number,
-  filter = "none",
-): Uint8ClampedArray<ArrayBuffer> {
-  const c = new OffscreenCanvas(w, h);
-  const cx = c.getContext("2d")!;
-
-  cx.filter = filter;
-  cx.drawImage(b, 0, 0, w, h);
-  return cx.getImageData(0, 0, w, h).data;
-}
-
-// brightness/contrast/saturation as a canvas filter — the browser's own image pipeline does
-// the pixel math, we only ever store the three numbers (Resource.adjust)
-export const filterOf = (r: Resource) =>
-  r.adjust
-    ? `brightness(${r.adjust.brightness}%) contrast(${r.adjust.contrast}%) ` +
-      `saturate(${r.adjust.saturate}%) hue-rotate(${r.adjust.hue}deg)`
-    : "none";
-
-// preview-only recolor of an accent-flagged resource: replace every non-transparent pixel's
-// RGB with the chosen color (alpha untouched) — the flag identifies the whole resource as
-// tintable regardless of its baked color, so there's no per-pixel color test here. Never
-// touches r.data — the exported .bin must keep the original bytes for the real watch to
-// substitute its own accent color.
-async function accentBitmapFor(r: Resource, colorHex: string): Promise<ImageBitmap | undefined> {
-  if (r.cf === 1) return undefined; // JPEG — no per-pixel recolor
-  // off the bitmap, not decodePixels(r.data): a resized resource carries the old pixels in
-  // `data` until build time, the bitmap is always the one on screen
-  const px = r.bitmap ? pixelsOf(r.bitmap, r.w, r.h) : decodePixels(r);
-
-  if (!px) return undefined;
-  const n = parseInt(colorHex.slice(1), 16);
-  const cr = (n >> 16) & 255,
-    cg = (n >> 8) & 255,
-    cb = n & 255;
-  let changed = false;
-
-  for (let i = 0; i < px.length; i += 4) {
-    if (px[i + 3] > 0) {
-      px[i] = cr;
-      px[i + 1] = cg;
-      px[i + 2] = cb;
-      changed = true;
-    }
-  }
-  return changed ? createImageBitmap(new ImageData(px, r.w, r.h)) : undefined;
-}
-
-function findParent(nodes: FaceNode[], target: FaceNode): FaceNode | null {
-  for (const n of nodes) {
-    if (n.subs?.includes(target)) return n;
-    const p = n.subs && findParent(n.subs, target);
-
-    if (p) return p;
-  }
-  return null;
-}
-
-function regenPreviews(face: Face, sim: Sim) {
-  for (const scr of face.screens) {
-    const pv = scr.subs
-      ?.find((s) => s.tag === TAG.preview)
-      ?.subs?.find((s) => s.tag === TAG.pvStruct);
-    const ri = pv?.images?.[0];
-
-    if (ri == null) continue;
-    const r = face.resources[ri];
-
-    if (r.cf === 1) continue; // don't re-encode JPEG previews
-    const c = document.createElement("canvas");
-
-    c.width = 466;
-    c.height = 466;
-    render(c.getContext("2d")!, face, scr.tag, sim);
-    const c2 = document.createElement("canvas");
-
-    c2.width = r.w;
-    c2.height = r.h;
-    const cx2 = c2.getContext("2d")!;
-
-    cx2.drawImage(c, 0, 0, r.w, r.h);
-    Object.assign(r, encodePixels(cx2.getImageData(0, 0, r.w, r.h).data, r.w, r.h, r.cf));
-    bitmapOf(r).then((b) => (r.bitmap = b));
-  }
-}
 
 // ---- effects ----
 const loadBufferFx = createEffect(
@@ -276,221 +181,61 @@ const accentFx = createEffect(({ face, color }: { face: Face; color: string | nu
   return accentQueue;
 });
 
-const newFaceFx = createEffect(async (name: string = "Custom") => {
-  const black = (w: number, h: number): Resource => {
-    const px = new Uint8ClampedArray(w * h * 4);
+const newFaceFx = createEffect(async (name: string = "Custom") => ({
+  face: blankFace(name, await opaqueBlack(270, 270), await opaqueBlack(466, 466)),
+  label: "new",
+  dirty: true,
+}));
 
-    for (let i = 3; i < px.length; i += 4) px[i] = 255;
-    return encodePixels(px, w, h, 4);
-  };
-  const preview = black(270, 270);
-  const bg = black(466, 466);
+const addWidgetFx = createEffect(async ({ kind, files }: AddWidget) => {
+  const s = $editor.getState();
 
-  preview.bitmap = await bitmapOf(preview);
-  bg.bitmap = await bitmapOf(bg);
-  const nameRaw = new Uint8Array(16);
+  if (!s.face || !files.length) return;
+  checkpoint(0);
+  const face = s.face;
+  const scr = face.screens.find((x) => x.tag === s.screenTag) || face.screens[0];
+  const imgs: number[] = [];
 
-  new TextEncoder().encodeInto(name.slice(0, 14), nameRaw);
-  nameRaw[15] = 0x0a; // same as CDN files, byte meaning not figured out
-  const face: Face = {
-    name,
-    nameRaw: hex(nameRaw),
-    screens: [
-      {
-        tag: TAG.main,
-        subs: [
-          { tag: TAG.name, text: name },
-          {
-            tag: TAG.preview,
-            subs: [
-              {
-                tag: TAG.pvStruct,
-                prefix: "0000000000",
-                refType: 0x61,
-                images: [0],
-              },
-            ],
-          },
-          {
-            tag: 0x30,
-            subs: [
-              {
-                tag: 1,
-                x: 0,
-                y: 0,
-                meta: "d201d2010000000000000000000000".slice(0, 28),
-                refType: 0x61,
-                images: [1],
-              },
-            ],
-          },
-        ],
-      },
-    ],
-    resources: [preview, bg],
-  };
+  for (const file of files) {
+    imgs.push(face.resources.push(await resourceFromFile(file, 5)) - 1);
+  }
+  const node = newWidget(kind, imgs, face.resources[imgs[0]]);
 
-  return { face, label: "new", dirty: true };
+  treeChanged((st) => {
+    scr.subs!.push(node);
+    st.sel = node;
+    st.ids = collectIds(st.face!);
+  });
 });
-
-// kind: image | number (10 digit files 0..9) | hand
-const addWidgetFx = createEffect(
-  async ({ kind, files }: { kind: "image" | "number" | "hand"; files: File[] }) => {
-    const s = $editor.getState();
-
-    if (!s.face || !files.length) return;
-    checkpoint(0);
-    const scr = s.face.screens.find((x) => x.tag === s.screenTag) || s.face.screens[0];
-    const face = s.face;
-    const imgs: number[] = [];
-
-    for (const file of files) {
-      const img = await createImageBitmap(file);
-      const c = new OffscreenCanvas(img.width, img.height);
-      const cx = c.getContext("2d")!;
-
-      cx.drawImage(img, 0, 0);
-      const enc: Resource = encodePixels(
-        cx.getImageData(0, 0, img.width, img.height).data,
-        img.width,
-        img.height,
-        5,
-      );
-
-      enc.bitmap = await bitmapOf(enc);
-      imgs.push(face.resources.length);
-      face.resources.push(enc);
-    }
-
-    const META0 = "0000000000000000000000000000";
-    const metaWith = (id: number, max: number) => {
-      const v = unhex(META0);
-
-      v[9] = id;
-      v[11] = max;
-      v[12] = max >> 8;
-      v[13] = max >> 16;
-      return hex(v);
-    };
-    let node: FaceNode;
-
-    if (kind === "image") {
-      node = {
-        tag: 0x30,
-        subs: [{ tag: 1, x: 183, y: 183, meta: META0, refType: 0x61, images: imgs }],
-      };
-    } else if (kind === "number") {
-      node = {
-        tag: 0x60,
-        subs: [
-          {
-            tag: 1,
-            x: 183,
-            y: 217,
-            meta: metaWith(0x19, 100000),
-            refType: 0x61,
-            images: imgs,
-          },
-          { tag: 0x40, hex: "82" },
-        ],
-      };
-    } else {
-      const r = s.face.resources[imgs[0]];
-      const px = r.w >> 1,
-        py = Math.round(r.h * 0.9);
-
-      node = {
-        tag: 0x70,
-        subs: [
-          {
-            tag: 1,
-            x: 233 - px,
-            y: 233 - py,
-            meta: metaWith(0x0e, 60),
-            refType: 0x61,
-            images: imgs,
-            _kind: "minute",
-          },
-          { tag: 5, flag: 1, pivotX: px, pivotY: py },
-        ],
-      };
-    }
-    treeChanged((st) => {
-      scr.subs!.push(node);
-      st.sel = node;
-      st.ids = collectIds(st.face!);
-    });
-  },
-);
 
 const replaceImageFx = createEffect(async ({ resIdx, file }: { resIdx: number; file: File }) => {
   const { face } = $editor.getState();
   const r = face!.resources[resIdx];
 
   if (r.cf === 1) {
+    // JPEG stays JPEG — the file's own bytes are the resource
     const data = new Uint8Array(await file.arrayBuffer());
-    const b = await createImageBitmap(new Blob([data], { type: "image/jpeg" }));
+    const bitmap = await createImageBitmap(new Blob([data], { type: "image/jpeg" }));
 
     // the uploaded file is the new original — drop any pinned resize source
     treeChanged(() =>
-      Object.assign(r, { data, w: b.width, h: b.height, bitmap: b, srcBitmap: undefined }),
+      Object.assign(r, { data, w: bitmap.width, h: bitmap.height, bitmap, srcBitmap: undefined }),
     );
     return;
   }
-  const img = await createImageBitmap(file);
-  const c = new OffscreenCanvas(img.width, img.height);
-  const cx = c.getContext("2d")!;
+  const fresh = await resourceFromFile(file, r.cf);
 
-  cx.drawImage(img, 0, 0);
-  const enc: Resource = encodePixels(
-    cx.getImageData(0, 0, img.width, img.height).data,
-    img.width,
-    img.height,
-    r.cf,
-  );
-
-  enc.bitmap = await bitmapOf(enc);
-  treeChanged(() => Object.assign(r, enc, { srcBitmap: undefined }));
+  treeChanged(() => Object.assign(r, fresh, { srcBitmap: undefined }));
 });
 
 // A widget is drawn 1:1 from its resource (the format has no draw-time scale), so a resize
 // really is a rescale of the pixels. Encoding them is deferred: resize only rescales the
 // bitmap off r.srcBitmap (the untouched original), so shrinking and growing again costs no
 // quality, and flushResized re-encodes from that same source when the file is built.
-async function encodeBitmap(
-  b: ImageBitmap,
-  w: number,
-  h: number,
-  cf: number,
-  filter = "none",
-): Promise<Uint8Array> {
-  if (cf === 1) {
-    // JPEG resource (backgrounds) — keep the codec, decodePixels/encodePixels can't touch it
-    const c = new OffscreenCanvas(w, h);
-    const cx = c.getContext("2d")!;
-
-    cx.filter = filter;
-    cx.drawImage(b, 0, 0, w, h);
-    return new Uint8Array(
-      await (await c.convertToBlob({ type: "image/jpeg", quality: 0.92 })).arrayBuffer(),
-    );
-  }
-  return encodePixels(pixelsOf(b, w, h, filter), w, h, cf).data;
-}
-
-// re-encode every resized or adjusted resource from its original pixels — called just before
-// buildBin, so the downsampling and the brightness/contrast filter land only in what's
-// exported/flashed. r.bitmap (the crisp browser-scaled preview) is left alone; the editing
-// session keeps showing the good one.
-async function flushResized(face: Face) {
-  for (const r of face.resources)
-    if (r.srcBitmap) r.data = await encodeBitmap(r.srcBitmap, r.w, r.h, r.cf, filterOf(r));
-}
-
 const resizeImageFx = createEffect(
   async ({ node, w, h }: { node: FaceNode; w: number; h: number }) => {
     const { face } = $editor.getState();
-    const st = node.tag === TAG.struct ? node : node.subs?.find((s) => s.tag === TAG.struct);
+    const st = structOf(node);
     const imgs = st?.images;
 
     if (!face || !imgs?.length) return;
@@ -550,7 +295,7 @@ const resizeImageFx = createEffect(
 const adjustImageFx = createEffect(
   async ({ node, adjust }: { node: FaceNode; adjust: Resource["adjust"] }) => {
     const { face } = $editor.getState();
-    const st = node.tag === TAG.struct ? node : node.subs?.find((s) => s.tag === TAG.struct);
+    const st = structOf(node);
 
     if (!face || !st?.images?.length) return;
     for (const ri of new Set(st.images)) {
@@ -579,14 +324,9 @@ const invertColorsFx = createEffect(async () => {
 
   if (!face) return;
   const roots = sel ? [sel] : face.screens.filter((s) => s.tag === screenTag);
-  const imagesIn = (n: FaceNode, out: Set<number>) => {
-    n.images?.forEach((i) => out.add(i));
-    n.subs?.forEach((c) => imagesIn(c, out));
-    return out;
-  };
   const mine = new Set<number>();
 
-  roots.forEach((r) => imagesIn(r, mine));
+  roots.forEach((r) => imagesUnder(r, mine));
   const outside = new Set<number>();
   const walkOutside = (n: FaceNode) => {
     if (roots.includes(n)) return;
@@ -611,24 +351,8 @@ const invertColorsFx = createEffect(async () => {
   }
   for (const idx of mine) {
     const r = face.resources[remap.get(idx) ?? idx];
-    // r.bitmap is the pixels actually on screen (a resized resource still holds the old ones
-    // in r.data); JPEG resources only ever decode through the bitmap
-    const px = r?.bitmap ? pixelsOf(r.bitmap, r.w, r.h) : r && decodePixels(r);
 
-    if (!px) continue;
-    for (let i = 0; i < px.length; i += 4) {
-      px[i] = 255 - px[i];
-      px[i + 1] = 255 - px[i + 1];
-      px[i + 2] = 255 - px[i + 2]; // alpha untouched
-    }
-    const bmp = await createImageBitmap(new ImageData(px, r.w, r.h));
-
-    Object.assign(r, {
-      data: await encodeBitmap(bmp, r.w, r.h, r.cf),
-      bitmap: bmp,
-      srcBitmap: undefined, // the inverted pixels are the original now — see flushResized
-      accentBitmap: undefined,
-    });
+    if (r) await invertResource(r);
   }
 });
 
@@ -670,27 +394,12 @@ export function moveNode(node: FaceNode, target: FaceNode, after: boolean) {
   });
 }
 
-// The name lives in three places: the 16-byte header field (NUL-terminated; nameRaw keeps its
-// trailing byte, meaning unknown, for an exact round-trip), the 0x86 node the watch's own face
-// list reads, and face.name — which is what the marketplace record and the exported filename
-// use. The header field is the tight one: 15 bytes, so long names are cut there and only there.
 export function renameFace(name: string) {
   const s = $editor.getState();
 
   if (!s.face || name === s.face.name) return;
   checkpoint();
-  treeChanged((st) => {
-    const face = st.face!;
-    const tail = face.nameRaw ? unhex(face.nameRaw)[15] : 0x0a;
-    const head = new Uint8Array(16);
-
-    new TextEncoder().encodeInto(name.slice(0, 14), head.subarray(0, 15));
-    head[15] = tail;
-    face.name = name;
-    face.nameRaw = hex(head);
-    for (const scr of face.screens)
-      for (const n of scr.subs ?? []) if (n.tag === TAG.name) n.text = name.slice(0, 63);
-  });
+  treeChanged((st) => setFaceName(st.face!, name));
 }
 
 // Reorder a widget's frames — for value-indexed sets (weekday, month, AM/PM, digits) the

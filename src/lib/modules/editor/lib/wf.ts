@@ -10,7 +10,7 @@ export interface Resource {
   bitmap?: ImageBitmap;
   // set once a resize touched this resource: the ORIGINAL full-size pixels. Resizing only
   // rescales `bitmap` (+ w/h) off this source and leaves `data` stale — it's re-encoded from
-  // the source at build time (flushResized in editor.model), so resizing back and forth costs
+  // the source at build time (flushResized in lib/pixels.ts), so resizing back and forth costs
   // nothing in quality and only what lands on the watch is ever downsampled.
   srcBitmap?: ImageBitmap;
   // preview-only recolor of the accent sentinel (see docs/cmf-protocol.md) — never
@@ -18,7 +18,7 @@ export interface Resource {
   accentBitmap?: ImageBitmap;
   // brightness/contrast/saturation in percent (100 = untouched) + hue rotation in degrees.
   // Applied off srcBitmap as a canvas filter, so the sliders are non-destructive; re-applied
-  // at build time by flushResized.
+  // at build time by flushResized (lib/pixels.ts).
   adjust?: { brightness: number; contrast: number; saturate: number; hue: number };
 }
 

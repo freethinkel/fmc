@@ -3,7 +3,7 @@
   import { Button } from "$lib/shared/components/button";
   import { Icon, type IconName } from "$lib/shared/components/icon";
   import { TAG, unhex, type FaceNode } from "../lib/wf";
-  import { metaInfo, ID_LABELS } from "../lib/render";
+  import { metaInfo, sourceLabel, describeBind } from "../lib/sources";
   import { editorModel } from "../model";
   const {
     $editor: editor,
@@ -64,15 +64,17 @@
     if (st?.meta) {
       const { id } = metaInfo(st);
 
-      if (id) s += ` · ${ID_LABELS[id] || "id 0x" + id.toString(16)}`;
+      if (id) s += ` · ${sourceLabel(id)}`;
     }
+    // a condition node's own row: show what it gates, not just "cond"
+    if (n.tag === TAG.bind) s += ` · ${describeBind(n.hex).join(", ") || "empty"}`;
     if (n.tag === 0x85) {
       // 0x5f: [slotIndex][count][activeIdx][count × metric id] — show the currently assigned metric
       const sf = n.subs?.find((c) => c.tag === 0x5f);
       const v = sf?.hex ? unhex(sf.hex) : null;
       const activeId = v && v.length >= 3 ? v[3 + v[2]] : undefined;
 
-      if (activeId != null) s += ` · ${ID_LABELS[activeId] || "0x" + activeId.toString(16)}`;
+      if (activeId != null) s += ` · ${sourceLabel(activeId)}`;
     }
     if (n._kind) s += ` · ${n._kind}`;
     return s;
@@ -244,8 +246,8 @@
   .toolbar {
     display: flex;
     align-items: center;
-    gap: 4px;
-    padding: 8px;
+    gap: 0.25rem;
+    padding: 0.5rem;
     border-bottom: 1px solid oklch(from var(--color-text) l c h / 10%);
   }
   .tool-slot {
@@ -262,23 +264,23 @@
   .list {
     flex: 1;
     overflow-y: auto;
-    padding-block: 4px;
-    font-size: 0.875rem;
+    padding-block: 0.25rem;
+    font-size: 0.75rem;
   }
   .empty {
     margin: 0;
-    padding: 12px;
+    padding: 0.75rem;
     color: oklch(from var(--color-text) l c h / 55%);
   }
   .node-row {
     display: flex;
     align-items: center;
     width: 100%;
-    gap: 6px;
+    gap: 0.375rem;
     border: none;
     background: transparent;
-    padding-block: 2px;
-    padding-inline-end: 8px;
+    padding-block: 0.125rem;
+    padding-inline-end: 0.5rem;
     font: inherit;
     color: var(--color-text);
     text-align: start;
@@ -313,8 +315,8 @@
   }
   .chevron-spacer {
     flex-shrink: 0;
-    width: 12px;
-    height: 12px;
+    width: 0.75rem;
+    height: 0.75rem;
   }
   :global(.chevron) {
     flex-shrink: 0;

@@ -5,7 +5,7 @@
 // Supported: shapes, markers, static images, literal text (straight and curved) and
 // hour/minute/second/battery hands. Anything driven by a WatchMaker tag or a Lua expression
 // is skipped and reported.
-import { cropOpaque, encodeCanvas, fileMap } from "./facer";
+import { cropOpaque, encodeCanvas, fileMap } from "./facer/assets";
 import { hex, TAG, type Face, type FaceNode, type Resource } from "./wf";
 
 const W = 466; // CMF Watch Pro 2 screen

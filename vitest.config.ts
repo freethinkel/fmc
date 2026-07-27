@@ -32,6 +32,10 @@ export default defineConfig({
         test: {
           name: "unit",
           environment: "node",
+          // the round-trip walks every resource of every fixture through LZ4; Metaball alone
+          // (38 resources, 24 of them JPEG) takes ~4 s and shares the machine with the
+          // browser project, which is enough to blow the 5 s default
+          testTimeout: 30000,
           include: ["tests/**/*.{test,spec}.ts"],
           exclude: ["tests/**/*.browser.{test,spec}.ts"],
         },

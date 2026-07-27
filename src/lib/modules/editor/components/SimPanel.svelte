@@ -2,7 +2,7 @@
   import { Input } from "$lib/shared/components/input";
   import { Switch } from "$lib/shared/components/switch";
   import { Button } from "$lib/shared/components/button";
-  import { ID_LABELS } from "../lib/render";
+  import { sourceLabel } from "../lib/sources";
   import { editorModel } from "../model";
   const { $editor: editor, simPatched, overrideSet } = editorModel;
 
@@ -23,7 +23,7 @@
     | "calGoal"
     | "standsGoal";
 
-  // label + the data-source ids the field feeds (see ID_LABELS/idValue in lib/render.ts);
+  // label + the data-source ids the field feeds (see ID_LABELS/idValue in lib/sources.ts);
   // goal fields feed no id of their own, they're the denominator of the matching ring
   const fields: [NumField, string, string][] = [
     ["steps", "Steps", "0x19, 0x26, 0x49, 0x6a, 0x6c"],
@@ -89,7 +89,7 @@
         class="swatch"
         value={$editor.sim.accentColor || ACCENT_DEFAULT}
         oninput={(e) => simPatched({ accentColor: e.currentTarget.value })}
-        title="Watch accent color (recolors widgets flagged via meta[7]===4, see metaInfo in lib/render.ts)"
+        title="Watch accent color (recolors widgets flagged via meta[7]===4, see metaInfo in lib/sources.ts)"
       />
       {#if $editor.sim.accentColor}
         <Button kind="ghost" onClick={() => simPatched({ accentColor: null })}>Reset</Button>
@@ -114,7 +114,7 @@
     <div class="ids-list">
       {#each $editor.ids as { id, max }}
         <div class="id-row">
-          <span class="id-label">0x{id.toString(16)} {ID_LABELS[id] || "?"}</span>
+          <span class="id-label">0x{id.toString(16)} {sourceLabel(id)}</span>
           <span class="id-input">
             <Input
               type="number"
@@ -134,13 +134,13 @@
   .panel {
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    font-size: 0.875rem;
+    gap: 0.75rem;
+    font-size: 0.75rem;
   }
   .switch-row {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 0.5rem;
   }
   .check-label {
     border: none;
@@ -154,19 +154,19 @@
   }
   .muted-label {
     display: block;
-    margin-bottom: 4px;
-    font-size: 0.75rem;
+    margin-bottom: 0.25rem;
+    font-size: 0.625rem;
     color: oklch(from var(--color-text) l c h / 55%);
   }
   .accent-row {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 0.5rem;
   }
   .swatch {
-    width: 48px;
-    height: 32px;
-    padding: 2px;
+    width: 3rem;
+    height: 2rem;
+    padding: 0.125rem;
     border: 1px solid oklch(from var(--color-text) l c h / 12%);
     border-radius: var(--border-radius);
     cursor: pointer;
@@ -175,11 +175,11 @@
   .fields-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    gap: 8px 12px;
+    gap: 0.5rem 0.75rem;
   }
   .section-heading {
-    margin: 4px 0 0;
-    font-size: 0.75rem;
+    margin: 0.25rem 0 0;
+    font-size: 0.625rem;
     font-weight: 600;
     letter-spacing: 0.04em;
     text-transform: uppercase;
@@ -188,30 +188,30 @@
   .ids-list {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 0.375rem;
   }
   .id-row {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 0.5rem;
   }
   .id-label {
-    width: 144px;
+    width: 9rem;
     flex-shrink: 0;
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
     font-family: var(--font-mono);
-    font-size: 0.75rem;
+    font-size: 0.625rem;
     color: oklch(from var(--color-text) l c h / 55%);
   }
   .id-input {
     display: inline-block;
-    width: 96px;
+    width: 6rem;
     flex-shrink: 0;
   }
   .max-hint {
-    font-size: 0.75rem;
+    font-size: 0.625rem;
     color: oklch(from var(--color-text) l c h / 55%);
   }
 </style>

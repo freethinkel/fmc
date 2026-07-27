@@ -7,8 +7,9 @@
 import { describe, test, expect } from "vitest";
 import pixelmatch from "pixelmatch";
 import { parseBin, TAG } from "$lib/modules/editor/lib/wf";
-import { render as drawFace, defaultSim } from "$lib/modules/editor/lib/render";
-import { bitmapOf } from "$lib/modules/editor/model/editor.model";
+import { render as drawFace } from "$lib/modules/editor/lib/render";
+import { defaultSim } from "$lib/modules/editor/lib/sources";
+import { bitmapOf } from "$lib/modules/editor/lib/pixels";
 
 import analogUrl from "./__fixtures__/Analog__287__Simple_Dial.bin?url";
 import digitalUrl from "./__fixtures__/Digital__281__Metaball.bin?url";

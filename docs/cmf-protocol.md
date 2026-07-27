@@ -1,7 +1,7 @@
 # CMF Watch Pro 2 `.bin` format — byte-level reference
 
 Authoritative source is code, not this doc: `fmc_frontend/src/lib/modules/editor/lib/wf.ts`
-(parse/build, LZ4, pixel codecs) and `render.ts` (what each tag/id means, verified against
+(parse/build, LZ4, pixel codecs) and `sources.ts`/`render.ts` (what each tag/id means, verified against
 a ~100-face corpus). This file is a condensed map of that code so you don't have to
 re-derive it. When in doubt, re-read those two files — they're short (≈450 lines each).
 
@@ -31,23 +31,23 @@ Body: `[0x20][u16 tree length][TLV tree]` then resources back-to-back, each
 
 Every node: `[tag u8][len u16][value]`. `TAG` constants (`wf.ts:45-50`):
 
-| const    | hex  | meaning                                                                                                                                                  |
-| -------- | ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| root     | 0x20 | body wrapper, not a real node                                                                                                                            |
-| main     | 0x21 | normal screen                                                                                                                                            |
-| aod      | 0x22 | always-on-display screen (keep simple — no rings, dimmer, big clock only)                                                                                |
-| name     | 0x86 | 64-byte NUL-terminated display name node (not drawn)                                                                                                     |
-| preview  | 0x28 | embedded catalog thumbnail (pvStruct child)                                                                                                              |
-| struct   | 0x01 | `x u16, y u16, meta[14]` + optional image ref                                                                                                            |
-| bind     | 0x02 | visibility condition, sibling of a widget's struct                                                                                                       |
-| pivot    | 0x05 | `flag u8, pivotX u16, pivotY u16` — hand rotation center                                                                                                 |
-| pvStruct | 0x08 | `prefix[5]` + image ref, no x/y (preview image only)                                                                                                     |
-| fmt      | 0x40 | 1 byte: digit-count/zero-pad flag, sibling of a `number` struct                                                                                          |
+| const    | hex  | meaning                                                                                                                                                                                                                                                                                                                      |
+| -------- | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| root     | 0x20 | body wrapper, not a real node                                                                                                                                                                                                                                                                                                |
+| main     | 0x21 | normal screen                                                                                                                                                                                                                                                                                                                |
+| aod      | 0x22 | always-on-display screen (keep simple — no rings, dimmer, big clock only)                                                                                                                                                                                                                                                    |
+| name     | 0x86 | 64-byte NUL-terminated display name node (not drawn)                                                                                                                                                                                                                                                                         |
+| preview  | 0x28 | embedded catalog thumbnail (pvStruct child)                                                                                                                                                                                                                                                                                  |
+| struct   | 0x01 | `x u16, y u16, meta[14]` + optional image ref                                                                                                                                                                                                                                                                                |
+| bind     | 0x02 | visibility condition, sibling of a widget's struct                                                                                                                                                                                                                                                                           |
+| pivot    | 0x05 | `flag u8, pivotX u16, pivotY u16` — hand rotation center                                                                                                                                                                                                                                                                     |
+| pvStruct | 0x08 | `prefix[5]` + image ref, no x/y (preview image only)                                                                                                                                                                                                                                                                         |
+| fmt      | 0x40 | 1 byte: digit-count/zero-pad flag, sibling of a `number` struct                                                                                                                                                                                                                                                              |
 | frame    | 0x48 | `x u16, y u16, w u16, h u16, align u8` + 12 zero bytes — auto-layout row/column; align's low 2 bits place the AUTO children along the row (0 = start, 2 = center, LVGL `lv_flex_align_t`), there is no gap field (**skip this**: every widget can be placed with absolute x/y directly at screen top level, no group needed) |
-| image    | 0x30 | static image OR pick-by-value from N images                                                                                                              |
-| number   | 0x60 | live numeric readout, digit-image strip                                                                                                                  |
-| group    | 0x68 | frame + auto-laid-out children (skip, see frame)                                                                                                         |
-| hand     | 0x70 | rotating image around a pivot                                                                                                                            |
+| image    | 0x30 | static image OR pick-by-value from N images                                                                                                                                                                                                                                                                                  |
+| number   | 0x60 | live numeric readout, digit-image strip                                                                                                                                                                                                                                                                                      |
+| group    | 0x68 | frame + auto-laid-out children (skip, see frame)                                                                                                                                                                                                                                                                             |
+| hand     | 0x70 | rotating image around a pivot                                                                                                                                                                                                                                                                                                |
 
 Plus literals used directly (not in the `TAG` object): `0x80`/`0x81` progress rings,
 `0x5a`/`0x5b` their arc-spec sibling, `0x85`/`0x5f` user-assignable complication slot
@@ -63,18 +63,29 @@ costs nothing) but don't rely on the renderer enforcing it. `m[7]===4` is the ac
 capability flag — see "Accent color" below; `m[4..6]` next to it looks like leftover
 placeholder bytes (`(1,0,0)`/`(4,0,0)`), not a meaningful color, at least on flagged structs.
 
-### Data-source ids (`render.ts:6-15,57-90`)
+### Data-source ids (`lib/sources.ts`)
 
-| id (hex)            | meaning                         | id (hex)  | meaning                   |
-| ------------------- | ------------------------------- | --------- | ------------------------- |
-| 0x01                | hour (12/24 per device setting) | 0x19      | steps                     |
-| 0x07                | hour, forced 24h                | 0x1a      | heart rate                |
-| 0x0b                | minute                          | 0x1e/0x48 | calories                  |
-| 0x0f/0x12/0x71/0x72 | second                          | 0x22/0x23 | distance km/mi (int part) |
-| 0x13                | AM/PM flag (0/1)                | 0x30      | battery level             |
-| 0x16                | month (1-12)                    | 0x36/0x5f | temperature               |
-| 0x17                | day of month                    | 0x73      | 24h/metric-units flag     |
-| 0x18                | weekday (0=Monday, unconfirmed) |           |                           |
+| id (hex)          | meaning                         | id (hex)     | meaning                   |
+| ----------------- | ------------------------------- | ------------ | ------------------------- |
+| 0x01              | hour (12/24 per device setting) | 0x19         | steps                     |
+| 0x04/0x07         | hour, forced 24h                | 0x1a         | heart rate                |
+| 0x0b              | minute                          | 0x1c/0x1e    | calories                  |
+| 0x0a/0x70         | hour hand angle                 | 0x48         | stand hours               |
+| 0x0e/0x71         | minute hand angle               | 0x22/0x23    | distance km/mi (int part) |
+| 0x0f/0x12/0x72    | second (0x0f/0x12 smooth)       | 0x74/0x75    | distance km/mi (frac)     |
+| 0x02/0x03         | hour tens/ones (12h)            | 0x24/0x30    | battery level             |
+| 0x05/0x06,0x08/09 | hour tens/ones                  | 0x36/0x5f    | temperature               |
+| 0x0c/0x0d         | minute tens/ones                | 0x8b         | AQI                       |
+| 0x10/0x11         | second tens/ones                | 0x73         | 24h/metric-units flag     |
+| 0x13              | AM/PM flag (0/1)                | 0x25-0x27,   | goal % / slot aliases of  |
+| 0x15/0x16         | month (1-12)                    | 0x49,0x6a,   | steps & calories,         |
+| 0x17              | day of month                    | 0x6c,0x6f    | exact metric unconfirmed  |
+| 0x18              | weekday (0=Sunday)              | 0x79+slotIdx | synthetic: slot selection |
+
+Reconciled with §16 of the protocol repo (joshuapassos/CMF-Watch-Pro-2-BLE-Protocol), whose
+hand-angle/tens-units ids come from disassembling the firmware getter table; the health labels
+are ours, calibrated against the companion app's slot-menu icons. Unlisted: `0x82`, which drives
+Activity_Mood's fan gauge and is documented nowhere — treated as a goal percentage.
 
 Any id can drive a `number` widget, an `image`-pick widget, or an arc ring — the mechanism
 is generic (see below), not hardcoded per id.
@@ -118,7 +129,7 @@ o'clock, positive = clockwise. `frac = (idValue(id) - min) / (max - min)`, clamp
 min/max to the metric's real range** (e.g. heart rate 0-200 bpm, steps 0-10000, battery 0-100);
 if `max <= 100` the renderer special-cases step/calorie "goal" ids to mean percent-of-goal —
 harmless for other ids (battery/heart-rate), but be aware if you reuse a step-goal id.
-With no image resource, `render.ts`'s procedural fallback strokes a translucent white full
+With no image resource, `arc.ts`'s procedural fallback strokes a translucent white full
 track + white highlighted arc for the filled fraction — this is the **preview tool's own
 stand-in style**; real device firmware may render this differently (own ring color/theme),
 so don't over-index on exact preview pixels here.
@@ -127,8 +138,8 @@ so don't over-index on exact preview pixels here.
 
 **`meta[7]` (`m[7]`, byte 11 of the struct's 14-byte meta) `=== 4`** marks that widget's
 resource(s) as accent-tintable: the watch's own firmware substitutes the user's chosen accent
-color for whatever's baked there, at render time. `render.ts`'s `metaInfo(node).accent` exposes
-this; `editor.model.ts`'s `accentFlaggedResources(face)` walks the tree collecting flagged
+color for whatever's baked there, at render time. `sources.ts`'s `metaInfo(node).accent` exposes
+this; `lib/pixels.ts`'s `accentFlaggedResources(face)` walks the tree collecting flagged
 resource indices, and `accentBitmapFor` recolors **every non-transparent pixel** of a flagged
 resource (alpha untouched) — no per-pixel color test at all, because the flag identifies the
 _whole resource_ as tintable regardless of what color it happens to be baked as.
@@ -164,7 +175,7 @@ specifically to stress both directions:
 
 This is a live per-pixel substitution at render time, not baked once — the shipped `.bin` must
 keep its original bytes; **never bake a chosen accent color into `resource.data`/`buildBin`
-output**, only into the preview-canvas draw path (`editor.model.ts`'s
+output**, only into the preview-canvas draw path (`lib/pixels.ts`'s
 `accentBitmapFor`/`applyAccent`/`accentFlaggedResources`, `Sim.accentColor`) so the exported
 file still lets the real watch apply its own choice.
 Not fully understood: `meta[4..6]` sits right next to the flag byte and looked at first like it
@@ -194,12 +205,12 @@ standalone single images can go anywhere else.
 
 `encodePixels(px: Uint8ClampedArray RGBA, w, h, cf)` returns a `Resource` (LZ4-compressed
 internally via the file's own from-scratch codec — just call it, don't touch LZ4 yourself).
-Canvas/framebuffer is **466×466 square** (`render.ts:469`) regardless of the watch's round
+Canvas/framebuffer is **466×466 square** (`render.ts`'s `render()`) regardless of the watch's round
 bezel — the round look comes entirely from the artwork, not a code-level clip.
 
 ## Gotcha: a `number` sharing an id with a ring shows the ring's percent, not the raw value
 
-`numberString` (`render.ts:259-270`) checks `collectArcsById` (screen-wide, not just
+`digitsOf` (`render.ts`) checks `collectArcsById` (`arc.ts`) (screen-wide, not just
 siblings) — if ANY `0x80`/`0x81` ring on the same screen has `struct.meta.id` equal to
 this `number`'s id, the number renders `round(progressFrac(...) * 100)` **instead of**
 `round(idValue(id))`. Confirmed live: give a heart-rate ring and a heart-rate number both

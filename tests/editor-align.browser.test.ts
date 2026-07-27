@@ -2,9 +2,10 @@
 // edge/center — checked against a re-render, not raw x/y, since that's the model's contract.
 import { test, expect } from "vitest";
 import { TAG, parseBin, unhex, hex } from "$lib/modules/editor/lib/wf";
-import { render, metaInfo, parseFrame, defaultSim } from "$lib/modules/editor/lib/render";
+import { render, parseFrame } from "$lib/modules/editor/lib/render";
+import { defaultSim, metaInfo } from "$lib/modules/editor/lib/sources";
 import { editorModel } from "$lib/modules/editor/model";
-import { bitmapOf } from "$lib/modules/editor/model/editor.model";
+import { bitmapOf } from "$lib/modules/editor/lib/pixels";
 import url from "./__fixtures__/Analog__287__Simple_Dial.bin?url";
 import groupedUrl from "./__fixtures__/Multifunction__368__Function.bin?url";
 

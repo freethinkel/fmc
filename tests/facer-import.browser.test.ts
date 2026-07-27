@@ -4,7 +4,8 @@
 import { test, expect } from "vitest";
 import { facerToFace } from "$lib/modules/editor/lib/facer";
 import { TAG, decodePixels, type FaceNode } from "$lib/modules/editor/lib/wf";
-import { parseFrame, metaInfo } from "$lib/modules/editor/lib/render";
+import { parseFrame } from "$lib/modules/editor/lib/render";
+import { metaInfo } from "$lib/modules/editor/lib/sources";
 
 const LAYERS = [
   { type: "shape", shape_type: 1, x: 0, y: 0, width: 320, height: 320, color: -16777216 },

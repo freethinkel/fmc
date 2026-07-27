@@ -5,7 +5,7 @@
 import { test, expect } from "vitest";
 import { watchmakerToFace } from "$lib/modules/editor/lib/watchmaker";
 import { TAG, type FaceNode } from "$lib/modules/editor/lib/wf";
-import { metaInfo } from "$lib/modules/editor/lib/render";
+import { metaInfo } from "$lib/modules/editor/lib/sources";
 
 const LAYERS = `
  <Layer type="shape" x="0" y="0" width="512" height="512" shape="Circle" color="000000" opacity="100" display="bd"/>
