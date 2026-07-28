@@ -1,14 +1,10 @@
 <script lang="ts">
   import { Input } from "$lib/shared/components/input";
   import { Switch } from "$lib/shared/components/switch";
-  import { Button } from "$lib/shared/components/button";
-  import { sourceLabel } from "../lib/sources";
+  import { Icon } from "$lib/shared/components/icon";
+  import { ACCENT_PALETTE, pickerLabel } from "../lib/sources";
   import { editorModel } from "../model";
   const { $editor: editor, simPatched, overrideSet } = editorModel;
-
-  // default for the baked-in sentinel color (see cmf-format-reference.md "Accent color
-  // sentinel") — just shown in the picker until the user picks their own
-  const ACCENT_DEFAULT = "#ff2c00";
 
   type NumField =
     | "steps"
@@ -83,17 +79,30 @@
   </div>
   <div>
     <span class="muted-label">Accent color</span>
+    <!-- the watch offers a fixed set, so this mirrors it rather than opening a color wheel;
+         recolors widgets flagged via meta[7]===4, see metaInfo in lib/sources.ts -->
     <div class="accent-row">
-      <input
-        type="color"
-        class="swatch"
-        value={$editor.sim.accentColor || ACCENT_DEFAULT}
-        oninput={(e) => simPatched({ accentColor: e.currentTarget.value })}
-        title="Watch accent color (recolors widgets flagged via meta[7]===4, see metaInfo in lib/sources.ts)"
-      />
-      {#if $editor.sim.accentColor}
-        <Button kind="ghost" onClick={() => simPatched({ accentColor: null })}>Reset</Button>
-      {/if}
+      <button
+        type="button"
+        class="swatch none"
+        class:on={!$editor.sim.accentColor}
+        title="No accent — draw the colors baked into the file"
+        aria-label="No accent"
+        onclick={() => simPatched({ accentColor: null })}
+      >
+        <Icon name="x" size={12} />
+      </button>
+      {#each ACCENT_PALETTE as c}
+        <button
+          type="button"
+          class="swatch"
+          class:on={$editor.sim.accentColor === c}
+          style="background: {c}"
+          title={c}
+          aria-label={c}
+          onclick={() => simPatched({ accentColor: c })}
+        ></button>
+      {/each}
     </div>
   </div>
   <div class="fields-grid">
@@ -114,7 +123,7 @@
     <div class="ids-list">
       {#each $editor.ids as { id, max }}
         <div class="id-row">
-          <span class="id-label">0x{id.toString(16)} {sourceLabel(id)}</span>
+          <span class="id-label">{pickerLabel(id)}</span>
           <span class="id-input">
             <Input
               type="number"
@@ -158,19 +167,40 @@
     font-size: 0.625rem;
     color: oklch(from var(--color-text) l c h / 55%);
   }
+  /* one row, scrolled — wrapping left a lone swatch stranded on a second line */
   .accent-row {
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    overflow-x: auto;
+    /* room for the selected swatch's outline, which sits outside its box */
+    padding: 0.25rem;
+    margin: -0.25rem;
+    scrollbar-width: thin;
   }
   .swatch {
-    width: 3rem;
-    height: 2rem;
-    padding: 0.125rem;
+    flex-shrink: 0;
+    width: 1.5rem;
+    height: 1.5rem;
+    padding: 0;
     border: 1px solid oklch(from var(--color-text) l c h / 12%);
-    border-radius: var(--border-radius);
+    border-radius: 50%;
     cursor: pointer;
+    /* the ring sits outside the circle, so picking one doesn't nudge the row */
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+    transition: outline-color 0.15s ease;
+
+    &.on {
+      outline-color: var(--color-text);
+    }
+  }
+  .none {
+    display: flex;
+    align-items: center;
+    justify-content: center;
     background: transparent;
+    color: oklch(from var(--color-text) l c h / 55%);
   }
   .fields-grid {
     display: grid;

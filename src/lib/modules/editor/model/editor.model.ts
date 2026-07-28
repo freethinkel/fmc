@@ -13,11 +13,21 @@ import {
   type Resource,
 } from "../lib/wf";
 import { render } from "../lib/render";
-import { collectIds, defaultSim, type Sim } from "../lib/sources";
+import {
+  buildBind,
+  collectIds,
+  defaultSim,
+  FRAME_LABELS,
+  isSlotSel,
+  parseBind,
+  SLOT_SEL_ID,
+  type Sim,
+} from "../lib/sources";
 import {
   accentBitmapFor,
   accentFlaggedResources,
   bitmapOf,
+  blankFrame,
   filterOf,
   flushResized,
   invertResource,
@@ -27,11 +37,21 @@ import {
 } from "../lib/pixels";
 import {
   blankFace,
+  contains,
+  containerOrigin,
   findParent,
   imagesUnder,
+  newBind,
+  newGroup,
+  newRing,
+  newSlot,
   newWidget,
+  nodeOrigin,
   setFaceName,
+  shiftNode,
   structOf,
+  SLOT_METRICS,
+  SLOT_SIZE,
   type WidgetKind,
 } from "../lib/tree";
 
@@ -122,6 +142,10 @@ export const replaceImageRequested = createEvent<{
   file: File;
 }>();
 export const invertColorsRequested = createEvent();
+export const addSlotRequested = createEvent();
+// meta byte 9 — the data source a widget reads. Not a plain `patched` because the value-indexed
+// sources also fix the widget's frame count, see sourceIdFx.
+export const sourceIdSet = createEvent<{ node: FaceNode; id: number }>();
 export const adjustImageRequested = createEvent<{
   node: FaceNode;
   adjust: Resource["adjust"];
@@ -201,6 +225,85 @@ const addWidgetFx = createEffect(async ({ kind, files }: AddWidget) => {
   }
   const node = newWidget(kind, imgs, face.resources[imgs[0]]);
 
+  treeChanged((st) => {
+    scr.subs!.push(node);
+    st.sel = node;
+    st.ids = collectIds(st.face!);
+  });
+});
+
+// Frames dropped by a shrinking source change, keyed by the struct they belonged to. Switching
+// month (12 frames) -> weekday (7) trims the run but keeps the originals here, so switching back
+// restores the art instead of 12 blanks. Cleared as soon as the selection moves to another layer
+// (see the `select` sample) — that's the point where the trim becomes permanent.
+let frameStash = new Map<FaceNode, number[]>();
+
+// A value-indexed frame set (AM/PM, weekday, month) has a length the format fixes: the widget
+// draws images[value % count], so a 7-frame set bound to `month` shows the wrong art for five
+// months of the year. Picking one of those sources therefore resizes the run to match — missing
+// slots become transparent placeholders to drop art on, extra ones are trimmed (and stashed).
+const sourceIdFx = createEffect(async ({ node, id }: { node: FaceNode; id: number }) => {
+  const { face } = $editor.getState();
+  const st = structOf(node);
+
+  if (!face || !st?.meta) return;
+  const meta = unhex(st.meta);
+
+  meta[9] = id;
+  const need = FRAME_LABELS[id]?.length;
+  const src = frameStash.get(st) ?? st.images;
+  let next = src && need ? src.slice(0, need) : undefined;
+
+  if (src?.length && need && need > src.length) {
+    // frames are stored as a base offset + count, so the run has to stay consecutive
+    // (refTailBytes rejects anything else) — a longer set means a fresh run at the end of the
+    // resource table. ponytail: the old run stays in the file as dead weight, same as a deleted
+    // widget's; a resource GC pass over the whole tree is the fix if files ever get fat.
+    const first = face.resources[src[0]];
+    const base = face.resources.length;
+
+    for (let i = 0; i < need; i++)
+      face.resources.push(
+        i < src.length ? { ...face.resources[src[i]] } : await blankFrame(first.w, first.h),
+      );
+    next = Array.from({ length: need }, (_, i) => base + i);
+  }
+  if (src && next) frameStash.set(st, src.length >= next.length ? src : next);
+  checkpoint();
+  treeChanged((s) => {
+    st.meta = hex(meta);
+    if (next) st.images = next;
+    s.ids = collectIds(s.face!);
+  });
+});
+
+// A widget slot needs one placeholder + one icon per metric, so unlike the group/ring it can't
+// be a plain synchronous factory — the blank frames have to be encoded first.
+const addSlotFx = createEffect(async () => {
+  const s = $editor.getState();
+
+  if (!s.face) return;
+  const face = s.face;
+  const scr = face.screens.find((x) => x.tag === s.screenTag) || face.screens[0];
+  // slotIndex is the node's position among the screen's existing slots — that's what the
+  // 0x79 + slotIndex condition on its sibling groups is keyed to (zero exceptions in the corpus)
+  let slots = 0;
+  const tally = (n: FaceNode) => {
+    if (n.tag === 0x85) slots++;
+    n.subs?.forEach(tally);
+  };
+
+  scr.subs?.forEach(tally);
+  const base = face.resources.length;
+
+  for (let i = 0; i <= SLOT_METRICS.length; i++)
+    face.resources.push(await blankFrame(SLOT_SIZE, SLOT_SIZE));
+  const node = newSlot(
+    slots,
+    Array.from({ length: SLOT_METRICS.length + 1 }, (_, i) => base + i),
+  );
+
+  checkpoint(0);
   treeChanged((st) => {
     scr.subs!.push(node);
     st.sel = node;
@@ -376,21 +479,147 @@ export function deleteWidget() {
   });
 }
 
-// Reorder a node among its siblings — subs order is draw order, so this is z-ordering.
-// ponytail: same-parent only; reparenting would need frame-relative coordinate fixups.
-export function moveNode(node: FaceNode, target: FaceNode, after: boolean) {
+/** Layers that need no bitmap at all: an empty group, or a procedural progress ring. Their
+ *  file-bearing counterparts go through addWidgetFx instead (it has to read the images first). */
+export function addNode(kind: "group" | "ring") {
   const s = $editor.getState();
 
-  if (!s.face || node === target) return;
-  const p = findParent(s.face.screens, node);
+  if (!s.face) return;
+  const scr = s.face.screens.find((x) => x.tag === s.screenTag) || s.face.screens[0];
+  const node = kind === "group" ? newGroup() : newRing();
 
-  if (!p?.subs?.includes(target)) return;
+  checkpoint(0);
+  treeChanged((st) => {
+    scr.subs!.push(node);
+    st.sel = node;
+    st.ids = collectIds(st.face!);
+  });
+}
+
+/** Add/remove the selected layer's visibility condition (tag 0x02). The entries themselves are
+ *  edited as hex in the props panel — a per-entry editor can come later if anyone asks. */
+export function toggleCondition(node: FaceNode) {
+  const s = $editor.getState();
+  const existing = node.subs?.find((n) => n.tag === TAG.bind);
+
+  if (!s.face || (!existing && !node.subs)) return; // a leaf (struct/pivot) can't carry one
+  checkpoint(0);
+  treeChanged((st) => {
+    if (existing) node.subs!.splice(node.subs!.indexOf(existing), 1);
+    else node.subs!.push(newBind());
+    st.ids = collectIds(st.face!);
+  });
+}
+
+/** Bind a layer to one metric of one widget slot — the inverse direction of the link, and the
+ *  one the format actually stores: the slot's own 0x5f only says which metric is selected, and
+ *  it's each candidate layer that carries the condition deciding whether it shows.
+ *  Rewrites only the slot-selection entry (id 0x79 + slotIndex), leaving any real metric
+ *  conditions on the same node alone; `slot: null` unbinds. op 0x81 matches the corpus. */
+export function setSlotBind(node: FaceNode, slot: number | null, metric = 0) {
+  const s = $editor.getState();
+
+  if (!s.face || !node.subs) return;
+  const bind = node.subs.find((n) => n.tag === TAG.bind);
+  const kept = parseBind(bind?.hex).filter((e) => !isSlotSel(e.id));
+  const next = slot == null ? kept : [...kept, { id: SLOT_SEL_ID + slot, op: 0x81, val: metric }];
+
+  checkpoint(0);
+  treeChanged((st) => {
+    if (!next.length) {
+      if (bind) node.subs!.splice(node.subs!.indexOf(bind), 1);
+    } else if (bind) bind.hex = buildBind(next);
+    else node.subs!.push({ tag: TAG.bind, hex: buildBind(next) });
+    st.ids = collectIds(st.face!);
+  });
+}
+
+// ponytail: the copy shares its resource indices with the original, so resize/adjust/invert on
+// one hits both. Splitting them means cloning every frame — do it if that ever surprises anyone.
+export function duplicateSelected() {
+  const s = $editor.getState();
+
+  if (!s.sel || !s.face) return;
+  const p = findParent(s.face.screens, s.sel);
+
+  if (!p) return;
+  const copy = structuredClone(s.sel);
+
+  checkpoint(0);
+  treeChanged((st) => {
+    p.subs!.splice(p.subs!.indexOf(st.sel!) + 1, 0, copy);
+    st.sel = copy;
+  });
+}
+
+/** Wrap the selection in a new group, in place. ponytail: screen-level only — a group nested in
+ *  another group is laid out by the parent's flex rules (x=0 means "center me", see drawGroup),
+ *  so the wrapper couldn't keep its child where it was without solving that layout first. */
+export function groupSelected() {
+  const s = $editor.getState();
+
+  if (!s.sel || !s.face) return;
+  const p = findParent(s.face.screens, s.sel);
+
+  if (!p || (p.tag !== TAG.main && p.tag !== TAG.aod)) return;
+  const g = newGroup();
+
+  checkpoint(0);
+  treeChanged((st) => {
+    p.subs!.splice(p.subs!.indexOf(st.sel!), 1, g);
+    g.subs!.push(st.sel!);
+    st.sel = g;
+  });
+}
+
+/** Dissolve the selected group, lifting its children into the parent at the group's own slot.
+ *  ponytail: AUTO children (meta.w 0x8000) were positioned by the group's flex row and ignore
+ *  x/y entirely, so they land wherever their raw coordinates say — re-place them by hand. */
+export function ungroupSelected() {
+  const s = $editor.getState();
+  const g = s.sel;
+
+  if (!s.face || g?.tag !== TAG.group) return;
+  const p = findParent(s.face.screens, g);
+
+  if (!p) return;
+  const o = nodeOrigin(g) || { x: 0, y: 0 };
+  const kids = (g.subs || []).filter((n) => n.tag !== TAG.frame && n.tag !== TAG.bind);
+
+  checkpoint(0);
+  treeChanged((st) => {
+    kids.forEach((k) => shiftNode(k, o.x, o.y));
+    p.subs!.splice(p.subs!.indexOf(g), 1, ...kids);
+    st.sel = kids[0] ?? null;
+  });
+}
+
+// Drop a node next to `target` (subs order is draw order, so within one parent this is
+// z-ordering), or INTO it when `into` — that's how a layer gets into a group.
+// A child's x/y is measured from its container's frame, so a cross-parent move shifts the node
+// by the difference of the two origins and it stays visually put. AUTO children (meta.w 0x8000)
+// are placed by the group's flex row and ignore x/y — moving one out drops it at its raw
+// coordinates, same caveat as ungroupSelected.
+export function moveNode(node: FaceNode, target: FaceNode, after: boolean, into = false) {
+  const s = $editor.getState();
+
+  if (!s.face || node === target || contains(node, target)) return;
+  const from = findParent(s.face.screens, node);
+  const to = into ? target : findParent(s.face.screens, target);
+
+  if (!from || !to) return;
   checkpoint(0);
   treeChanged(() => {
-    const subs = p.subs!;
+    const subs = (to.subs ??= []);
 
-    subs.splice(subs.indexOf(node), 1);
-    subs.splice(subs.indexOf(target) + (after ? 1 : 0), 0, node);
+    from.subs!.splice(from.subs!.indexOf(node), 1);
+    subs.splice(into ? subs.length : subs.indexOf(target) + (after ? 1 : 0), 0, node);
+    if (from !== to) {
+      const a = containerOrigin(s.face!.screens, from),
+        b = containerOrigin(s.face!.screens, to);
+
+      shiftNode(node, a.x - b.x, a.y - b.y);
+    }
   });
 }
 
@@ -594,7 +823,11 @@ sample({
 sample({
   clock: select,
   source: $editor,
-  fn: (s, sel) => ({ ...s, sel }),
+  fn: (s, sel) => {
+    // leaving a layer is what makes a source change's frame trim permanent — see frameStash
+    if (sel !== s.sel) frameStash = new Map();
+    return { ...s, sel };
+  },
   target: $editor,
 });
 sample({
@@ -795,6 +1028,24 @@ sample({
 sample({
   clock: invertColorsRequested,
   target: invertColorsFx,
+});
+sample({
+  clock: addSlotRequested,
+  target: addSlotFx,
+});
+sample({
+  clock: addSlotFx.fail,
+  fn: ({ error }) => `add widget slot: ${error.message}`,
+  target: errored,
+});
+sample({
+  clock: sourceIdSet,
+  target: sourceIdFx,
+});
+sample({
+  clock: sourceIdFx.fail,
+  fn: ({ error }) => `source: ${error.message}`,
+  target: errored,
 });
 sample({
   clock: invertColorsFx.fail,

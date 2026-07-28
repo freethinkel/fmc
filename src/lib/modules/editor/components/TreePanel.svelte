@@ -2,16 +2,22 @@
   import { SvelteSet } from "svelte/reactivity";
   import { Button } from "$lib/shared/components/button";
   import { Icon, type IconName } from "$lib/shared/components/icon";
+  import { Menu, MenuItem } from "$lib/shared/components/menu";
   import { TAG, unhex, type FaceNode } from "../lib/wf";
-  import { metaInfo, sourceLabel, describeBind } from "../lib/sources";
+  import { metaInfo, pickerLabel, describeBind } from "../lib/sources";
+  import { contains, findParent } from "../lib/tree";
   import { editorModel } from "../model";
   const {
     $editor: editor,
     select,
+    addNode,
+    addSlotRequested,
     addWidgetRequested,
     deleteWidget,
+    duplicateSelected,
+    groupSelected,
+    ungroupSelected,
     moveNode,
-    invertColorsRequested,
   } = editorModel;
 
   const tagNames = {
@@ -64,7 +70,7 @@
     if (st?.meta) {
       const { id } = metaInfo(st);
 
-      if (id) s += ` · ${sourceLabel(id)}`;
+      if (id) s += ` · ${pickerLabel(id)}`;
     }
     // a condition node's own row: show what it gates, not just "cond"
     if (n.tag === TAG.bind) s += ` · ${describeBind(n.hex).join(", ") || "empty"}`;
@@ -74,11 +80,15 @@
       const v = sf?.hex ? unhex(sf.hex) : null;
       const activeId = v && v.length >= 3 ? v[3 + v[2]] : undefined;
 
-      if (activeId != null) s += ` · ${sourceLabel(activeId)}`;
+      if (activeId != null) s += ` · ${pickerLabel(activeId)}`;
     }
     if (n._kind) s += ` · ${n._kind}`;
     return s;
   }
+
+  // the file-backed layer kinds share one hidden input per kind, clicked from the Add menu —
+  // a <label><input type=file> can't live inside a MenuItem's own <button>
+  let fileInput = $state<Record<string, HTMLInputElement | undefined>>({});
 
   function onAdd(kind: "image" | "number" | "hand", e: Event) {
     const t = e.target as HTMLInputElement;
@@ -88,7 +98,24 @@
     t.value = "";
   }
 
+  // grouping happens at screen level only — see groupSelected
+  const canGroup = $derived.by(() => {
+    const p = $editor.face && $editor.sel && findParent($editor.face.screens, $editor.sel);
+
+    return Boolean(p && (p.tag === TAG.main || p.tag === TAG.aod));
+  });
+
   const openNodes = new SvelteSet(); // accordion: closed by default, keyed by the node itself (tree is mutable, refs are stable)
+
+  // reveal the selection: clicking a widget on the canvas must open the accordion down to its
+  // row, otherwise the selected node isn't even mounted
+  $effect(() => {
+    const { face, sel } = $editor;
+
+    if (!face || !sel) return;
+    for (let p = findParent(face.screens, sel); p; p = findParent(face.screens, p))
+      openNodes.add(p);
+  });
 
   function toggleOpen(n: FaceNode, e: Event) {
     e.stopPropagation();
@@ -96,95 +123,114 @@
     else openNodes.add(n);
   }
 
-  // Native HTML5 drag & drop — reorder siblings (= draw order). Dragging across parents is
-  // rejected in dragover, so the drop indicator only shows on valid targets.
+  // Native HTML5 drag & drop. Three drop zones: the top/bottom quarter of a row reorders next
+  // to it (across parents too — moveNode fixes the coordinates up), the middle of a *group* row
+  // drops into that group.
   // $state.raw, not $state: a proxied node would break identity checks against the tree
-  let drag = $state.raw<{ node: FaceNode; parent: FaceNode | null } | null>(null);
-  let dropAt = $state.raw<{ node: FaceNode; after: boolean } | null>(null);
+  let drag = $state.raw<FaceNode | null>(null);
+  let dropAt = $state.raw<{ node: FaceNode; after: boolean; into: boolean } | null>(null);
 
-  function onDragStart(n: FaceNode, parent: FaceNode | null, e: DragEvent) {
-    drag = { node: n, parent };
+  function onDragStart(n: FaceNode, e: DragEvent) {
+    drag = n;
     e.dataTransfer?.setData("text/plain", ""); // Firefox needs payload to start a drag
     if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
   }
 
   function onDragOver(n: FaceNode, parent: FaceNode | null, e: DragEvent) {
-    if (!drag || drag.node === n || drag.parent !== parent) return;
+    // no parent = a screen row: it can still take children, but only by dropping into it
+    if (!drag || contains(drag, n)) return;
     e.preventDefault();
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const rel = (e.clientY - r.top) / r.height;
+    const groupish = n.tag === TAG.group || !parent;
 
-    dropAt = { node: n, after: e.clientY > r.top + r.height / 2 };
+    dropAt = { node: n, after: rel > 0.5, into: groupish && rel > 0.25 && rel < 0.75 };
   }
 
   function onDrop(n: FaceNode, e: DragEvent) {
     e.preventDefault();
     // the list is reversed, so dropping visually below the target means earlier in subs
-    if (drag && dropAt?.node === n) moveNode(drag.node, n, !dropAt.after);
+    if (drag && dropAt?.node === n) moveNode(drag, n, !dropAt.after, dropAt.into);
     drag = dropAt = null;
   }
 </script>
 
 <div class="tree-panel">
   <div class="toolbar">
-    <span class="tool-slot" title="Add image widget">
-      <Button kind="secondary" disabled={!$editor.face}>
-        <label class="file-label">
-          <Icon name="image-plus" size={16} />
-          <input
-            type="file"
-            accept="image/*"
-            hidden
-            disabled={!$editor.face}
-            onchange={(e) => onAdd("image", e)}
-          />
-        </label>
-      </Button>
-    </span>
-    <span class="tool-slot" title="Add number widget — select 10 digit images (0…9)">
-      <Button kind="secondary" disabled={!$editor.face}>
-        <label class="file-label">
-          <Icon name="hash" size={16} />
-          <input
-            type="file"
-            accept="image/*"
-            multiple
-            hidden
-            disabled={!$editor.face}
-            onchange={(e) => onAdd("number", e)}
-          />
-        </label>
-      </Button>
-    </span>
-    <span class="tool-slot" title="Add hand widget">
-      <Button kind="secondary" disabled={!$editor.face}>
-        <label class="file-label">
-          <Icon name="clock-3" size={16} />
-          <input
-            type="file"
-            accept="image/*"
-            hidden
-            disabled={!$editor.face}
-            onchange={(e) => onAdd("hand", e)}
-          />
-        </label>
-      </Button>
-    </span>
-    <span
-      class="tool-slot"
-      title={$editor.sel
-        ? "Invert colors of the selected layer"
-        : "Invert colors of the whole screen"}
-    >
-      <Button kind="secondary" disabled={!$editor.face} onClick={() => invertColorsRequested()}>
-        <Icon name="contrast" size={16} />
-      </Button>
-    </span>
+    <input
+      bind:this={fileInput.image}
+      type="file"
+      accept="image/*"
+      hidden
+      onchange={(e) => onAdd("image", e)}
+    />
+    <input
+      bind:this={fileInput.number}
+      type="file"
+      accept="image/*"
+      multiple
+      hidden
+      onchange={(e) => onAdd("number", e)}
+    />
+    <input
+      bind:this={fileInput.hand}
+      type="file"
+      accept="image/*"
+      hidden
+      onchange={(e) => onAdd("hand", e)}
+    />
+    <Menu align="start">
+      {#snippet trigger({ toggle })}
+        <span class="tool-slot" title="Add a layer">
+          <Button kind="secondary" disabled={!$editor.face} onClick={toggle}>
+            <Icon name="plus" size={16} />
+          </Button>
+        </span>
+      {/snippet}
+      <MenuItem onClick={() => fileInput.image?.click()}>
+        <Icon name="image" size={14} /> Image…
+      </MenuItem>
+      <MenuItem onClick={() => fileInput.number?.click()}>
+        <Icon name="hash" size={14} /> Number…
+      </MenuItem>
+      <MenuItem onClick={() => fileInput.hand?.click()}>
+        <Icon name="clock-3" size={14} /> Hand…
+      </MenuItem>
+      <MenuItem onClick={() => addNode("ring")}>
+        <Icon name="loader" size={14} /> Progress ring
+      </MenuItem>
+      <MenuItem onClick={() => addNode("group")}>
+        <Icon name="folder" size={14} /> Group
+      </MenuItem>
+      <MenuItem onClick={() => addSlotRequested()}>
+        <Icon name="square-dashed" size={14} /> Widget slot
+      </MenuItem>
+    </Menu>
     <div class="spacer"></div>
-    <span class="tool-slot" title="Delete selected widget">
-      <Button kind="ghost" disabled={!$editor.sel} onClick={deleteWidget}>
-        <Icon name="trash" size={16} color="var(--color-error)" />
-      </Button>
-    </span>
+    <Menu>
+      {#snippet trigger({ toggle })}
+        <span class="tool-slot" title="Selected layer">
+          <Button kind="ghost" disabled={!$editor.sel} onClick={toggle}>
+            <Icon name="ellipsis" size={16} />
+          </Button>
+        </span>
+      {/snippet}
+      <MenuItem onClick={duplicateSelected}>
+        <Icon name="copy" size={14} /> Duplicate
+      </MenuItem>
+      {#if $editor.sel?.tag === TAG.group}
+        <MenuItem onClick={ungroupSelected}>
+          <Icon name="folder-open" size={14} /> Ungroup
+        </MenuItem>
+      {:else if canGroup}
+        <MenuItem onClick={groupSelected}>
+          <Icon name="folder" size={14} /> Group
+        </MenuItem>
+      {/if}
+      <MenuItem danger onClick={deleteWidget}>
+        <Icon name="trash" size={14} /> Delete
+      </MenuItem>
+    </Menu>
   </div>
   <div class="list">
     {#if $editor.face}
@@ -200,19 +246,19 @@
 {#snippet treeNode(n: FaceNode, depth: number, parent: FaceNode | null)}
   {@const nodeIcon = tagIcons[n.tag] || "box"}
   <!-- reversed: subs order is draw order, so the last sub is the topmost layer and goes first -->
-  {@const kids =
-    depth < 4 ? (n.subs || []).filter((c) => c.subs || c.tag === TAG.struct).reverse() : []}
+  {@const kids = (n.subs || []).filter((c) => c.subs || c.tag === TAG.struct).reverse()}
   <button
     type="button"
     class="node-row"
     class:selected={$editor.sel === n}
-    class:dragging={drag?.node === n}
-    class:drop-before={dropAt?.node === n && !dropAt.after}
-    class:drop-after={dropAt?.node === n && dropAt.after}
-    style="padding-inline-start: {8 + depth * 12}px"
+    class:dragging={drag === n}
+    class:drop-into={dropAt?.node === n && dropAt.into}
+    class:drop-before={dropAt?.node === n && !dropAt.into && !dropAt.after}
+    class:drop-after={dropAt?.node === n && !dropAt.into && dropAt.after}
+    style="padding-inline-start: {0.5 + depth * 0.75}rem"
     draggable={!!parent}
     onclick={() => select(n)}
-    ondragstart={(e) => onDragStart(n, parent, e)}
+    ondragstart={(e) => onDragStart(n, e)}
     ondragover={(e) => onDragOver(n, parent, e)}
     ondrop={(e) => onDrop(n, e)}
     ondragend={() => (drag = dropAt = null)}
@@ -252,11 +298,6 @@
   }
   .tool-slot {
     display: inline-flex;
-  }
-  .file-label {
-    display: flex;
-    align-items: center;
-    cursor: pointer;
   }
   .spacer {
     flex: 1;
@@ -302,6 +343,10 @@
     }
     &.drop-after {
       box-shadow: inset 0 -2px 0 oklch(from var(--color-accent) l c 100);
+    }
+    /* dropping INTO a group — the whole row is the target, so outline it rather than edge it */
+    &.drop-into {
+      box-shadow: inset 0 0 0 2px oklch(from var(--color-accent) l c 100);
     }
     &:not(.selected) :global(.node-icon) {
       color: oklch(from var(--color-text) l c h);

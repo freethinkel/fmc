@@ -84,6 +84,16 @@ export async function resourceFromFile(file: File, cf: number): Promise<Resource
   return r;
 }
 
+/** A fully transparent frame at cf 5 (RGB565+alpha, what uploads already use) — the slot an
+ *  auto-grown frame set gets until the user drops art on it. cf is per resource, so a run may
+ *  mix this with cf 4 frames that can't carry alpha at all. */
+export async function blankFrame(w: number, h: number): Promise<Resource> {
+  const r = encodePixels(new Uint8ClampedArray(w * h * 4), w, h, 5);
+
+  r.bitmap = await bitmapOf(r);
+  return r;
+}
+
 export async function opaqueBlack(w: number, h: number): Promise<Resource> {
   const px = new Uint8ClampedArray(w * h * 4);
 

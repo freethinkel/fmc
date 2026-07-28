@@ -56,6 +56,69 @@
   let mobilePanel = $state<"tree" | "props" | "sim" | null>(null); // drawer on mobile
   let hits: Hit[] = [];
 
+  // ---- resizable side panels (desktop only — below 768px both are drawers) ----
+  // Widths live in rem, like every other size here, so they keep following the :root scale knob;
+  // the drag delta is in px and gets divided by the current root font size. Persisted, because a
+  // panel that springs back on every reload isn't really resizable.
+  const PANEL_KEY = "fmc.panel-widths";
+  const SIDE_MIN = 12,
+    SIDE_MAX = 35;
+  const savedWidths: { tree?: number; right?: number } = JSON.parse(
+    localStorage.getItem(PANEL_KEY) || "{}",
+  );
+  let treeW = $state(savedWidths.tree ?? 17.5);
+  let rightW = $state(savedWidths.right ?? 20.625);
+  let gutter = $state.raw<{ side: "tree" | "right"; x: number; from: number } | null>(null);
+
+  const rootRem = () => parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+  const setSide = (side: "tree" | "right", w: number) => {
+    const clamped = Math.min(SIDE_MAX, Math.max(SIDE_MIN, w));
+
+    if (side === "tree") treeW = clamped;
+    else rightW = clamped;
+  };
+
+  $effect(() => {
+    localStorage.setItem(PANEL_KEY, JSON.stringify({ tree: treeW, right: rightW }));
+  });
+
+  // The whole drag lives on the window (see <svelte:window> below) rather than on pointer
+  // capture: capture drops the moves the moment it fails to engage, and it doesn't survive the
+  // pointer being released outside the browser. preventDefault here is what stops the drag from
+  // turning into a text selection, which is the only thing capture was buying.
+  function gutterDown(side: "tree" | "right", e: PointerEvent) {
+    e.preventDefault();
+    gutter = { side, x: e.clientX, from: side === "tree" ? treeW : rightW };
+  }
+
+  function gutterMove(e: PointerEvent) {
+    if (!gutter) return;
+    // the right panel grows leftwards, so its delta is mirrored
+    const dx = gutter.side === "tree" ? e.clientX - gutter.x : gutter.x - e.clientX;
+
+    setSide(gutter.side, gutter.from + dx / rootRem());
+  }
+
+  function gutterKey(side: "tree" | "right", e: KeyboardEvent) {
+    const step = e.key === "ArrowLeft" ? -1 : e.key === "ArrowRight" ? 1 : 0;
+
+    if (!step) return;
+    e.preventDefault();
+    setSide(side, (side === "tree" ? treeW : rightW) + (side === "tree" ? step : -step));
+  }
+
+  // At a clamp the handle can only go one way, so say so with a single-headed cursor. The tree
+  // panel grows to the right and the right panel to the left, hence the mirrored arms.
+  function gutterCursor(side: "tree" | "right") {
+    const w = side === "tree" ? treeW : rightW;
+    const grow = side === "tree" ? "e-resize" : "w-resize";
+    const shrink = side === "tree" ? "w-resize" : "e-resize";
+
+    if (w <= SIDE_MIN) return grow;
+    if (w >= SIDE_MAX) return shrink;
+    return "col-resize";
+  }
+
   function openFile(e: Event) {
     const t = e.target;
     const f =
@@ -451,7 +514,17 @@
   );
 </script>
 
-<svelte:window onkeydown={onKey} ondragover={(e) => e.preventDefault()} ondrop={openFile} />
+<!-- the resize drag ends on the WINDOW, not the handle: releasing outside the browser (or losing
+     the pointer to a cancel) otherwise leaves the gutter stuck to the cursor -->
+<svelte:window
+  onkeydown={onKey}
+  ondragover={(e) => e.preventDefault()}
+  ondrop={openFile}
+  onpointermove={gutterMove}
+  onpointerup={() => (gutter = null)}
+  onpointercancel={() => (gutter = null)}
+  onblur={() => (gutter = null)}
+/>
 
 <div class="page">
   <div class="toolbar">
@@ -563,30 +636,35 @@
   {/if}
 
   <div class="layout">
-    <aside class="side-panel tree-panel">
+    <aside class="side-panel tree-panel" style="width: {treeW}rem">
       <TreePanel />
+      {@render gutterHandle("tree")}
     </aside>
 
     <section class="canvas-section">
-      <div class="canvas-frame">
-        <canvas
-          bind:this={canvas}
-          width="466"
-          height="466"
-          class="canvas"
-          onpointerdown={onDown}
-          onpointermove={onMove}
-          onpointerup={onUp}
-        ></canvas>
+      <div class="canvas-scroll">
+        <div class="canvas-frame">
+          <canvas
+            bind:this={canvas}
+            width="466"
+            height="466"
+            class="canvas"
+            onpointerdown={onDown}
+            onpointermove={onMove}
+            onpointerup={onUp}
+          ></canvas>
+        </div>
       </div>
       <p class="hint">
         click — select · drag / arrow keys (⇧ ×10) — move · corners — resize · ⌘Z undo
       </p>
     </section>
 
-    <aside class="side-panel right-panel">
+    <aside class="side-panel right-panel" style="width: {rightW}rem">
+      {@render gutterHandle("right")}
       <div class="tabs-row">
         <Tabs
+          full
           items={panelItems}
           value={$rightPanel}
           onChange={(v) => rightPanelSet(v as "props" | "sim")}
@@ -616,6 +694,28 @@
     {/if}
   </div>
 </div>
+
+{#snippet gutterHandle(side: "tree" | "right")}
+  <!-- a FOCUSABLE separator is the ARIA window-splitter widget, so tabindex + arrow keys are
+       exactly right here — svelte's rules only know the static, non-interactive separator -->
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+  <div
+    tabindex="0"
+    class="gutter gutter-{side}"
+    class:active={gutter?.side === side}
+    role="separator"
+    aria-orientation="vertical"
+    aria-label="Resize panel"
+    aria-valuenow={Math.round(side === "tree" ? treeW : rightW)}
+    aria-valuemin={SIDE_MIN}
+    aria-valuemax={SIDE_MAX}
+    style="cursor: {gutterCursor(side)}"
+    onpointerdown={(e) => gutterDown(side, e)}
+    ondblclick={() => setSide(side, side === "tree" ? 17.5 : 20.625)}
+    onkeydown={(e) => gutterKey(side, e)}
+  ></div>
+{/snippet}
 
 <Dialog side open={mobilePanel !== null} title={mobileTitle} onClose={() => (mobilePanel = null)}>
   {#if mobilePanel === "tree"}
@@ -713,6 +813,7 @@
   }
   .side-panel {
     display: none;
+    position: relative; /* the resize gutter straddles the panel's inner edge */
     min-height: 0;
   }
   @media (min-width: 768px) {
@@ -722,12 +823,36 @@
     }
   }
   .tree-panel {
-    width: 17.5rem;
     border-inline-end: 1px solid oklch(from var(--color-text) l c h / 12%);
   }
   .right-panel {
-    width: 20.625rem;
     border-inline-start: 1px solid oklch(from var(--color-text) l c h / 12%);
+  }
+  /* invisible until hovered/dragged — the panel border already draws the seam */
+  .gutter {
+    position: absolute;
+    z-index: 1;
+    top: 0;
+    bottom: 0;
+    width: 0.5rem;
+    border: none;
+    padding: 0;
+    background: transparent;
+    /* cursor is set inline — it turns single-headed at a clamp, see gutterCursor */
+    touch-action: none;
+    transition: background-color 0.15s ease;
+
+    &:hover,
+    &:focus-visible,
+    &.active {
+      background: oklch(from var(--color-accent) l c h / 35%);
+    }
+  }
+  .gutter-tree {
+    inset-inline-end: -0.25rem;
+  }
+  .gutter-right {
+    inset-inline-start: -0.25rem;
   }
   .tabs-row {
     padding: 0.5rem;
@@ -738,29 +863,45 @@
     overflow-y: auto;
     padding: 0 0.75rem 0.75rem;
   }
+  /* The dial stops shrinking at --canvas-min and scrolls instead — otherwise wide side panels
+     (they're resizable) squeeze it down to an unusable disc. The scroller is the whole section,
+     so its scrollbar runs along the section's own bottom edge rather than cutting the hint line
+     off the dial. The tinted background and the hint stay put (the section doesn't scroll), so
+     the hint still wraps to what's visible, not to the scrolled-out canvas width. */
   .canvas-section {
-    display: flex;
+    --canvas-min: 16rem;
+
+    position: relative;
+    min-width: 0;
     min-height: 0;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 0.5rem;
     overflow: hidden;
-    padding: 1rem;
     background: oklch(from var(--color-text) l c h / 4%);
+  }
+  /* no align-items/justify-content centering here: flex centering clips whatever overflows past
+     the start edge, so the dial is centred by its own auto margins, which don't */
+  .canvas-scroll {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    overflow: auto;
+    /* padding on the SCROLLER, not the section: it keeps the dial's ring and glow off the edge
+       without the scrollbar leaving the section's own border edge */
+    padding: 1.5rem;
   }
   .canvas-frame {
     aspect-ratio: 1;
     width: min(70vh, 90%, 35rem);
+    min-width: var(--canvas-min);
+    min-height: var(--canvas-min);
     max-height: 100%;
+    flex-shrink: 0;
     overflow: hidden;
     border-radius: 50%;
     background: oklch(0 0 0);
     box-shadow:
       0 0 0 0.5rem oklch(0.28 0 0),
       0 0 3.125rem oklch(0 0 0 / 60%);
-    margin-top: auto;
-    margin-bottom: auto;
+    margin: auto;
   }
   .canvas {
     display: block;
@@ -768,9 +909,17 @@
     height: 100%;
     touch-action: none;
   }
+  /* floats over the scroller rather than taking a row of its own, so the scrollbar stays on the
+     section's bottom edge — one layer across the whole width, under the text */
   .hint {
     display: none;
+    position: absolute;
+    inset-inline: 0;
+    bottom: 0.75rem;
     margin: 0;
+    padding-inline: 0.5rem;
+    pointer-events: none;
+    text-align: center;
     font-size: 0.625rem;
     color: oklch(from var(--color-text) l c h / 55%);
   }

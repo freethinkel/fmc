@@ -2,7 +2,7 @@
   import { Select } from "$lib/shared/components/select";
   import { Icon } from "$lib/shared/components/icon";
   import { hex, unhex, type FaceNode, type Resource } from "../../lib/wf";
-  import { FRAME_LABELS, metaInfo, sourceLabel } from "../../lib/sources";
+  import { FRAME_LABELS, metaInfo, pickerLabel } from "../../lib/sources";
   import { structOf } from "../../lib/tree";
   import { editorModel } from "../../model";
   import { set } from "./patch";
@@ -35,10 +35,7 @@
     return { activeIdx: v[2], ids: [...v.subarray(3, 3 + v[1])] };
   });
   const slotOptions = $derived(
-    slotInfo?.ids.map((id, i) => ({
-      value: String(i),
-      label: `0x${id.toString(16)} — ${sourceLabel(id)}`,
-    })) ?? [],
+    slotInfo?.ids.map((id, i) => ({ value: String(i), label: pickerLabel(id) })) ?? [],
   );
 
   function setSlotActive(idx: number) {
@@ -92,7 +89,7 @@
         {#each images.slice(1) as ri, i}
           <div class="thumb-col" class:active={i === slotInfo.activeIdx}>
             {@render thumb(ri)}
-            <span class="thumb-cap">{sourceLabel(slotInfo.ids[i])}</span>
+            <span class="thumb-cap">{pickerLabel(slotInfo.ids[i])}</span>
           </div>
         {/each}
       </div>

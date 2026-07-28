@@ -2,12 +2,14 @@
   interface Props {
     items: { value: string; label: string; disabled?: boolean }[];
     value: string;
+    /** Fill the container and split the width evenly, instead of hugging the labels. */
+    full?: boolean;
     onChange?: (value: string) => void;
   }
-  const { items, value, onChange }: Props = $props();
+  const { items, value, full, onChange }: Props = $props();
 </script>
 
-<div class="tabs" role="tablist">
+<div class="tabs" class:full role="tablist">
   {#each items as item (item.value)}
     <button
       type="button"
@@ -30,6 +32,15 @@
     border-radius: var(--border-radius);
     background: oklch(from var(--color-text) l c h / 6%);
     width: fit-content;
+
+    &.full {
+      width: 100%;
+
+      button {
+        flex: 1;
+        min-width: 0;
+      }
+    }
   }
   button {
     border: none;
@@ -41,6 +52,11 @@
     background: transparent;
     color: oklch(from var(--color-text) l c h / 60%);
     transition: background-color 0.15s ease;
+    /* a `full` tablist splits the width evenly, so a long label has to cut rather than push its
+       neighbour out — the padding stays, only the text clips */
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
 
     &.active {
       background: var(--color-background);

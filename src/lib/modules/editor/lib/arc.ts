@@ -1,6 +1,6 @@
 // Progress rings: the 0x5a/0x5b arc spec that 0x80/0x81 widgets carry, and the two ways they
 // are drawn — a ring image clipped to a sector, or a stroked arc when there is no image.
-import { TAG, unhex, type FaceNode } from "./wf";
+import { hex, TAG, unhex, type FaceNode } from "./wf";
 import { goalOf, idValue, metaInfo, type Sim, type TimeParts } from "./sources";
 import type { Ctx, Drawable, Hit, Size } from "./canvas";
 
@@ -38,6 +38,22 @@ export function parseArcSpec(node: FaceNode): ArcSpec | null {
     width: v[12] | (v[13] << 8),
     radius: sp.tag === 0x5a && v.length >= 16 ? v[14] | (v[15] << 8) : 0,
   };
+}
+
+/** Inverse of parseArcSpec — the 16-byte 0x5a/0x5b body. */
+export function arcSpecHex(spec: Omit<ArcSpec, "kind">): string {
+  const v = new Uint8Array(16);
+  const put = (o: number, n: number, bytes: number) => {
+    for (let i = 0; i < bytes; i++) v[o + i] = n >> (8 * i);
+  };
+
+  put(0, spec.min, 4);
+  put(4, spec.max, 4);
+  put(8, Math.round(spec.start * 10), 2);
+  put(10, Math.round(spec.end * 10), 2);
+  put(12, spec.width, 2);
+  put(14, spec.radius, 2);
+  return hex(v);
 }
 
 /** How full the ring is, 0..1. */

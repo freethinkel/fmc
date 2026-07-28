@@ -1,7 +1,7 @@
 // Data sources: what the watch feeds a widget, and the simulated values the editor feeds it
 // instead. A source id is meta[9] of a struct (see docs/cmf-protocol.md §9.6a), the id of a
 // visibility condition, and an entry of a widget slot's metric menu.
-import { TAG, unhex, type Face, type FaceNode } from "./wf";
+import { hex, TAG, unhex, type Face, type FaceNode } from "./wf";
 
 // "?" = guess, not confirmed.
 // 0x1c/0x24/0x48/0x76/0x8b — labels corrected against Function's widget-slot menu (companion-app
@@ -87,6 +87,20 @@ export const sourceLabel = (id: number) =>
   ID_LABELS[id] ??
   (id >= 0x79 && id <= 0x7e ? `slot ${id - 0x79} selection` : `id 0x${id.toString(16)}`);
 
+// The firmware exposes several aliases under one name — two `month`, two `battery`, four
+// `steps (slot)?`. Those are the only entries where the raw id is doing any work, so it's the
+// only place a picker shows one.
+const AMBIGUOUS = new Set(Object.values(ID_LABELS).filter((l, i, all) => all.indexOf(l) !== i));
+
+/** What a source picker shows: the plain name, disambiguated by id only where it has to be. */
+export const pickerLabel = (id: number) => {
+  const label = ID_LABELS[id];
+
+  if (!id) return "none — static"; // meta byte 9 left at 0: the widget reads no live value
+  if (!label) return sourceLabel(id); // unknown id — the number is all we have to go on
+  return AMBIGUOUS.has(label) ? `${label} (0x${id.toString(16)})` : label;
+};
+
 export type SimValue = number | "";
 
 export interface Sim {
@@ -114,6 +128,24 @@ export interface Sim {
   // live sim skips it by default. This is an editor-only preview toggle, not real data.
   showSlotPlaceholders: boolean;
 }
+
+// The watch's own accent picker offers a fixed set, not a free color wheel — so does ours, or
+// the preview would show a tint the device can never produce. Which HUES are on offer is
+// confirmed against the watch (notably: there is no teal, and there is a dark grey).
+// ponytail: the exact hex of each swatch is still eyeballed, only the two marked below come from
+// bytes in the corpus — match them to a screenshot of the watch's settings screen if a preview
+// ever has to be shade-accurate.
+export const ACCENT_PALETTE = [
+  "#ff2c00", // orange — the factory default, confirmed baked on Combo's plain steps ring
+  "#ffd60a", // yellow
+  "#34c759", // green
+  "#64d2ff", // light blue
+  "#0a84ff", // blue
+  "#bf5af2", // lilac
+  "#ff375f", // pink
+  "#e3e1e6", // near-white, confirmed baked on id 0x6c across three independent faces
+  "#48484a", // dark grey
+];
 
 export interface TimeParts {
   h: number;
@@ -333,6 +365,54 @@ export function parseBind(hexStr?: string): BindEntry[] {
     out.push({ id: e[0], op: e[1], val });
   }
   return out;
+}
+
+/** Inverse of parseBind. */
+export function buildBind(entries: BindEntry[]): string {
+  const v = new Uint8Array(1 + 5 * entries.length);
+
+  v[0] = entries.length;
+  entries.forEach((e, i) => {
+    const o = 1 + 5 * i;
+
+    v[o] = e.id;
+    v[o + 1] = e.op;
+    v[o + 2] = e.val;
+    v[o + 3] = e.val >> 8;
+    v[o + 4] = e.val >> 16;
+  });
+  return hex(v);
+}
+
+// Slot selection lives on a synthetic id per slot — see withSlotOverrides. It's the one bind id
+// that isn't a metric, so the inspector can offer it as a picker instead of raw hex.
+export const SLOT_SEL_ID = 0x79;
+export const SLOT_SEL_MAX = 0x7e;
+export const isSlotSel = (id: number) => id >= SLOT_SEL_ID && id <= SLOT_SEL_MAX;
+
+export interface SlotInfo {
+  /** 0x5f byte 0 — what the widget's own condition id is offset by. */
+  index: number;
+  activeIdx: number;
+  ids: number[];
+}
+
+/** Every widget slot (0x85) on a screen, so a layer can say which slot metric it belongs to. */
+export function collectSlots(nodes: FaceNode[]): SlotInfo[] {
+  const out: SlotInfo[] = [];
+  const walk = (n: FaceNode) => {
+    if (n.tag === 0x85) {
+      const sf = n.subs?.find((s) => s.tag === 0x5f);
+      const v = sf?.hex ? unhex(sf.hex) : null;
+
+      if (v && v.length >= 3)
+        out.push({ index: v[0], activeIdx: v[2], ids: [...v.subarray(3, 3 + v[1])] });
+    }
+    n.subs?.forEach(walk);
+  };
+
+  nodes.forEach(walk);
+  return out.sort((a, b) => a.index - b.index);
 }
 
 // Same conditions as isVisible() reads, in words — the raw hex is unreadable and these gates are

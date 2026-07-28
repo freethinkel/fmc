@@ -1,16 +1,28 @@
 <script lang="ts">
+  import { Button } from "$lib/shared/components/button";
+  import { Icon } from "$lib/shared/components/icon";
   import { Input } from "$lib/shared/components/input";
   import { Select } from "$lib/shared/components/select";
   import { Checkbox } from "$lib/shared/components/checkbox";
   import { hex, unhex, TAG, type FaceNode } from "../../lib/wf";
   import { parseArcSpec } from "../../lib/arc";
-  import { describeBind, metaInfo, FRAME_LABELS, ID_LABELS } from "../../lib/sources";
+  import {
+    collectSlots,
+    describeBind,
+    isSlotSel,
+    metaInfo,
+    parseBind,
+    pickerLabel,
+    FRAME_LABELS,
+    ID_LABELS,
+    SLOT_SEL_ID,
+  } from "../../lib/sources";
   import { structOf } from "../../lib/tree";
   import { editorModel } from "../../model";
   import { num, set } from "./patch";
 
   const { node }: { node: FaceNode } = $props();
-  const { $editor: editor } = editorModel;
+  const { $editor: editor, toggleCondition, sourceIdSet, setSlotBind } = editorModel;
 
   const st = $derived(structOf(node));
   const fmtNode = $derived(node.subs?.find((s) => s.tag === TAG.fmt));
@@ -40,24 +52,15 @@
     return node.tag === 0x80 || node.tag === 0x81 ? parseArcSpec(node) : null;
   });
 
-  // meta byte 9 is the data source the widget reads — what the watch feeds it. Changing it is
-  // the only edit the raw meta hex was ever used for, so it's a select over the known sources
-  // (an id we have no label for stays selectable, so an unknown one isn't silently rewritten).
-  function setSourceId(id: number) {
-    if (!st) return;
-    const v = unhex(st.meta || "");
-
-    v[9] = id;
-    set(st, { meta: hex(v) });
-  }
-  const sourceOption = (id: number, label: string) => ({
-    value: String(id),
-    label: `0x${id.toString(16)} — ${label}`,
-  });
+  // meta byte 9 is the data source the widget reads — what the watch feeds it. A select over the
+  // known sources (an id we have no label for stays selectable, so an unknown one isn't silently
+  // rewritten); the model also resizes the frame set for value-indexed sources, see sourceIdFx.
+  const setSourceId = (id: number) => sourceIdSet({ node, id });
+  const sourceOption = (id: number) => ({ value: String(id), label: pickerLabel(id) });
   const sourceOptions = $derived(
-    Object.entries(ID_LABELS)
-      .map(([id, label]) => sourceOption(Number(id), label))
-      .concat(meta && !ID_LABELS[meta.id] ? [sourceOption(meta.id, "unknown")] : []),
+    Object.keys(ID_LABELS)
+      .map((id) => sourceOption(Number(id)))
+      .concat(meta && !ID_LABELS[meta.id] ? [sourceOption(meta.id)] : []),
   );
 
   // meta[7] === 4 marks this widget's resource(s) accent-tintable on the real device — see
@@ -90,11 +93,38 @@
   const isBrokenRing = $derived(
     [0x80, 0x81].includes(node.tag) && meta != null && [0x71, 0x72].includes(meta.id),
   );
+
+  // A widget slot's own 0x5f only records which metric is selected; what actually appears on the
+  // watch is whichever sibling layer carries the matching condition. So the link is offered from
+  // THIS side — pick the slot metric this layer stands for — rather than from the slot.
+  const slots = $derived.by(() => {
+    void $editor;
+    const face = $editor.face;
+
+    return face ? collectSlots(face.screens.filter((s) => s.tag === $editor.screenTag)) : [];
+  });
+  const slotBindOptions = $derived([
+    { value: "", label: "always (not slot-bound)" },
+    ...slots.flatMap((s) =>
+      s.ids.map((id, i) => ({
+        value: `${s.index}:${i}`,
+        label: `slot ${s.index} — ${pickerLabel(id)}`,
+      })),
+    ),
+  ]);
+  const slotBindValue = $derived.by(() => {
+    void $editor;
+    const e = parseBind(bindNode?.hex).find((x) => isSlotSel(x.id));
+
+    return e ? `${e.id - SLOT_SEL_ID}:${e.val}` : "";
+  });
+  // the slot's own node is what the wearer points at — binding it to itself is meaningless
+  const showSlotBind = $derived(slots.length > 0 && Boolean(node.subs) && node.tag !== 0x85);
 </script>
 
 {#if st?.meta}
   <div>
-    <span class="muted-label">source{meta?.max ? ` — max ${meta.max}` : ""}</span>
+    <span class="muted-label">source</span>
     <Select
       value={String(meta?.id ?? 0)}
       options={sourceOptions}
@@ -129,9 +159,14 @@
   </div>
 {/if}
 {#if isBrokenRing}
-  <button type="button" class="text-btn" onclick={() => setSourceId(0x0f)}>
-    broken second source (0x{meta?.id.toString(16)}) — restore ticking 0x0f
-  </button>
+  <div>
+    <p class="hint-xs">this source freezes a ring on the watch — it only animates a hand</p>
+    <div class="row">
+      <Button kind="secondary" onClick={() => setSourceId(0x0f)}>
+        <Icon name="undo" size={14} /> use the ticking second
+      </Button>
+    </div>
+  </div>
 {/if}
 {#if fmtNode}
   <div class="row">
@@ -153,6 +188,21 @@
     >
   </div>
 {/if}
+{#if showSlotBind}
+  <div>
+    <span class="muted-label">widget slot binding</span>
+    <Select
+      value={slotBindValue}
+      options={slotBindOptions}
+      onChange={(v) => {
+        const [slot, metric] = v ? v.split(":").map(Number) : [null, 0];
+
+        setSlotBind(node, slot, metric);
+      }}
+    />
+    <p class="hint-xs">shows this layer only while that slot is set to that metric</p>
+  </div>
+{/if}
 {#if bindNode}
   <div>
     <span class="muted-label">condition</span>
@@ -168,5 +218,16 @@
         if (/^([0-9a-f]{2})*$/i.test(v)) set(bindNode, { hex: v });
       }}
     />
+    <div class="row">
+      <Button kind="danger" onClick={() => toggleCondition(node)}>
+        <Icon name="trash" size={14} /> remove condition
+      </Button>
+    </div>
+  </div>
+{:else if node.subs && node.tag !== TAG.main && node.tag !== TAG.aod}
+  <div class="row">
+    <Button kind="secondary" onClick={() => toggleCondition(node)}>
+      <Icon name="git-branch" size={14} /> add condition
+    </Button>
   </div>
 {/if}

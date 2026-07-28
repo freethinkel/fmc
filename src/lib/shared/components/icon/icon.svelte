@@ -24,7 +24,12 @@
   import IconTypography from "@tabler/icons-svelte/icons/typography";
   import IconEye from "@tabler/icons-svelte/icons/eye";
   import IconPhoto from "@tabler/icons-svelte/icons/photo";
+  import IconContrast from "@tabler/icons-svelte/icons/contrast";
   import IconFolder from "@tabler/icons-svelte/icons/folder";
+  import IconFolderOpen from "@tabler/icons-svelte/icons/folder-open";
+  import IconPlus from "@tabler/icons-svelte/icons/plus";
+  import IconDots from "@tabler/icons-svelte/icons/dots";
+  import IconCopy from "@tabler/icons-svelte/icons/copy";
   import IconBraces from "@tabler/icons-svelte/icons/braces";
   import IconGitBranch from "@tabler/icons-svelte/icons/git-branch";
   import IconCrosshair from "@tabler/icons-svelte/icons/crosshair";
@@ -54,7 +59,6 @@
   import IconHelp from "@tabler/icons-svelte/icons/help";
   import IconLink from "@tabler/icons-svelte/icons/link";
   import IconUnlink from "@tabler/icons-svelte/icons/unlink";
-  import IconContrast from "@tabler/icons-svelte/icons/contrast";
   import IconGripVertical from "@tabler/icons-svelte/icons/grip-vertical";
 
   // Central icon registry — the single place to retune an icon app-wide.
@@ -87,7 +91,12 @@
     type: IconTypography,
     eye: IconEye,
     image: IconPhoto,
+    contrast: IconContrast,
     folder: IconFolder,
+    "folder-open": IconFolderOpen,
+    plus: IconPlus,
+    ellipsis: IconDots,
+    copy: IconCopy,
     braces: IconBraces,
     "git-branch": IconGitBranch,
     crosshair: IconCrosshair,
@@ -117,7 +126,6 @@
     help: IconHelp,
     link: IconLink, // aspect-ratio lock: chain link, like Figma's constrain-proportions toggle
     unlink: IconUnlink,
-    contrast: IconContrast,
     grip: IconGripVertical,
   } as const;
 
