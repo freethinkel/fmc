@@ -10,6 +10,8 @@
   import { TAG, unhex, hex, type FaceNode } from "../lib/wf";
   import { render, parseFrame } from "../lib/render";
   import type { Hit } from "../lib/canvas";
+  import { snapAxis, snapTargets, type SnapTargets } from "../lib/snap";
+  import { SNAP_THRESHOLD, GUIDE_WIDTH, GUIDE_COLOR } from "../shared/constants";
   import { editorModel } from "../model";
   import TreePanel from "../components/TreePanel.svelte";
   import PropsPanel from "../components/PropsPanel.svelte";
@@ -125,6 +127,7 @@
       if (s.face) {
         hits = render(ctx, s.face, s.screenTag, s.sim);
         drawSelection(ctx, s.sel);
+        drawGuides(ctx);
       } else {
         ctx.clearRect(0, 0, 466, 466);
       }
@@ -239,6 +242,32 @@
     return null;
   };
 
+  // ---- snapping ----
+  // Targets are collected once on pointerdown: hits is rebuilt every frame, and the dragged
+  // node's own box would otherwise snap to itself. ⌥ holds the drag off the guides.
+  let snapT: SnapTargets | null = null;
+  let cvScale = 1; // canvas units per screen px — the thresholds are in screen px
+  let box0: Hit | null = null;
+  let guides: { x: number[]; y: number[] } = { x: [], y: [] };
+
+  function drawGuides(ctx: CanvasRenderingContext2D) {
+    if (!guides.x.length && !guides.y.length) return;
+    ctx.save();
+    ctx.strokeStyle = GUIDE_COLOR;
+    ctx.lineWidth = GUIDE_WIDTH * cvScale;
+    ctx.beginPath();
+    for (const x of guides.x) {
+      ctx.moveTo(x + 0.5, 0);
+      ctx.lineTo(x + 0.5, 466);
+    }
+    for (const y of guides.y) {
+      ctx.moveTo(0, y + 0.5);
+      ctx.lineTo(466, y + 0.5);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
   // ---- selection and drag ----
   type XY = { x: number; y: number };
   type Drag =
@@ -321,6 +350,14 @@
 
     if (fr) drag = { p, fr: h.node, x0: fr.x, y0: fr.y, moved: false };
     else if (st && st.x != null) drag = { p, st, x0: st.x, y0: st.y!, moved: false };
+    if (drag) {
+      // the hitbox, not st.x/st.y — a NUMBER's box is its composed digits, a HAND's the
+      // rotated AABB. Both move by the same delta, so snapping the box is enough.
+      box0 = h;
+      snapT = snapTargets(hits, h.node);
+      // the canvas doesn't resize mid-drag, so one layout read is enough for the whole gesture
+      cvScale = 466 / (canvas?.getBoundingClientRect().width || 466);
+    }
     canvas?.setPointerCapture(e.pointerId);
   }
   function onMove(e: PointerEvent) {
@@ -349,9 +386,24 @@
       d.moved = true;
     }
     const p = canvasXY(e);
-    const dx = Math.round(p.x - d.p.x),
+    let dx = Math.round(p.x - d.p.x),
       dy = Math.round(p.y - d.p.y);
 
+    guides = { x: [], y: [] };
+    if (box0 && snapT && !e.altKey) {
+      const tol = SNAP_THRESHOLD * cvScale;
+      const sx = snapAxis(box0.x + dx, box0.w, snapT.xs, tol);
+      const sy = snapAxis(box0.y + dy, box0.h, snapT.ys, tol);
+
+      if (sx) {
+        dx += Math.round(sx.corr);
+        guides.x = [sx.line];
+      }
+      if (sy) {
+        dy += Math.round(sy.corr);
+        guides.y = [sy.line];
+      }
+    }
     // widget x/y are int16 — negatives are legal (and used by stock faces), so no clamp here;
     // group frames stay >=0, their x/y round-trip through the file as unsigned
     if (d.st) patched({ node: d.st, patch: { x: d.x0 + dx, y: d.y0 + dy } });
@@ -387,7 +439,8 @@
         });
       rz = null;
     }
-    drag = null;
+    drag = box0 = snapT = null;
+    guides = { x: [], y: [] };
   }
 
   function onKey(e: KeyboardEvent) {
@@ -580,7 +633,8 @@
         ></canvas>
       </div>
       <p class="hint">
-        click — select · drag / arrow keys (⇧ ×10) — move · corners — resize · ⌘Z undo
+        click — select · drag / arrow keys (⇧ ×10) — move · ⌥ drag — no snap · corners — resize · ⌘Z
+        undo
       </p>
     </section>
 

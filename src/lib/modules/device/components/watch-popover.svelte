@@ -9,9 +9,7 @@
 
   interface Props {
     // like Menu's trigger, but the panel doesn't auto-close on inside clicks
-    trigger: Snippet<
-      [{ open: boolean; toggle: () => void; connected: boolean }]
-    >;
+    trigger: Snippet<[{ open: boolean; toggle: () => void; connected: boolean }]>;
     placement?: "bottom" | "top";
   }
   const { trigger, placement = "bottom" }: Props = $props();
@@ -64,11 +62,7 @@
             <span
               title="Clear Chrome's device permission and the saved auth key — does not affect pairing state on the watch itself"
             >
-              <Button
-                kind="ghost"
-                onClick={() => forgetRequested()}
-                disabled={$forgetting}
-              >
+              <Button kind="ghost" onClick={() => forgetRequested()} disabled={$forgetting}>
                 <Icon name="eraser" size={16} />
                 {$forgetting ? "Forgetting…" : "Forget device"}
               </Button>
@@ -88,12 +82,10 @@
               Battery: {$bleInfo.battery ?? "?"}%
             </p>
             <p>
-              <Icon name="cpu" size={16} color={muted} /> Firmware: {$bleInfo.firmware ??
-                "?"}
+              <Icon name="cpu" size={16} color={muted} /> Firmware: {$bleInfo.firmware ?? "?"}
             </p>
             <p>
-              <Icon name="hash" size={16} color={muted} /> Serial: {$bleInfo.serial ??
-                "?"}
+              <Icon name="hash" size={16} color={muted} /> Serial: {$bleInfo.serial ?? "?"}
             </p>
           </div>
         </div>
