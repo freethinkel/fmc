@@ -17,6 +17,7 @@ import {
   type Size,
 } from "./canvas";
 import { drawProceduralArc, drawSector, hexRGB, progressFrac } from "./arc";
+import { CENTER, SCREEN } from "./screen";
 
 interface Env {
   ctx: Ctx | null;
@@ -189,8 +190,8 @@ function drawRing(
       ringColorOf(l.meta) ?? hexRGB(env.sim.accentColor),
     );
     const r = size.w / 2;
-    const cx = r >= 230 ? 233 : x + r,
-      cy = r >= 230 ? 233 : y + r;
+    const cx = r >= 230 ? CENTER : x + r,
+      cy = r >= 230 ? CENTER : y + r;
 
     if (env.ctx) env.hits?.push({ layer: l, x: cx - r, y: cy - r, w: size.w, h: size.h });
     return size;
@@ -340,7 +341,7 @@ export function renderDoc(
     arcs: collectArcs(layers),
   };
 
-  ctx.clearRect(0, 0, 466, 466);
+  ctx.clearRect(0, 0, SCREEN, SCREEN);
   for (const l of layers) drawLayer(env, l);
   return hits;
 }

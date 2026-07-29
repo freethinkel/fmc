@@ -1,6 +1,7 @@
 // Face-tree navigation and the node shapes the editor creates. Pure: nothing here reads the
 // store or touches the canvas.
 import { arcSpecHex } from "./arc";
+import { CENTER, SCREEN } from "./screen";
 import { hex, unhex, TAG, type Face, type FaceNode, type Resource } from "./wf";
 
 /** The struct that carries a widget's geometry — the node itself when it already is one. */
@@ -128,8 +129,8 @@ export function newWidget(kind: WidgetKind, imgs: number[], first: Resource): Fa
     subs: [
       {
         tag: TAG.struct,
-        x: 233 - px,
-        y: 233 - py,
+        x: CENTER - px,
+        y: CENTER - py,
         meta: metaWith(0x0e, 60),
         refType: 0x61,
         images: imgs,
@@ -145,10 +146,10 @@ export function newWidget(kind: WidgetKind, imgs: number[], first: Resource): Fa
 export const newGroup = (): FaceNode => {
   const v = new Uint8Array(21); // x/y i16, w/h u16, align byte, then 12 bytes always zero
 
-  v[4] = 466 & 0xff;
-  v[5] = 466 >> 8;
-  v[6] = 466 & 0xff;
-  v[7] = 466 >> 8;
+  v[4] = SCREEN & 0xff;
+  v[5] = SCREEN >> 8;
+  v[6] = SCREEN & 0xff;
+  v[7] = SCREEN >> 8;
   return { tag: TAG.group, subs: [{ tag: TAG.frame, hex: hex(v) }] };
 };
 
@@ -165,7 +166,7 @@ export function newRing(): FaceNode {
   return {
     tag: 0x81,
     subs: [
-      { tag: TAG.struct, x: 233 - d / 2, y: 233 - d / 2, meta: hex(meta) },
+      { tag: TAG.struct, x: CENTER - d / 2, y: CENTER - d / 2, meta: hex(meta) },
       {
         tag: 0x5a,
         hex: arcSpecHex({ min: 0, max: 100, start: 0, end: 360, width: 10, radius: d / 2 }),
@@ -203,8 +204,8 @@ export function newSlot(slotIndex: number, imgs: number[], ids = SLOT_METRICS): 
     subs: [
       {
         tag: TAG.struct,
-        x: 233 - SLOT_SIZE / 2,
-        y: 233 - SLOT_SIZE / 2,
+        x: CENTER - SLOT_SIZE / 2,
+        y: CENTER - SLOT_SIZE / 2,
         meta: hex(meta),
         refType: 0x61,
         images: imgs,

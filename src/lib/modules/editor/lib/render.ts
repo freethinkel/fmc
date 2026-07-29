@@ -2,6 +2,7 @@
 // Tag semantics reversed from a corpus of 100 faces (see docs/cmf-protocol.md §9.6a);
 // what each data source feeds lives in sources.ts, ring geometry in arc.ts.
 import { TAG, unhex, type Face, type FaceNode, type Resource } from "./wf";
+import { SCREEN } from "./screen";
 import {
   idValue,
   isVisible,
@@ -498,7 +499,7 @@ export function render(ctx: Ctx, face: Face, screenTag: number, sim: Sim): Hit[]
     arcs: collectArcsById(top),
   };
 
-  ctx.clearRect(0, 0, 466, 466);
+  ctx.clearRect(0, 0, SCREEN, SCREEN);
   for (const node of top) drawWidget(env, node);
   return hits;
 }

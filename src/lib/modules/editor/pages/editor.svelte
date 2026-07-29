@@ -9,6 +9,7 @@
   import { bleModel } from "$lib/modules/device/model";
   import { TAG, unhex, hex, type FaceNode } from "../lib/wf";
   import { render, parseFrame } from "../lib/render";
+  import { CENTER, SCREEN } from "../lib/screen";
   import type { Hit } from "../lib/canvas";
   import { editorModel } from "../model";
   import TreePanel from "../components/TreePanel.svelte";
@@ -215,7 +216,7 @@
         hits = render(ctx, s.face, s.screenTag, s.sim);
         drawSelection(ctx, s.sel);
       } else {
-        ctx.clearRect(0, 0, 466, 466);
+        ctx.clearRect(0, 0, SCREEN, SCREEN);
       }
       if (perf) sampleFrame(t0 as number);
       raf = requestAnimationFrame(loop);
@@ -274,7 +275,7 @@
   // always the resource rect (a NUMBER's is the composed digits, a HAND's is the rotated
   // AABB), so the drag works in scale factors: the box is scaled uniformly and the resource
   // follows by the same factor. Groups (frame w/h, not pixels) and procedural arcs are out.
-  const HANDLE = 10; // canvas units (466-space)
+  const HANDLE = 10; // canvas units (SCREEN-space)
   const CORNERS = [
     [0, 0],
     [1, 0],
@@ -284,12 +285,12 @@
   // the canvas frame is a circle (border-radius 50%, see .canvas-frame), so a corner of a
   // full-screen image sits in clipped-away pixels — pull handles onto the visible disc
   const onDisc = (x: number, y: number): XY => {
-    const dx = x - 233,
-      dy = y - 233,
+    const dx = x - CENTER,
+      dy = y - CENTER,
       d = Math.hypot(dx, dy),
-      max = 233 - HANDLE;
+      max = CENTER - HANDLE;
 
-    return d <= max ? { x, y } : { x: 233 + (dx / d) * max, y: 233 + (dy / d) * max };
+    return d <= max ? { x, y } : { x: CENTER + (dx / d) * max, y: CENTER + (dy / d) * max };
   };
   const firstRes = (n: FaceNode | null) => {
     const st = n && n.tag !== TAG.group ? n.subs?.find((s) => s.tag === TAG.struct) : null;
@@ -353,8 +354,8 @@
     const r = canvas!.getBoundingClientRect();
 
     return {
-      x: ((e.clientX - r.left) * 466) / r.width,
-      y: ((e.clientY - r.top) * 466) / r.height,
+      x: ((e.clientX - r.left) * SCREEN) / r.width,
+      y: ((e.clientY - r.top) * SCREEN) / r.height,
     };
   };
   const selStruct = (n: FaceNode | null) =>
@@ -673,8 +674,8 @@
         <div class="canvas-frame">
           <canvas
             bind:this={canvas}
-            width="466"
-            height="466"
+            width={SCREEN}
+            height={SCREEN}
             class="canvas"
             onpointerdown={onDown}
             onpointermove={onMove}

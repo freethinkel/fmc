@@ -4,6 +4,7 @@
 import { decodePixels, encodePixels, TAG, type Face, type FaceNode, type Resource } from "./wf";
 import { metaInfo, type Sim } from "./sources";
 import { render } from "./render";
+import { SCREEN } from "./screen";
 import {
   framesOf,
   isAccent,
@@ -272,7 +273,7 @@ export async function regenPreviewAssets(
     // RGB565 quantise that shows up as different bytes than the Resource path produces
     const screen = document.createElement("canvas");
 
-    screen.width = screen.height = 466;
+    screen.width = screen.height = SCREEN;
     renderDoc(screen.getContext("2d")!, doc, store, scr.kind, sim);
     const thumb = document.createElement("canvas");
 
@@ -320,7 +321,7 @@ export function regenPreviews(face: Face, sim: Sim) {
     if (r.cf === 1) continue; // don't re-encode JPEG previews
     const screen = document.createElement("canvas");
 
-    screen.width = screen.height = 466;
+    screen.width = screen.height = SCREEN;
     render(screen.getContext("2d")!, face, scr.tag, sim);
     const thumb = document.createElement("canvas");
 

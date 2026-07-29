@@ -5,6 +5,7 @@
   import { hex, unhex, TAG, type FaceNode } from "../../lib/wf";
   import { parseFrame, type Frame } from "../../lib/render";
   import { structOf } from "../../lib/tree";
+  import { CENTER } from "../../lib/screen";
   import { editorModel } from "../../model";
   import type { AlignDir } from "../../model/editor.model";
   import { num, set } from "./patch";
@@ -218,5 +219,5 @@
       onInput={(v) => set(pivot, { pivotY: num(v) })}
     />
   </div>
-  <p class="hint-xs">screen center = 233,233 (x+pivotX, y+pivotY)</p>
+  <p class="hint-xs">screen center = {CENTER},{CENTER} (x+pivotX, y+pivotY)</p>
 {/if}

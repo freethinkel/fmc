@@ -6,9 +6,10 @@
 // hour/minute/second/battery hands. Anything driven by a WatchMaker tag or a Lua expression
 // is skipped and reported.
 import { cropOpaque, encodeCanvas, fileMap } from "./facer/assets";
+import { SCREEN } from "./screen";
 import { hex, TAG, type Face, type FaceNode, type Resource } from "./wf";
 
-const W = 466; // CMF Watch Pro 2 screen
+const W = SCREEN;
 // ponytail: the canvas size is not declared anywhere in the export — every face of this
 // generation draws on 512x512 (marker radius 256, full-screen art 512px). If one ever turns
 // up that doesn't, read it off the largest full-screen layer instead.

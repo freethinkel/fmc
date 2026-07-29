@@ -1,6 +1,7 @@
 // Progress rings: the 0x5a/0x5b arc spec that 0x80/0x81 widgets carry, and the two ways they
 // are drawn — a ring image clipped to a sector, or a stroked arc when there is no image.
 import { hex, TAG, unhex, type FaceNode } from "./wf";
+import { CENTER } from "./screen";
 import { goalOf, idValue, metaInfo, type Sim, type TimeParts } from "./sources";
 import type { Ctx, Drawable, Hit, Size } from "./canvas";
 
@@ -137,8 +138,8 @@ export function drawProceduralArc(
   // radius: meta.w/h (the widget's own diameter) when known, spec.radius (0x5a only)
   // as an override, 60 as a last-resort guess for older/short structs with w=0
   const r = spec.radius || (w ? Math.round(w / 2) : 60);
-  const cx = r >= 230 ? 233 : x + r,
-    cy = r >= 230 ? 233 : y + r;
+  const cx = r >= 230 ? CENTER : x + r,
+    cy = r >= 230 ? CENTER : y + r;
   const a0 = radians(spec.start);
   const sweep = sweepOf(spec);
   // no explicit meta color (byte 7 !== 1, e.g. the plain steps ring) — falls back to a

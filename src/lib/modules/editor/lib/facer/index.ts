@@ -16,6 +16,7 @@ import {
   tinted,
   unb64,
 } from "./assets";
+import { SCREEN } from "../screen";
 import {
   classifyText,
   DIGITS,
@@ -27,7 +28,7 @@ import {
   type Part,
 } from "./text";
 
-const W = 466; // CMF Watch Pro 2 screen
+const W = SCREEN;
 
 // Facer layer JSON — the schema isn't documented, fields are what the exports carry
 /* eslint-disable @typescript-eslint/no-explicit-any */

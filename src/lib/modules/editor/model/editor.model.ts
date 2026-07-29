@@ -13,6 +13,7 @@ import {
   type Resource,
 } from "../lib/wf";
 import { render } from "../lib/render";
+import { PREVIEW, SCREEN } from "../lib/screen";
 import {
   buildBind,
   collectIds,
@@ -206,7 +207,7 @@ const accentFx = createEffect(({ face, color }: { face: Face; color: string | nu
 });
 
 const newFaceFx = createEffect(async (name: string = "Custom") => ({
-  face: blankFace(name, await opaqueBlack(270, 270), await opaqueBlack(466, 466)),
+  face: blankFace(name, await opaqueBlack(PREVIEW, PREVIEW), await opaqueBlack(SCREEN, SCREEN)),
   label: "new",
   dirty: true,
 }));
@@ -669,7 +670,7 @@ export function alignSelected(dir: AlignDir) {
   const sel = s.sel;
   const c = document.createElement("canvas");
 
-  c.width = c.height = 466;
+  c.width = c.height = SCREEN;
   let parent: FaceNode | null = null;
   const walk = (n: FaceNode) => {
     if (n.tag === TAG.group && n.subs?.includes(sel)) parent = n;
@@ -683,12 +684,12 @@ export function alignSelected(dir: AlignDir) {
     const h = hits.findLast((h) => h.node === sel);
 
     if (!h) return false;
-    let cont = { x: 0, y: 0, w: 466, h: 466 };
+    let cont = { x: 0, y: 0, w: SCREEN, h: SCREEN };
 
     if (parent) {
       const ph = hits.findLast((x) => x.node === parent);
       // auto-sized frames report w/h 0 — fall back to the screen for those
-      if (ph) cont = { x: ph.x, y: ph.y, w: ph.w || 466, h: ph.h || 466 };
+      if (ph) cont = { x: ph.x, y: ph.y, w: ph.w || SCREEN, h: ph.h || SCREEN };
     }
     let dx =
       dir === "left"
@@ -761,8 +762,8 @@ export function previewBlob(): Promise<Blob> {
   const { face, sim } = $editor.getState();
   const c = document.createElement("canvas");
 
-  c.width = 466;
-  c.height = 466;
+  c.width = SCREEN;
+  c.height = SCREEN;
   render(c.getContext("2d")!, face!, TAG.main, sim);
   return new Promise((res) => c.toBlob((b) => res(b!), "image/png"));
 }
@@ -774,7 +775,7 @@ export function previewThumb(): string {
   const { face, sim } = $editor.getState();
   const full = document.createElement("canvas");
 
-  full.width = full.height = 466;
+  full.width = full.height = SCREEN;
   render(full.getContext("2d")!, face!, TAG.main, sim);
   const thumb = document.createElement("canvas");
 
