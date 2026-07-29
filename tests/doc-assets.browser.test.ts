@@ -10,8 +10,11 @@ import {
   bitmapOf,
   invertAsset,
   invertResource,
+  regenPreviewAssets,
+  regenPreviews,
 } from "$lib/modules/editor/lib/pixels";
 import { fromLegacy, type ImageCache, type ImageId } from "$lib/modules/editor/lib/doc";
+import { defaultSim } from "$lib/modules/editor/lib/sources";
 import url from "./__fixtures__/Multifunction__368__Function.bin?url";
 
 async function load() {
@@ -83,4 +86,22 @@ test("inverting an asset produces the same bytes as inverting the resource", asy
 
   for (let i = 0; i < orig.length; i++) worst = Math.max(worst, Math.abs(orig[i] - back[i]));
   expect(worst).toBeLessThanOrEqual(8); // one RGB565 step is 8 in the red/blue channels
+});
+
+test("regenerated previews match the Resource path", async () => {
+  const { face, doc, cache } = await load();
+  const sim = { ...defaultSim(), live: false, time: new Date("2026-01-09T10:09:30").getTime() };
+
+  regenPreviews(face, sim);
+  const fresh = await regenPreviewAssets(doc, { assets: doc.images, cache }, sim);
+
+  // Function has an embedded 0x28 thumbnail on each screen
+  expect(fresh.size).toBeGreaterThan(0);
+  const assets = [...doc.images.values()];
+
+  for (const [id, { asset }] of fresh) {
+    const idx = assets.findIndex((a) => a.id === id);
+
+    expect(hex(asset.data), `preview ${id}`).toBe(hex(face.resources[idx].data));
+  }
 });

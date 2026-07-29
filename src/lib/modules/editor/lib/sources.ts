@@ -2,6 +2,7 @@
 // instead. A source id is meta[9] of a struct (see docs/cmf-protocol.md §9.6a), the id of a
 // visibility condition, and an entry of a widget slot's metric menu.
 import { hex, TAG, unhex, type Face, type FaceNode } from "./wf";
+import type { Layer } from "./doc";
 
 // "?" = guess, not confirmed.
 // 0x1c/0x24/0x48/0x76/0x8b — labels corrected against Function's widget-slot menu (companion-app
@@ -483,25 +484,13 @@ export function withSlotOverrides(nodes: FaceNode[], sim: Sim): Sim {
 }
 
 /** withSlotOverrides over the Doc model — same synthetic 0x79 + slotIndex, read off SlotLayers. */
-export function withSlotOverridesDoc(
-  layers: readonly {
-    kind: string;
-    index?: number;
-    active?: number;
-    children?: readonly unknown[];
-  }[],
-  sim: Sim,
-): Sim {
+export function withSlotOverridesDoc(layers: readonly Layer[], sim: Sim): Sim {
   const extra: Record<number, number> = {};
-  const walk = (ls: readonly unknown[]) => {
-    for (const l of ls as {
-      kind: string;
-      index?: number;
-      active?: number;
-      children?: unknown[];
-    }[]) {
-      if (l.kind === "slot" && l.index != null) extra[SLOT_SEL_ID + l.index] = l.active ?? 0;
-      if (l.children) walk(l.children);
+  const walk = (ls: readonly Layer[]) => {
+    for (const l of ls) {
+      if (l.kind === "slot") extra[SLOT_SEL_ID + l.index] = l.active;
+      if (l.kind === "group") walk(l.children);
+      if (l.kind === "raw" && l.children) walk(l.children);
     }
   };
 

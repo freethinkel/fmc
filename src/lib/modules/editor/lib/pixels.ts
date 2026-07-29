@@ -250,6 +250,42 @@ export async function flushAssets(
   return out;
 }
 
+/** Re-bake each screen's embedded 0x28 thumbnail from the current render — the Doc counterpart
+ *  of regenPreviews. The preview node has no widget shape of its own, so it stays a RawLayer and
+ *  is found by tag rather than by kind. Returns the assets that changed. */
+export async function regenPreviewAssets(
+  doc: Doc,
+  store: { assets: ReadonlyMap<ImageId, ImageAsset>; cache: ReadonlyMap<ImageId, ImageCache> },
+  sim: Sim,
+): Promise<Map<ImageId, { asset: ImageAsset; bitmap: ImageBitmap }>> {
+  const { renderDoc } = await import("./render-doc");
+  const out = new Map<ImageId, { asset: ImageAsset; bitmap: ImageBitmap }>();
+
+  for (const scr of doc.screens) {
+    const pv = scr.layers.find((l) => l.kind === "raw" && l.tag === TAG.preview);
+    const holder = pv?.kind === "raw" ? pv.children?.find((c) => framesOf(c).length) : null;
+    const id = holder ? framesOf(holder)[0] : null;
+    const a = id ? store.assets.get(id) : null;
+
+    if (!a || a.cf === 1) continue; // don't re-encode JPEG previews
+    // DOM canvas, not OffscreenCanvas: the two rasterise slightly differently, and after the
+    // RGB565 quantise that shows up as different bytes than the Resource path produces
+    const screen = document.createElement("canvas");
+
+    screen.width = screen.height = 466;
+    renderDoc(screen.getContext("2d")!, doc, store, scr.kind, sim);
+    const thumb = document.createElement("canvas");
+
+    thumb.width = a.w;
+    thumb.height = a.h;
+    thumb.getContext("2d")!.drawImage(screen, 0, 0, a.w, a.h);
+    const bitmap = await createImageBitmap(thumb);
+
+    out.set(a.id, { asset: { ...a, data: await encodeBitmap(bitmap, a.w, a.h, a.cf) }, bitmap });
+  }
+  return out;
+}
+
 /** Invert one resource in place (alpha untouched). Involutive — twice restores the original. */
 export async function invertResource(r: Resource) {
   const px = livePixels(r);
