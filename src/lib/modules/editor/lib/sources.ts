@@ -482,6 +482,33 @@ export function withSlotOverrides(nodes: FaceNode[], sim: Sim): Sim {
   return Object.keys(extra).length ? { ...sim, overrides: { ...extra, ...sim.overrides } } : sim;
 }
 
+/** withSlotOverrides over the Doc model — same synthetic 0x79 + slotIndex, read off SlotLayers. */
+export function withSlotOverridesDoc(
+  layers: readonly {
+    kind: string;
+    index?: number;
+    active?: number;
+    children?: readonly unknown[];
+  }[],
+  sim: Sim,
+): Sim {
+  const extra: Record<number, number> = {};
+  const walk = (ls: readonly unknown[]) => {
+    for (const l of ls as {
+      kind: string;
+      index?: number;
+      active?: number;
+      children?: unknown[];
+    }[]) {
+      if (l.kind === "slot" && l.index != null) extra[SLOT_SEL_ID + l.index] = l.active ?? 0;
+      if (l.children) walk(l.children);
+    }
+  };
+
+  walk(layers);
+  return Object.keys(extra).length ? { ...sim, overrides: { ...extra, ...sim.overrides } } : sim;
+}
+
 /** All data sources appearing in the face — the list the simulator panel offers to override. */
 export function collectIds(face: Face): { id: number; max: number }[] {
   const ids = new Map<number, number>();

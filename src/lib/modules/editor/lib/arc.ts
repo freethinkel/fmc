@@ -12,6 +12,9 @@ export interface ArcSpec {
   end: number;
   width: number;
   radius: number; // 0x5a only — 0x5b takes its radius from the clipped image
+  /** Bytes past the 16 we decode: corpus bodies run 17 (0x5b) and 19 (0x5a) bytes, and the
+   *  extras are unexplained. Round-tripped verbatim rather than dropped. */
+  rest?: string;
 }
 
 /** 0x5a/0x5b body: min i32 ‖ max i32 ‖ start i16 (0.1°) ‖ end i16 ‖ width u16 ‖ radius u16. */
@@ -37,12 +40,16 @@ export function parseArcSpec(node: FaceNode): ArcSpec | null {
     end: i16(10) / 10,
     width: v[12] | (v[13] << 8),
     radius: sp.tag === 0x5a && v.length >= 16 ? v[14] | (v[15] << 8) : 0,
+    // 0x5b never has its radius read, so its bytes 14.. are part of the tail
+    rest: hex(v.subarray(sp.tag === 0x5a ? 16 : 14)),
   };
 }
 
-/** Inverse of parseArcSpec — the 16-byte 0x5a/0x5b body. */
-export function arcSpecHex(spec: Omit<ArcSpec, "kind">): string {
-  const v = new Uint8Array(16);
+/** Inverse of parseArcSpec. The decoded head is 16 bytes for 0x5a and 14 for 0x5b (whose radius
+ *  is never read), and `rest` carries whatever the file had past that. */
+export function arcSpecHex(spec: Omit<ArcSpec, "kind"> & { kind?: number }): string {
+  const head = spec.kind === 0x5b ? 14 : 16;
+  const v = new Uint8Array(head);
   const put = (o: number, n: number, bytes: number) => {
     for (let i = 0; i < bytes; i++) v[o + i] = n >> (8 * i);
   };
@@ -52,8 +59,8 @@ export function arcSpecHex(spec: Omit<ArcSpec, "kind">): string {
   put(8, Math.round(spec.start * 10), 2);
   put(10, Math.round(spec.end * 10), 2);
   put(12, spec.width, 2);
-  put(14, spec.radius, 2);
-  return hex(v);
+  if (head === 16) put(14, spec.radius, 2);
+  return hex(v) + (spec.rest ?? "");
 }
 
 /** How full the ring is, 0..1. */
@@ -125,7 +132,7 @@ export function drawProceduralArc(
   hits: Hit[] | null,
   node: FaceNode,
   w = 0,
-  rgb: [number, number, number] | null = null,
+  rgb: readonly [number, number, number] | null = null,
 ): Size {
   // radius: meta.w/h (the widget's own diameter) when known, spec.radius (0x5a only)
   // as an override, 60 as a last-resort guess for older/short structs with w=0

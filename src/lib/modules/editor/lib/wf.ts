@@ -122,7 +122,7 @@ function parseTLV(data: Uint8Array, depth: number): TLVNode[] | null {
 // 0x0a/0x0e were swapped until this fix — confirmed by comparing hand geometry in
 // Analog__287__Simple_Dial.bin: the hand tagged 0x0e is the long/thin one (pivot-to-tip
 // 163px), 0x0a is the short/thick one (122px). Minute hands are longer than hour hands.
-const handKinds: Record<number, string> = {
+export const handKinds: Record<number, string> = {
   0x0a: "hour",
   0x0e: "minute",
   0x72: "second",

@@ -1,6 +1,7 @@
 // Canvas-side primitives shared by the renderer: its types, and how a Resource becomes
 // something drawImage can take.
 import type { FaceNode, Resource } from "./wf";
+import type { ImageAsset, ImageCache, ImageId, Layer } from "./doc";
 
 export type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 export type Drawable = ImageBitmap | OffscreenCanvas;
@@ -19,6 +20,31 @@ export interface Hit extends Point, Size {
   node: FaceNode;
 }
 
+/** Doc-side hit: the layer itself, not the TLV node it came from. */
+export interface LayerHit extends Point, Size {
+  layer: Layer;
+}
+
+/** What the Doc renderer draws from: the file's assets plus the editor's decoded-pixel cache,
+ *  which is deliberately NOT part of the document (see ImageCache). */
+export interface ImageStore {
+  readonly assets: ReadonlyMap<ImageId, ImageAsset>;
+  readonly cache: ReadonlyMap<ImageId, ImageCache>;
+}
+
+/** Same precedence as `bmp`: an accent recolor wins over the baked pixels. */
+export const bmpOf = (s: ImageStore, id?: ImageId): Drawable | undefined => {
+  const c = id == null ? undefined : s.cache.get(id);
+
+  return c?.accent ?? c?.bitmap;
+};
+
+export const ringBmpOf = (s: ImageStore, id?: ImageId): Drawable | undefined => {
+  const b = bmpOf(s, id);
+
+  return !b || (id != null && s.assets.get(id)?.cf !== 4) ? b : maskNearBlack(b as ImageBitmap);
+};
+
 /** accentBitmap (if set — see accentFx in editor.model.ts) takes priority over the baked one. */
 export const bmp = (res: Resource[], i: number): Drawable | undefined =>
   res[i]?.accentBitmap ?? res[i]?.bitmap;
@@ -33,11 +59,8 @@ export const bmp = (res: Resource[], i: number): Drawable | undefined =>
 // swap naturally invalidates it). Only cf=4 is touched — cf=5 already carries real alpha.
 const ringMaskCache = new WeakMap<ImageBitmap, OffscreenCanvas>();
 
-export function ringBmp(res: Resource[], i: number): Drawable | undefined {
-  const b = bmp(res, i);
-
-  if (!b || res[i]?.cf !== 4) return b;
-  let masked = ringMaskCache.get(b as ImageBitmap);
+function maskNearBlack(b: ImageBitmap): OffscreenCanvas {
+  let masked = ringMaskCache.get(b);
 
   if (!masked) {
     masked = new OffscreenCanvas(b.width, b.height);
@@ -51,7 +74,13 @@ export function ringBmp(res: Resource[], i: number): Drawable | undefined {
       if (d[k] < 12 && d[k + 1] < 12 && d[k + 2] < 12) d[k + 3] = 0;
     }
     mctx.putImageData(px, 0, 0);
-    ringMaskCache.set(b as ImageBitmap, masked);
+    ringMaskCache.set(b, masked);
   }
   return masked;
+}
+
+export function ringBmp(res: Resource[], i: number): Drawable | undefined {
+  const b = bmp(res, i);
+
+  return !b || res[i]?.cf !== 4 ? b : maskNearBlack(b as ImageBitmap);
 }
