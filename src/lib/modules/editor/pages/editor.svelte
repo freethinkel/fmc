@@ -175,6 +175,31 @@
     }
   }
 
+  // ---- dev frame meter ----
+  // The canvas redraws every rAF whether or not anything changed (the clock moves), so this is
+  // the editor's steady-state cost. `draw` is time inside render() alone — that's the number
+  // worth watching, since the gap to 16.7ms is everything else the browser is doing.
+  const perf = import.meta.env.DEV;
+  let fps = $state(0);
+  let drawMs = $state(0);
+  let frames = 0,
+    drawTotal = 0,
+    since = 0;
+
+  function sampleFrame(t0: number) {
+    const now = performance.now();
+
+    frames++;
+    drawTotal += now - t0;
+    since ||= now;
+    if (now - since >= 500) {
+      fps = Math.round((frames * 1000) / (now - since));
+      drawMs = Math.round((drawTotal / frames) * 10) / 10;
+      frames = drawTotal = 0;
+      since = now;
+    }
+  }
+
   // ---- rendering ----
   $effect(() => {
     if (!canvas) return;
@@ -184,6 +209,7 @@
     let raf = 0;
     const loop = () => {
       const s = editor.getState();
+      const t0 = perf && performance.now();
 
       if (s.face) {
         hits = render(ctx, s.face, s.screenTag, s.sim);
@@ -191,6 +217,7 @@
       } else {
         ctx.clearRect(0, 0, 466, 466);
       }
+      if (perf) sampleFrame(t0 as number);
       raf = requestAnimationFrame(loop);
     };
 
@@ -655,6 +682,9 @@
           ></canvas>
         </div>
       </div>
+      {#if perf && $editor.face}
+        <p class="fps" class:slow={fps > 0 && fps < 50}>{fps} fps · {drawMs} ms draw</p>
+      {/if}
       <p class="hint">
         click — select · drag / arrow keys (⇧ ×10) — move · corners — resize · ⌘Z undo
       </p>
@@ -908,6 +938,25 @@
     width: 100%;
     height: 100%;
     touch-action: none;
+  }
+  /* dev only — same overlay treatment as .hint, pinned to the opposite corner */
+  .fps {
+    position: absolute;
+    top: 0.5rem;
+    inset-inline-start: 0.5rem;
+    z-index: 2;
+    margin: 0;
+    padding: 0.125rem 0.375rem;
+    border-radius: calc(var(--border-radius) - 0.25rem);
+    background: oklch(from var(--color-background) l c h / 70%);
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    color: oklch(from var(--color-text) l c h / 55%);
+    pointer-events: none;
+
+    &.slow {
+      color: var(--color-error);
+    }
   }
   /* floats over the scroller rather than taking a row of its own, so the scrollbar stays on the
      section's bottom edge — one layer across the whole width, under the text */
