@@ -4,6 +4,15 @@
 import { decodePixels, encodePixels, TAG, type Face, type FaceNode, type Resource } from "./wf";
 import { metaInfo, type Sim } from "./sources";
 import { render } from "./render";
+import {
+  framesOf,
+  isAccent,
+  type Doc,
+  type ImageAsset,
+  type ImageCache,
+  type ImageId,
+  type Layer,
+} from "./doc";
 
 export async function bitmapOf(r: Resource): Promise<ImageBitmap> {
   const px = decodePixels(r);
@@ -153,6 +162,92 @@ export async function accentBitmapFor(
     }
   }
   return changed ? createImageBitmap(new ImageData(px, r.w, r.h)) : undefined;
+}
+
+// ---- Doc-side equivalents ----
+// Same maths, but an asset is immutable and its decoded pixels live in the cache, so these
+// return what changed instead of writing through a Resource. The cache is a plain Map the
+// caller owns — it is not part of the document and never reaches the file.
+
+/** Which assets the watch may repaint with the wearer's accent color (meta byte 7 === 4). */
+export function accentFlaggedAssets(doc: Doc): Set<ImageId> {
+  const flagged = new Set<ImageId>();
+  const walk = (l: Layer) => {
+    if (l.kind !== "group" && l.kind !== "raw" && isAccent(l.meta))
+      framesOf(l).forEach((id) => flagged.add(id));
+    if (l.kind === "group") l.children.forEach(walk);
+    if (l.kind === "raw") l.children?.forEach(walk);
+  };
+
+  doc.screens.forEach((s) => s.layers.forEach(walk));
+  return flagged;
+}
+
+const cachedPixels = (a: ImageAsset, c?: ImageCache) =>
+  c?.bitmap ? pixelsOf(c.bitmap, a.w, a.h) : decodePixels(a as unknown as Resource);
+
+/** Preview-only accent tint of one asset — never touches `data`, see accentBitmapFor. */
+export async function accentBitmapForAsset(
+  a: ImageAsset,
+  cache: ImageCache | undefined,
+  colorHex: string,
+): Promise<ImageBitmap | undefined> {
+  if (a.cf === 1) return undefined; // JPEG — no per-pixel recolor
+  const px = cachedPixels(a, cache);
+
+  if (!px) return undefined;
+  const n = parseInt(colorHex.slice(1), 16);
+  let changed = false;
+
+  for (let i = 0; i < px.length; i += 4) {
+    if (px[i + 3] > 0) {
+      px[i] = (n >> 16) & 255;
+      px[i + 1] = (n >> 8) & 255;
+      px[i + 2] = n & 255;
+      changed = true;
+    }
+  }
+  return changed ? createImageBitmap(new ImageData(px, a.w, a.h)) : undefined;
+}
+
+/** Invert one asset. Returns the replacement plus its fresh bitmap — involutive, as before. */
+export async function invertAsset(
+  a: ImageAsset,
+  cache: ImageCache | undefined,
+): Promise<{ asset: ImageAsset; bitmap: ImageBitmap } | null> {
+  const px = cachedPixels(a, cache);
+
+  if (!px) return null;
+  for (let i = 0; i < px.length; i += 4) {
+    px[i] = 255 - px[i];
+    px[i + 1] = 255 - px[i + 1];
+    px[i + 2] = 255 - px[i + 2];
+  }
+  const bitmap = await createImageBitmap(new ImageData(px, a.w, a.h));
+
+  return { asset: { ...a, data: await encodeBitmap(bitmap, a.w, a.h, a.cf) }, bitmap };
+}
+
+/** Re-encode every asset whose pixels were resized or adjusted, from the pinned original —
+ *  the downsampling and the filter land only in what gets exported, never in the preview. */
+export async function flushAssets(
+  images: ReadonlyMap<ImageId, ImageAsset>,
+  cache: ReadonlyMap<ImageId, ImageCache>,
+): Promise<Map<ImageId, ImageAsset>> {
+  const out = new Map(images);
+
+  for (const [id, a] of images) {
+    const src = cache.get(id)?.original;
+
+    if (!src) continue;
+    const filter = a.adjust
+      ? `brightness(${a.adjust.brightness}%) contrast(${a.adjust.contrast}%) ` +
+        `saturate(${a.adjust.saturate}%) hue-rotate(${a.adjust.hue}deg)`
+      : "none";
+
+    out.set(id, { ...a, data: await encodeBitmap(src, a.w, a.h, a.cf, filter) });
+  }
+  return out;
 }
 
 /** Invert one resource in place (alpha untouched). Involutive — twice restores the original. */
