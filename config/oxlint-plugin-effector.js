@@ -1,9 +1,25 @@
-// Custom oxlint rule: sample({...}) must be multiline.
-// oxfmt (objectWrap: preserve) keeps objects expanded once there is a newline
-// before the first property — this rule inserts that newline, oxfmt does the rest.
+// Custom oxlint rules for the effector models:
+//  - sample({...}) must be multiline. oxfmt (objectWrap: preserve) keeps objects expanded once
+//    there is a newline before the first property — this rule inserts that newline.
+//  - no store.getState(): state reaches an effect as a parameter, never by reading the store.
 export default {
   meta: { name: "effector" },
   rules: {
+    "no-get-state": {
+      create(context) {
+        return {
+          CallExpression(node) {
+            if (node.callee.type !== "MemberExpression") return;
+            if (node.callee.property.name !== "getState") return;
+            context.report({
+              node,
+              message:
+                "getState() is banned — pass the state in as an effect parameter (attach({ source: $store }) or sample's `source`)",
+            });
+          },
+        };
+      },
+    },
     "sample-multiline": {
       meta: { fixable: "whitespace" },
       create(context) {

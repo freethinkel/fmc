@@ -126,7 +126,9 @@ async function fakeExport(): Promise<File[]> {
     new File([await sprite("#000")], "h"),
     // one distinguishable sprite per weekday value: red channel = value * 20
     ...(await Promise.all(
-      [1, 2, 3, 4, 5, 6, 7].map(async (d) => new File([await sprite(`rgb(${d * 20},0,0)`)], `d${d}`)),
+      [1, 2, 3, 4, 5, 6, 7].map(
+        async (d) => new File([await sprite(`rgb(${d * 20},0,0)`)], `d${d}`),
+      ),
     )),
   ];
 }

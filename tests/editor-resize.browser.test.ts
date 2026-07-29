@@ -93,6 +93,46 @@ test("shrinking then restoring the size costs no detail", async () => {
   expect(pixels(r.bitmap!)).toEqual(before);
 });
 
+// A corner drag fires one of these per pointermove, so the steps must not compound: every call
+// is absolute (size off the pinned original, origin off the drag's start), and the anchored
+// corner has to sit exactly where it started once the drag is over.
+test("a live drag of the top-left corner keeps the bottom-right corner pinned", async () => {
+  const s = await load("resize-live-test");
+  const h0 = draw().find(
+    (h) =>
+      h.node.tag === TAG.image &&
+      h.node.subs?.find((k) => k.tag === TAG.struct)?.images?.length === 1,
+  )!;
+  const node = h0.node;
+  const st = node.subs!.find((k) => k.tag === TAG.struct)!;
+  const r = s.face!.resources[st.images![0]];
+  const rw0 = r.w,
+    rh0 = r.h;
+  const x0 = st.x!,
+    y0 = st.y!;
+  const right = h0.x + h0.w,
+    bottom = h0.y + h0.h;
+
+  for (let i = 1; i <= 15; i++) {
+    const scale = 1 - 0.04 * i;
+    const gw = Math.max(1, Math.round(h0.w * scale)),
+      gh = Math.max(1, Math.round(h0.h * scale));
+    const w = Math.round(rw0 * scale);
+
+    editorModel.resizeImageRequested({
+      node,
+      w,
+      h: Math.round(rh0 * scale),
+      at: { x: x0 + Math.round(right - gw - h0.x), y: y0 + Math.round(bottom - gh - h0.y) },
+    });
+    await vi.waitFor(() => expect(r.w).toBe(w));
+  }
+  const after = draw().findLast((x) => x.node === node)!;
+
+  expect(after.x + after.w).toBe(right);
+  expect(after.y + after.h).toBe(bottom);
+});
+
 test("resizing a hand scales its pivot and keeps the rotation center put", async () => {
   const s = await load("resize-hand-test");
 

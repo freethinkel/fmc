@@ -121,7 +121,8 @@
           }}
           ondrop={(e) => {
             e.preventDefault();
-            if (dragIdx !== null && dropIdx === i && st) moveImage(st, dragIdx, i);
+            if (dragIdx !== null && dropIdx === i && st)
+              moveImage({ node: st, from: dragIdx, to: i });
             dragIdx = dropIdx = null;
           }}
           ondragend={() => (dragIdx = dropIdx = null)}

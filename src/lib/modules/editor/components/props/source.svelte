@@ -197,7 +197,7 @@
       onChange={(v) => {
         const [slot, metric] = v ? v.split(":").map(Number) : [null, 0];
 
-        setSlotBind(node, slot, metric);
+        setSlotBind({ node, slot, metric });
       }}
     />
     <p class="hint-xs">shows this layer only while that slot is set to that metric</p>

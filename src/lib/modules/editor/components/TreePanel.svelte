@@ -10,6 +10,8 @@
   const {
     $editor: editor,
     select,
+    selectToggled,
+    selectedNodes,
     addNode,
     addSlotRequested,
     addWidgetRequested,
@@ -98,12 +100,37 @@
     t.value = "";
   }
 
-  // grouping happens at screen level only — see groupSelected
-  const canGroup = $derived.by(() => {
-    const p = $editor.face && $editor.sel && findParent($editor.face.screens, $editor.sel);
+  const picked = $derived(selectedNodes($editor));
+  const isPicked = (n: FaceNode) => picked.includes(n);
 
-    return Boolean(p && (p.tag === TAG.main || p.tag === TAG.aod));
+  // grouping happens at screen level only, and one parent at a time — see groupSelected
+  const canGroup = $derived.by(() => {
+    const face = $editor.face;
+
+    if (!face || !picked.length) return false;
+    const parents = picked.map((n) => findParent(face.screens, n));
+
+    return parents.every((p) => p === parents[0] && (p?.tag === TAG.main || p?.tag === TAG.aod));
   });
+
+  // ponytail: a modifier click toggles one node — shift does the same as ctrl rather than
+  // selecting a range, which would need the visible rows flattened into a list first
+  function onRowClick(n: FaceNode, e: MouseEvent) {
+    if (e.shiftKey || e.metaKey || e.ctrlKey) selectToggled(n);
+    else select(n);
+  }
+
+  // Right-click menu, positioned at the pointer inside .tree-panel. Same actions as the
+  // toolbar's "…" — declared once in the layerActions snippet below.
+  let ctx = $state<{ x: number; y: number } | null>(null);
+
+  function onRowMenu(n: FaceNode, e: MouseEvent) {
+    e.preventDefault();
+    if (!isPicked(n)) select(n); // right-clicking outside the selection moves it, like a file manager
+    const r = (e.currentTarget as HTMLElement).closest(".tree-panel")!.getBoundingClientRect();
+
+    ctx = { x: e.clientX - r.left, y: e.clientY - r.top };
+  }
 
   const openNodes = new SvelteSet(); // accordion: closed by default, keyed by the node itself (tree is mutable, refs are stable)
 
@@ -150,7 +177,8 @@
   function onDrop(n: FaceNode, e: DragEvent) {
     e.preventDefault();
     // the list is reversed, so dropping visually below the target means earlier in subs
-    if (drag && dropAt?.node === n) moveNode(drag, n, !dropAt.after, dropAt.into);
+    if (drag && dropAt?.node === n)
+      moveNode({ node: drag, target: n, after: !dropAt.after, into: dropAt.into });
     drag = dropAt = null;
   }
 </script>
@@ -215,21 +243,7 @@
           </Button>
         </span>
       {/snippet}
-      <MenuItem onClick={duplicateSelected}>
-        <Icon name="copy" size={14} /> Duplicate
-      </MenuItem>
-      {#if $editor.sel?.tag === TAG.group}
-        <MenuItem onClick={ungroupSelected}>
-          <Icon name="folder-open" size={14} /> Ungroup
-        </MenuItem>
-      {:else if canGroup}
-        <MenuItem onClick={groupSelected}>
-          <Icon name="folder" size={14} /> Group
-        </MenuItem>
-      {/if}
-      <MenuItem danger onClick={deleteWidget}>
-        <Icon name="trash" size={14} /> Delete
-      </MenuItem>
+      {@render layerActions()}
     </Menu>
   </div>
   <div class="list">
@@ -241,7 +255,44 @@
       <p class="empty">Drop a .bin here or grab one from the marketplace.</p>
     {/if}
   </div>
+  {#if ctx}
+    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
+    <div
+      class="ctx-menu"
+      role="menu"
+      tabindex="-1"
+      style="inset-inline-start: {ctx.x}px; top: {ctx.y}px"
+      onclick={() => (ctx = null)}
+    >
+      {@render layerActions()}
+    </div>
+  {/if}
 </div>
+
+<svelte:window
+  onpointerdown={(e) => {
+    if (ctx && !(e.target as HTMLElement).closest(".ctx-menu")) ctx = null;
+  }}
+  onkeydown={(e) => e.key === "Escape" && (ctx = null)}
+/>
+
+{#snippet layerActions()}
+  <MenuItem onClick={duplicateSelected}>
+    <Icon name="copy" size={14} /> Duplicate
+  </MenuItem>
+  {#if picked.length === 1 && $editor.sel?.tag === TAG.group}
+    <MenuItem onClick={ungroupSelected}>
+      <Icon name="folder-open" size={14} /> Ungroup
+    </MenuItem>
+  {:else if canGroup}
+    <MenuItem onClick={groupSelected}>
+      <Icon name="folder" size={14} /> Group
+    </MenuItem>
+  {/if}
+  <MenuItem danger onClick={deleteWidget}>
+    <Icon name="trash" size={14} /> Delete
+  </MenuItem>
+{/snippet}
 
 {#snippet treeNode(n: FaceNode, depth: number, parent: FaceNode | null)}
   {@const nodeIcon = tagIcons[n.tag] || "box"}
@@ -250,14 +301,16 @@
   <button
     type="button"
     class="node-row"
-    class:selected={$editor.sel === n}
+    class:selected={isPicked(n)}
+    class:primary={$editor.sel === n && picked.length > 1}
     class:dragging={drag === n}
     class:drop-into={dropAt?.node === n && dropAt.into}
     class:drop-before={dropAt?.node === n && !dropAt.into && !dropAt.after}
     class:drop-after={dropAt?.node === n && !dropAt.into && dropAt.after}
     style="padding-inline-start: {0.5 + depth * 0.75}rem"
     draggable={!!parent}
-    onclick={() => select(n)}
+    onclick={(e) => onRowClick(n, e)}
+    oncontextmenu={(e) => onRowMenu(n, e)}
     ondragstart={(e) => onDragStart(n, e)}
     ondragover={(e) => onDragOver(n, parent, e)}
     ondrop={(e) => onDrop(n, e)}
@@ -285,9 +338,23 @@
 
 <style>
   .tree-panel {
+    position: relative; /* the context menu is positioned inside it */
     display: flex;
     height: 100%;
     flex-direction: column;
+  }
+  /* same look as shared/components/menu, which can only anchor to its own trigger */
+  .ctx-menu {
+    position: absolute;
+    z-index: 50;
+    min-width: 11.25rem;
+    padding: 0.25rem;
+    display: flex;
+    flex-direction: column;
+    border-radius: var(--border-radius);
+    background: var(--color-background);
+    border: 1px solid oklch(from var(--color-text) l c h / 10%);
+    box-shadow: 0 8px 24px oklch(0 0 0 / 12%);
   }
   .toolbar {
     display: flex;
@@ -333,6 +400,10 @@
     &.selected {
       background: oklch(from var(--color-accent) l c h / 12%);
       color: var(--color-accent);
+    }
+    /* the primary pick — the one the props panel edits — reads a notch stronger */
+    &.primary {
+      background: oklch(from var(--color-accent) l c h / 22%);
     }
     &.dragging {
       opacity: 0.4;

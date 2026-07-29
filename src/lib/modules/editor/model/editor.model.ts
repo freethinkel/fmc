@@ -1,7 +1,8 @@
-// Effector model of the editor. The `face` tree stays mutable (the canvas reads it
-// via rAF + getState), but every change goes through an event and returns a new
-// store root — that's enough for Svelte components to update.
-import { createEffect, createEvent, createStore, sample } from "effector";
+// Effector model of the editor. The `face` tree stays mutable, but every change goes through an
+// event and returns a new store root — that's enough for Svelte components to update.
+// Nothing here reads $editor.getState(): state reaches an effect as a parameter, via
+// attach({ source: $editor }) or a sample's `source`.
+import { attach, createEffect, createEvent, createStore, sample } from "effector";
 import {
   parseBin,
   buildBin,
@@ -61,6 +62,9 @@ export type { Face, FaceNode, Resource, Sim };
 export interface EditorState {
   face: Face | null;
   sel: FaceNode | null;
+  /** Extra nodes selected on top of `sel` — `sel` stays the primary one everything single-node
+   *  (props panel, resize handles, source picker) reads. Use selectedNodes() for the whole set. */
+  more: FaceNode[];
   screenTag: number;
   sim: Sim;
   ids: { id: number; max?: number }[];
@@ -74,6 +78,9 @@ export interface EditorState {
 // Figma-style alignment direction — see alignSelected below.
 export type AlignDir = "left" | "hcenter" | "right" | "top" | "vcenter" | "bottom";
 
+/** The whole selection, primary first. */
+export const selectedNodes = (s: EditorState): FaceNode[] => (s.sel ? [s.sel, ...s.more] : []);
+
 // ---- undo/redo live outside the store (only counters in the store; tree only, resources are out of history) ----
 let undoStack: string[] = [],
   redoStack: string[] = [],
@@ -84,6 +91,7 @@ const snap = (s: EditorState) => JSON.stringify(s.face!.screens);
 export const $editor = createStore<EditorState>({
   face: null,
   sel: null,
+  more: [],
   screenTag: TAG.main,
   sim: defaultSim(),
   ids: [],
@@ -100,7 +108,8 @@ export const $editor = createStore<EditorState>({
 export const $rightPanel = createStore<"props" | "sim">("props");
 
 // ---- events ----
-export const select = createEvent<FaceNode | null>();
+export const select = createEvent<FaceNode | null>(); // replaces the selection
+export const selectToggled = createEvent<FaceNode>(); // ctrl/cmd/shift-click: add or remove one
 export const screenTagSet = createEvent<number>();
 export const checkpoint = createEvent<number | void>(); // payload: coalesce ms (default 600)
 export const undo = createEvent();
@@ -151,12 +160,47 @@ export const adjustImageRequested = createEvent<{
   node: FaceNode;
   adjust: Resource["adjust"];
 }>();
-// node: the widget node (or its struct); w/h: target size of its FIRST frame
-export const resizeImageRequested = createEvent<{
+// node: the widget node (or its struct); w/h: target size of its FIRST frame; at: the origin the
+// widget must end up at (a corner drag anchors the opposite corner), applied in the same update
+export interface ResizeImage {
   node: FaceNode;
   w: number;
   h: number;
-}>();
+  at?: { x: number; y: number };
+}
+
+export const resizeImageRequested = createEvent<ResizeImage>();
+
+export interface SlotBind {
+  node: FaceNode;
+  slot: number | null;
+  metric?: number;
+}
+export interface MoveNode {
+  node: FaceNode;
+  target: FaceNode;
+  after: boolean;
+  into?: boolean;
+}
+export interface MoveImage {
+  node: FaceNode;
+  from: number;
+  to: number;
+}
+
+// one-shot actions on the tree — each is wired to an attach()ed effect below
+export const deleteWidget = createEvent();
+export const addNode = createEvent<"group" | "ring">();
+export const toggleCondition = createEvent<FaceNode>();
+export const setSlotBind = createEvent<SlotBind>();
+export const duplicateSelected = createEvent();
+export const groupSelected = createEvent();
+export const ungroupSelected = createEvent();
+export const moveNode = createEvent<MoveNode>();
+export const renameFace = createEvent<string>();
+export const moveImage = createEvent<MoveImage>();
+export const alignSelected = createEvent<AlignDir>();
+export const exportBin = createEvent();
 
 // ---- effects ----
 const loadBufferFx = createEffect(
@@ -212,25 +256,27 @@ const newFaceFx = createEffect(async (name: string = "Custom") => ({
   dirty: true,
 }));
 
-const addWidgetFx = createEffect(async ({ kind, files }: AddWidget) => {
-  const s = $editor.getState();
+const addWidgetFx = attach({
+  source: $editor,
+  async effect(s, { kind, files }: AddWidget) {
+    if (!s.face || !files.length) return;
+    checkpoint(0);
+    const face = s.face;
+    const scr = face.screens.find((x) => x.tag === s.screenTag) || face.screens[0];
+    const imgs: number[] = [];
 
-  if (!s.face || !files.length) return;
-  checkpoint(0);
-  const face = s.face;
-  const scr = face.screens.find((x) => x.tag === s.screenTag) || face.screens[0];
-  const imgs: number[] = [];
+    for (const file of files) {
+      imgs.push(face.resources.push(await resourceFromFile(file, 5)) - 1);
+    }
+    const node = newWidget(kind, imgs, face.resources[imgs[0]]);
 
-  for (const file of files) {
-    imgs.push(face.resources.push(await resourceFromFile(file, 5)) - 1);
-  }
-  const node = newWidget(kind, imgs, face.resources[imgs[0]]);
-
-  treeChanged((st) => {
-    scr.subs!.push(node);
-    st.sel = node;
-    st.ids = collectIds(st.face!);
-  });
+    treeChanged((st) => {
+      scr.subs!.push(node);
+      st.sel = node;
+      st.more = [];
+      st.ids = collectIds(st.face!);
+    });
+  },
 });
 
 // Frames dropped by a shrinking source change, keyed by the struct they belonged to. Switching
@@ -243,102 +289,108 @@ let frameStash = new Map<FaceNode, number[]>();
 // draws images[value % count], so a 7-frame set bound to `month` shows the wrong art for five
 // months of the year. Picking one of those sources therefore resizes the run to match — missing
 // slots become transparent placeholders to drop art on, extra ones are trimmed (and stashed).
-const sourceIdFx = createEffect(async ({ node, id }: { node: FaceNode; id: number }) => {
-  const { face } = $editor.getState();
-  const st = structOf(node);
+const sourceIdFx = attach({
+  source: $editor,
+  async effect({ face }, { node, id }: { node: FaceNode; id: number }) {
+    const st = structOf(node);
 
-  if (!face || !st?.meta) return;
-  const meta = unhex(st.meta);
+    if (!face || !st?.meta) return;
+    const meta = unhex(st.meta);
 
-  meta[9] = id;
-  const need = FRAME_LABELS[id]?.length;
-  const src = frameStash.get(st) ?? st.images;
-  let next = src && need ? src.slice(0, need) : undefined;
+    meta[9] = id;
+    const need = FRAME_LABELS[id]?.length;
+    const src = frameStash.get(st) ?? st.images;
+    let next = src && need ? src.slice(0, need) : undefined;
 
-  if (src?.length && need && need > src.length) {
-    // frames are stored as a base offset + count, so the run has to stay consecutive
-    // (refTailBytes rejects anything else) — a longer set means a fresh run at the end of the
-    // resource table. ponytail: the old run stays in the file as dead weight, same as a deleted
-    // widget's; a resource GC pass over the whole tree is the fix if files ever get fat.
-    const first = face.resources[src[0]];
-    const base = face.resources.length;
+    if (src?.length && need && need > src.length) {
+      // frames are stored as a base offset + count, so the run has to stay consecutive
+      // (refTailBytes rejects anything else) — a longer set means a fresh run at the end of the
+      // resource table. ponytail: the old run stays in the file as dead weight, same as a deleted
+      // widget's; a resource GC pass over the whole tree is the fix if files ever get fat.
+      const first = face.resources[src[0]];
+      const base = face.resources.length;
 
-    for (let i = 0; i < need; i++)
-      face.resources.push(
-        i < src.length ? { ...face.resources[src[i]] } : await blankFrame(first.w, first.h),
-      );
-    next = Array.from({ length: need }, (_, i) => base + i);
-  }
-  if (src && next) frameStash.set(st, src.length >= next.length ? src : next);
-  checkpoint();
-  treeChanged((s) => {
-    st.meta = hex(meta);
-    if (next) st.images = next;
-    s.ids = collectIds(s.face!);
-  });
+      for (let i = 0; i < need; i++)
+        face.resources.push(
+          i < src.length ? { ...face.resources[src[i]] } : await blankFrame(first.w, first.h),
+        );
+      next = Array.from({ length: need }, (_, i) => base + i);
+    }
+    if (src && next) frameStash.set(st, src.length >= next.length ? src : next);
+    checkpoint();
+    treeChanged((s) => {
+      st.meta = hex(meta);
+      if (next) st.images = next;
+      s.ids = collectIds(s.face!);
+    });
+  },
 });
 
 // A widget slot needs one placeholder + one icon per metric, so unlike the group/ring it can't
 // be a plain synchronous factory — the blank frames have to be encoded first.
-const addSlotFx = createEffect(async () => {
-  const s = $editor.getState();
+const addSlotFx = attach({
+  source: $editor,
+  async effect(s) {
+    if (!s.face) return;
+    const face = s.face;
+    const scr = face.screens.find((x) => x.tag === s.screenTag) || face.screens[0];
+    // slotIndex is the node's position among the screen's existing slots — that's what the
+    // 0x79 + slotIndex condition on its sibling groups is keyed to (zero exceptions in the corpus)
+    let slots = 0;
+    const tally = (n: FaceNode) => {
+      if (n.tag === 0x85) slots++;
+      n.subs?.forEach(tally);
+    };
 
-  if (!s.face) return;
-  const face = s.face;
-  const scr = face.screens.find((x) => x.tag === s.screenTag) || face.screens[0];
-  // slotIndex is the node's position among the screen's existing slots — that's what the
-  // 0x79 + slotIndex condition on its sibling groups is keyed to (zero exceptions in the corpus)
-  let slots = 0;
-  const tally = (n: FaceNode) => {
-    if (n.tag === 0x85) slots++;
-    n.subs?.forEach(tally);
-  };
+    scr.subs?.forEach(tally);
+    const base = face.resources.length;
 
-  scr.subs?.forEach(tally);
-  const base = face.resources.length;
+    for (let i = 0; i <= SLOT_METRICS.length; i++)
+      face.resources.push(await blankFrame(SLOT_SIZE, SLOT_SIZE));
+    const node = newSlot(
+      slots,
+      Array.from({ length: SLOT_METRICS.length + 1 }, (_, i) => base + i),
+    );
 
-  for (let i = 0; i <= SLOT_METRICS.length; i++)
-    face.resources.push(await blankFrame(SLOT_SIZE, SLOT_SIZE));
-  const node = newSlot(
-    slots,
-    Array.from({ length: SLOT_METRICS.length + 1 }, (_, i) => base + i),
-  );
-
-  checkpoint(0);
-  treeChanged((st) => {
-    scr.subs!.push(node);
-    st.sel = node;
-    st.ids = collectIds(st.face!);
-  });
+    checkpoint(0);
+    treeChanged((st) => {
+      scr.subs!.push(node);
+      st.sel = node;
+      st.more = [];
+      st.ids = collectIds(st.face!);
+    });
+  },
 });
 
-const replaceImageFx = createEffect(async ({ resIdx, file }: { resIdx: number; file: File }) => {
-  const { face } = $editor.getState();
-  const r = face!.resources[resIdx];
+const replaceImageFx = attach({
+  source: $editor,
+  async effect({ face }, { resIdx, file }: { resIdx: number; file: File }) {
+    const r = face!.resources[resIdx];
 
-  if (r.cf === 1) {
-    // JPEG stays JPEG — the file's own bytes are the resource
-    const data = new Uint8Array(await file.arrayBuffer());
-    const bitmap = await createImageBitmap(new Blob([data], { type: "image/jpeg" }));
+    if (r.cf === 1) {
+      // JPEG stays JPEG — the file's own bytes are the resource
+      const data = new Uint8Array(await file.arrayBuffer());
+      const bitmap = await createImageBitmap(new Blob([data], { type: "image/jpeg" }));
 
-    // the uploaded file is the new original — drop any pinned resize source
-    treeChanged(() =>
-      Object.assign(r, { data, w: bitmap.width, h: bitmap.height, bitmap, srcBitmap: undefined }),
-    );
-    return;
-  }
-  const fresh = await resourceFromFile(file, r.cf);
+      // the uploaded file is the new original — drop any pinned resize source
+      treeChanged(() =>
+        Object.assign(r, { data, w: bitmap.width, h: bitmap.height, bitmap, srcBitmap: undefined }),
+      );
+      return;
+    }
+    const fresh = await resourceFromFile(file, r.cf);
 
-  treeChanged(() => Object.assign(r, fresh, { srcBitmap: undefined }));
+    treeChanged(() => Object.assign(r, fresh, { srcBitmap: undefined }));
+  },
 });
 
 // A widget is drawn 1:1 from its resource (the format has no draw-time scale), so a resize
 // really is a rescale of the pixels. Encoding them is deferred: resize only rescales the
 // bitmap off r.srcBitmap (the untouched original), so shrinking and growing again costs no
 // quality, and flushResized re-encodes from that same source when the file is built.
-const resizeImageFx = createEffect(
-  async ({ node, w, h }: { node: FaceNode; w: number; h: number }) => {
-    const { face } = $editor.getState();
+const resizeImageFx = attach({
+  source: $editor,
+  async effect({ face }, { node, w, h, at }: ResizeImage) {
     const st = structOf(node);
     const imgs = st?.images;
 
@@ -348,40 +400,55 @@ const resizeImageFx = createEffect(
       th = dim(h);
     const r0 = face.resources[imgs[0]];
 
-    if (!r0 || (tw === r0.w && th === r0.h)) return;
-    const sx = tw / r0.w,
-      sy = th / r0.h;
+    if (!r0) return;
+    r0.srcBitmap ??= r0.bitmap ?? (await bitmapOf(r0)); // first resize pins the original
+    // Two ratios, and they're different once a resize has already landed: the frames scale off
+    // the PINNED ORIGINAL, which makes this idempotent (a live drag fires it per pointermove and
+    // must not compound rounding), while the pivot scales off the CURRENT art, since it's the
+    // tree's own value being nudged step by step.
+    const sx = tw / r0.srcBitmap.width,
+      sy = th / r0.srcBitmap.height;
+    const psx = tw / r0.w,
+      psy = th / r0.h;
+    const resized = tw !== r0.w || th !== r0.h;
 
     // every frame of a multi-frame widget (digits, weekday icons) scales by the same ratio
-    for (const ri of new Set(imgs)) {
-      const r = face.resources[ri];
+    if (resized)
+      for (const ri of new Set(imgs)) {
+        const r = face.resources[ri];
 
-      if (!r) continue;
-      r.srcBitmap ??= r.bitmap ?? (await bitmapOf(r)); // first resize pins the original
-      const rw = ri === imgs[0] ? tw : dim(r.w * sx),
-        rh = ri === imgs[0] ? th : dim(r.h * sy);
+        if (!r) continue;
+        r.srcBitmap ??= r.bitmap ?? (await bitmapOf(r));
+        const rw = ri === imgs[0] ? tw : dim(r.srcBitmap.width * sx),
+          rh = ri === imgs[0] ? th : dim(r.srcBitmap.height * sy);
 
-      Object.assign(r, {
-        w: rw,
-        h: rh,
-        // always off the ORIGINAL, so shrink-then-grow is lossless
-        bitmap: await createImageBitmap(r.srcBitmap, {
-          resizeWidth: rw,
-          resizeHeight: rh,
-          resizeQuality: "high",
-        }),
-        // stale accent tint would keep the old size — accentFx recomputes it on done below
-        accentBitmap: undefined,
-      });
-    }
+        Object.assign(r, {
+          w: rw,
+          h: rh,
+          // always off the ORIGINAL, so shrink-then-grow is lossless
+          bitmap: await createImageBitmap(r.srcBitmap, {
+            resizeWidth: rw,
+            resizeHeight: rh,
+            resizeQuality: "high",
+          }),
+          // stale accent tint would keep the old size — accentFx recomputes it on done below
+          accentBitmap: undefined,
+        });
+      }
     const pivot = node.subs?.find((s) => s.tag === TAG.pivot);
 
     treeChanged(() => {
+      // position and size land in the same store update — patching x/y separately would draw a
+      // frame with the new origin and the old bitmap, which reads as the widget jumping
+      if (at && st?.x != null) {
+        st.x = at.x;
+        st.y = at.y;
+      }
       // a hand rotates around x+pivot — scale the pivot with the art and shift x/y so the
       // rotation center stays put, otherwise the hand jumps off the dial on every resize
-      if (pivot && st?.x != null) {
-        const px = Math.round(pivot.pivotX! * sx),
-          py = Math.round(pivot.pivotY! * sy);
+      if (resized && pivot && st?.x != null) {
+        const px = Math.round(pivot.pivotX! * psx),
+          py = Math.round(pivot.pivotY! * psy);
 
         st.x += pivot.pivotX! - px;
         st.y = (st.y || 0) + pivot.pivotY! - py;
@@ -390,15 +457,19 @@ const resizeImageFx = createEffect(
       }
     });
   },
-);
+});
+
+// A live corner drag fires resizeImageRequested on every pointermove — the canvas skips a move
+// while this is busy rather than queueing bitmaps that would land out of order.
+export const $resizing = resizeImageFx.pending;
 
 // Brightness/contrast/saturation of a widget's frames. Non-destructive: the untouched pixels
 // are pinned in srcBitmap (same slot the resize uses) and every move re-filters from there, so
 // dragging a slider back to 100 restores the original exactly. Only the preview bitmap is
 // rebuilt here — the .bin gets the filter re-applied once, in flushResized.
-const adjustImageFx = createEffect(
-  async ({ node, adjust }: { node: FaceNode; adjust: Resource["adjust"] }) => {
-    const { face } = $editor.getState();
+const adjustImageFx = attach({
+  source: $editor,
+  async effect({ face }, { node, adjust }: { node: FaceNode; adjust: Resource["adjust"] }) {
     const st = structOf(node);
 
     if (!face || !st?.images?.length) return;
@@ -417,183 +488,206 @@ const adjustImageFx = createEffect(
       r.accentBitmap = undefined; // computed off the old pixels
     }
   },
-);
+});
 
 // Invert the pixels of every image under the selection (or the whole current screen when
 // nothing is selected) — the quick way to turn a light layout into an AOD-friendly dark one.
 // Involutive: hit it twice to get back. Resources shared with another screen are cloned first,
 // so inverting the AOD can't repaint the main screen.
-const invertColorsFx = createEffect(async () => {
-  const { face, sel, screenTag } = $editor.getState();
+const invertColorsFx = attach({
+  source: $editor,
+  async effect(s) {
+    const { face, screenTag } = s;
 
-  if (!face) return;
-  const roots = sel ? [sel] : face.screens.filter((s) => s.tag === screenTag);
-  const mine = new Set<number>();
+    if (!face) return;
+    const picked = selectedNodes(s);
+    const roots = picked.length ? picked : face.screens.filter((x) => x.tag === screenTag);
+    const mine = new Set<number>();
 
-  roots.forEach((r) => imagesUnder(r, mine));
-  const outside = new Set<number>();
-  const walkOutside = (n: FaceNode) => {
-    if (roots.includes(n)) return;
-    n.images?.forEach((i) => outside.add(i));
-    n.subs?.forEach(walkOutside);
-  };
-
-  face.screens.forEach(walkOutside);
-  const remap = new Map<number, number>();
-
-  for (const i of mine) {
-    if (outside.has(i)) remap.set(i, face.resources.push({ ...face.resources[i] }) - 1);
-  }
-  if (remap.size) {
-    const repoint = (n: FaceNode) => {
-      if (n.images) n.images = n.images.map((i) => remap.get(i) ?? i);
-      n.subs?.forEach(repoint);
+    roots.forEach((r) => imagesUnder(r, mine));
+    const outside = new Set<number>();
+    const walkOutside = (n: FaceNode) => {
+      if (roots.includes(n)) return;
+      n.images?.forEach((i) => outside.add(i));
+      n.subs?.forEach(walkOutside);
     };
 
-    checkpoint(0);
-    treeChanged(() => roots.forEach(repoint));
-  }
-  for (const idx of mine) {
-    const r = face.resources[remap.get(idx) ?? idx];
+    face.screens.forEach(walkOutside);
+    const remap = new Map<number, number>();
 
-    if (r) await invertResource(r);
-  }
+    for (const i of mine) {
+      if (outside.has(i)) remap.set(i, face.resources.push({ ...face.resources[i] }) - 1);
+    }
+    if (remap.size) {
+      const repoint = (n: FaceNode) => {
+        if (n.images) n.images = n.images.map((i) => remap.get(i) ?? i);
+        n.subs?.forEach(repoint);
+      };
+
+      checkpoint(0);
+      treeChanged(() => roots.forEach(repoint));
+    }
+    for (const idx of mine) {
+      const r = face.resources[remap.get(idx) ?? idx];
+
+      if (r) await invertResource(r);
+    }
+  },
 });
 
-// ---- imperative actions ----
-// deleteWidget/alignSelected/buildCurrentBin/previewBlob/exportBin below stay as plain functions
-// reading $editor.getState() directly: they're one-shot imperative actions fired straight from a
-// component event handler (not data derived from a clock), so there's no sample() clock to hang
-// them on — the mutations they trigger (checkpoint/treeChanged/patched) still go through events.
-export function deleteWidget() {
-  const s = $editor.getState();
+// ---- one-shot actions ----
+// Each is an event a component fires plus an attach()ed effect that gets the state it needs as a
+// parameter — the mutations they trigger (checkpoint/treeChanged/patched) still go through events.
+const deleteWidgetFx = attach({
+  source: $editor,
+  effect(s) {
+    const pairs = withParents(s);
 
-  if (!s.sel || !s.face) return;
-  const p = findParent(s.face.screens, s.sel);
+    if (!pairs.length) return;
+    checkpoint(0);
+    treeChanged((st) => {
+      for (const [n, p] of pairs) p.subs!.splice(p.subs!.indexOf(n), 1);
+      st.sel = null;
+      st.more = [];
+      // ponytail: orphaned resources stay in the file — harmless to the watch, space is cheap
+    });
+  },
+});
 
-  if (!p) return;
-  checkpoint(0);
-  treeChanged((st) => {
-    p.subs!.splice(p.subs!.indexOf(st.sel!), 1);
-    st.sel = null;
-    // ponytail: orphaned resources stay in the file — harmless to the watch, space is cheap
-  });
+/** The selection paired with each node's parent, skipping screens (they have none). */
+function withParents(s: EditorState): [FaceNode, FaceNode][] {
+  if (!s.face) return [];
+  return selectedNodes(s)
+    .map((n) => [n, findParent(s.face!.screens, n)] as const)
+    .filter((e): e is [FaceNode, FaceNode] => Boolean(e[1]));
 }
 
 /** Layers that need no bitmap at all: an empty group, or a procedural progress ring. Their
  *  file-bearing counterparts go through addWidgetFx instead (it has to read the images first). */
-export function addNode(kind: "group" | "ring") {
-  const s = $editor.getState();
+const addNodeFx = attach({
+  source: $editor,
+  effect(s, kind: "group" | "ring") {
+    if (!s.face) return;
+    const scr = s.face.screens.find((x) => x.tag === s.screenTag) || s.face.screens[0];
+    const node = kind === "group" ? newGroup() : newRing();
 
-  if (!s.face) return;
-  const scr = s.face.screens.find((x) => x.tag === s.screenTag) || s.face.screens[0];
-  const node = kind === "group" ? newGroup() : newRing();
-
-  checkpoint(0);
-  treeChanged((st) => {
-    scr.subs!.push(node);
-    st.sel = node;
-    st.ids = collectIds(st.face!);
-  });
-}
+    checkpoint(0);
+    treeChanged((st) => {
+      scr.subs!.push(node);
+      st.sel = node;
+      st.more = [];
+      st.ids = collectIds(st.face!);
+    });
+  },
+});
 
 /** Add/remove the selected layer's visibility condition (tag 0x02). The entries themselves are
  *  edited as hex in the props panel — a per-entry editor can come later if anyone asks. */
-export function toggleCondition(node: FaceNode) {
-  const s = $editor.getState();
-  const existing = node.subs?.find((n) => n.tag === TAG.bind);
+const toggleConditionFx = attach({
+  source: $editor,
+  effect(s, node: FaceNode) {
+    const existing = node.subs?.find((n) => n.tag === TAG.bind);
 
-  if (!s.face || (!existing && !node.subs)) return; // a leaf (struct/pivot) can't carry one
-  checkpoint(0);
-  treeChanged((st) => {
-    if (existing) node.subs!.splice(node.subs!.indexOf(existing), 1);
-    else node.subs!.push(newBind());
-    st.ids = collectIds(st.face!);
-  });
-}
+    if (!s.face || (!existing && !node.subs)) return; // a leaf (struct/pivot) can't carry one
+    checkpoint(0);
+    treeChanged((st) => {
+      if (existing) node.subs!.splice(node.subs!.indexOf(existing), 1);
+      else node.subs!.push(newBind());
+      st.ids = collectIds(st.face!);
+    });
+  },
+});
 
 /** Bind a layer to one metric of one widget slot — the inverse direction of the link, and the
  *  one the format actually stores: the slot's own 0x5f only says which metric is selected, and
  *  it's each candidate layer that carries the condition deciding whether it shows.
  *  Rewrites only the slot-selection entry (id 0x79 + slotIndex), leaving any real metric
  *  conditions on the same node alone; `slot: null` unbinds. op 0x81 matches the corpus. */
-export function setSlotBind(node: FaceNode, slot: number | null, metric = 0) {
-  const s = $editor.getState();
+const setSlotBindFx = attach({
+  source: $editor,
+  effect(s, { node, slot, metric = 0 }: SlotBind) {
+    if (!s.face || !node.subs) return;
+    const bind = node.subs.find((n) => n.tag === TAG.bind);
+    const kept = parseBind(bind?.hex).filter((e) => !isSlotSel(e.id));
+    const next = slot == null ? kept : [...kept, { id: SLOT_SEL_ID + slot, op: 0x81, val: metric }];
 
-  if (!s.face || !node.subs) return;
-  const bind = node.subs.find((n) => n.tag === TAG.bind);
-  const kept = parseBind(bind?.hex).filter((e) => !isSlotSel(e.id));
-  const next = slot == null ? kept : [...kept, { id: SLOT_SEL_ID + slot, op: 0x81, val: metric }];
-
-  checkpoint(0);
-  treeChanged((st) => {
-    if (!next.length) {
-      if (bind) node.subs!.splice(node.subs!.indexOf(bind), 1);
-    } else if (bind) bind.hex = buildBind(next);
-    else node.subs!.push({ tag: TAG.bind, hex: buildBind(next) });
-    st.ids = collectIds(st.face!);
-  });
-}
+    checkpoint(0);
+    treeChanged((st) => {
+      if (!next.length) {
+        if (bind) node.subs!.splice(node.subs!.indexOf(bind), 1);
+      } else if (bind) bind.hex = buildBind(next);
+      else node.subs!.push({ tag: TAG.bind, hex: buildBind(next) });
+      st.ids = collectIds(st.face!);
+    });
+  },
+});
 
 // ponytail: the copy shares its resource indices with the original, so resize/adjust/invert on
 // one hits both. Splitting them means cloning every frame — do it if that ever surprises anyone.
-export function duplicateSelected() {
-  const s = $editor.getState();
+const duplicateFx = attach({
+  source: $editor,
+  effect(s) {
+    const jobs = withParents(s).map(([n, p]) => ({ n, p, copy: structuredClone(n) }));
 
-  if (!s.sel || !s.face) return;
-  const p = findParent(s.face.screens, s.sel);
-
-  if (!p) return;
-  const copy = structuredClone(s.sel);
-
-  checkpoint(0);
-  treeChanged((st) => {
-    p.subs!.splice(p.subs!.indexOf(st.sel!) + 1, 0, copy);
-    st.sel = copy;
-  });
-}
+    if (!jobs.length) return;
+    checkpoint(0);
+    treeChanged((st) => {
+      for (const { n, p, copy } of jobs) p.subs!.splice(p.subs!.indexOf(n) + 1, 0, copy);
+      st.sel = jobs[0].copy;
+      st.more = jobs.slice(1).map((j) => j.copy);
+    });
+  },
+});
 
 /** Wrap the selection in a new group, in place. ponytail: screen-level only — a group nested in
  *  another group is laid out by the parent's flex rules (x=0 means "center me", see drawGroup),
  *  so the wrapper couldn't keep its child where it was without solving that layout first. */
-export function groupSelected() {
-  const s = $editor.getState();
+const groupFx = attach({
+  source: $editor,
+  effect(s) {
+    const pairs = withParents(s);
+    const p = pairs[0]?.[1];
 
-  if (!s.sel || !s.face) return;
-  const p = findParent(s.face.screens, s.sel);
+    if (!p || (p.tag !== TAG.main && p.tag !== TAG.aod)) return;
+    if (pairs.some(([, q]) => q !== p)) return; // one parent at a time — nothing sane to nest into
+    // subs order is draw order: the group takes the bottom-most member's slot and keeps their order
+    const kids = pairs.map(([n]) => n).sort((a, b) => p.subs!.indexOf(a) - p.subs!.indexOf(b));
+    const g = newGroup();
 
-  if (!p || (p.tag !== TAG.main && p.tag !== TAG.aod)) return;
-  const g = newGroup();
-
-  checkpoint(0);
-  treeChanged((st) => {
-    p.subs!.splice(p.subs!.indexOf(st.sel!), 1, g);
-    g.subs!.push(st.sel!);
-    st.sel = g;
-  });
-}
+    checkpoint(0);
+    treeChanged((st) => {
+      p.subs!.splice(p.subs!.indexOf(kids[0]), 1, g);
+      for (const k of kids.slice(1)) p.subs!.splice(p.subs!.indexOf(k), 1);
+      g.subs!.push(...kids);
+      st.sel = g;
+      st.more = [];
+    });
+  },
+});
 
 /** Dissolve the selected group, lifting its children into the parent at the group's own slot.
  *  ponytail: AUTO children (meta.w 0x8000) were positioned by the group's flex row and ignore
  *  x/y entirely, so they land wherever their raw coordinates say — re-place them by hand. */
-export function ungroupSelected() {
-  const s = $editor.getState();
-  const g = s.sel;
+const ungroupFx = attach({
+  source: $editor,
+  effect(s) {
+    const g = s.sel;
 
-  if (!s.face || g?.tag !== TAG.group) return;
-  const p = findParent(s.face.screens, g);
+    if (!s.face || g?.tag !== TAG.group) return;
+    const p = findParent(s.face.screens, g);
 
-  if (!p) return;
-  const o = nodeOrigin(g) || { x: 0, y: 0 };
-  const kids = (g.subs || []).filter((n) => n.tag !== TAG.frame && n.tag !== TAG.bind);
+    if (!p) return;
+    const o = nodeOrigin(g) || { x: 0, y: 0 };
+    const kids = (g.subs || []).filter((n) => n.tag !== TAG.frame && n.tag !== TAG.bind);
 
-  checkpoint(0);
-  treeChanged((st) => {
-    kids.forEach((k) => shiftNode(k, o.x, o.y));
-    p.subs!.splice(p.subs!.indexOf(g), 1, ...kids);
-    st.sel = kids[0] ?? null;
-  });
-}
+    checkpoint(0);
+    treeChanged((st) => {
+      kids.forEach((k) => shiftNode(k, o.x, o.y));
+      p.subs!.splice(p.subs!.indexOf(g), 1, ...kids);
+      st.sel = kids[0] ?? null;
+    });
+  },
+});
 
 // Drop a node next to `target` (subs order is draw order, so within one parent this is
 // z-ordering), or INTO it when `into` — that's how a layer gets into a group.
@@ -601,36 +695,38 @@ export function ungroupSelected() {
 // by the difference of the two origins and it stays visually put. AUTO children (meta.w 0x8000)
 // are placed by the group's flex row and ignore x/y — moving one out drops it at its raw
 // coordinates, same caveat as ungroupSelected.
-export function moveNode(node: FaceNode, target: FaceNode, after: boolean, into = false) {
-  const s = $editor.getState();
+const moveNodeFx = attach({
+  source: $editor,
+  effect(s, { node, target, after, into = false }: MoveNode) {
+    if (!s.face || node === target || contains(node, target)) return;
+    const from = findParent(s.face.screens, node);
+    const to = into ? target : findParent(s.face.screens, target);
 
-  if (!s.face || node === target || contains(node, target)) return;
-  const from = findParent(s.face.screens, node);
-  const to = into ? target : findParent(s.face.screens, target);
+    if (!from || !to) return;
+    checkpoint(0);
+    treeChanged(() => {
+      const subs = (to.subs ??= []);
 
-  if (!from || !to) return;
-  checkpoint(0);
-  treeChanged(() => {
-    const subs = (to.subs ??= []);
+      from.subs!.splice(from.subs!.indexOf(node), 1);
+      subs.splice(into ? subs.length : subs.indexOf(target) + (after ? 1 : 0), 0, node);
+      if (from !== to) {
+        const a = containerOrigin(s.face!.screens, from),
+          b = containerOrigin(s.face!.screens, to);
 
-    from.subs!.splice(from.subs!.indexOf(node), 1);
-    subs.splice(into ? subs.length : subs.indexOf(target) + (after ? 1 : 0), 0, node);
-    if (from !== to) {
-      const a = containerOrigin(s.face!.screens, from),
-        b = containerOrigin(s.face!.screens, to);
+        shiftNode(node, a.x - b.x, a.y - b.y);
+      }
+    });
+  },
+});
 
-      shiftNode(node, a.x - b.x, a.y - b.y);
-    }
-  });
-}
-
-export function renameFace(name: string) {
-  const s = $editor.getState();
-
-  if (!s.face || name === s.face.name) return;
-  checkpoint();
-  treeChanged((st) => setFaceName(st.face!, name));
-}
+const renameFaceFx = attach({
+  source: $editor,
+  effect(s, name: string) {
+    if (!s.face || name === s.face.name) return;
+    checkpoint();
+    treeChanged((st) => setFaceName(st.face!, name));
+  },
+});
 
 // Reorder a widget's frames — for value-indexed sets (weekday, month, AM/PM, digits) the
 // index IS the value, so this is how a set imported in the wrong order gets fixed.
@@ -640,21 +736,23 @@ export function renameFace(name: string) {
 // resources themselves, inside the window the widget already owns.
 // ponytail: assumes the run isn't shared with another widget (nothing in the corpus shares
 // one) — scan the tree for overlapping runs here if a face ever turns up that does.
-export function moveImage(node: FaceNode, from: number, to: number) {
-  const imgs = node.images;
-  const face = $editor.getState().face;
+const moveImageFx = attach({
+  source: $editor,
+  effect({ face }, { node, from, to }: MoveImage) {
+    const imgs = node.images;
 
-  if (!face || !imgs || from === to) return;
-  if (imgs[from] === undefined || to < 0 || to >= imgs.length) return;
-  checkpoint(0);
-  treeChanged(() => {
-    const frames = imgs.map((ri) => face.resources[ri]);
-    const [moved] = frames.splice(from, 1);
+    if (!face || !imgs || from === to) return;
+    if (imgs[from] === undefined || to < 0 || to >= imgs.length) return;
+    checkpoint(0);
+    treeChanged(() => {
+      const frames = imgs.map((ri) => face.resources[ri]);
+      const [moved] = frames.splice(from, 1);
 
-    frames.splice(to, 0, moved);
-    imgs.forEach((ri, i) => (face.resources[ri] = frames[i]));
-  });
-}
+      frames.splice(to, 0, moved);
+      imgs.forEach((ri, i) => (face.resources[ri] = frames[i]));
+    });
+  },
+});
 
 // Figma-style alignment: nudge the selected node so its RENDERED bounding box lands on the
 // container's edge/center. The container is the parent group's frame when the node is a
@@ -663,140 +761,156 @@ export function moveImage(node: FaceNode, from: number, to: number) {
 // grouped children whose drawn position differs from their raw x/y. Widget x/y may go
 // negative (int16, see wf.ts); group frames stay clamped to >=0 — their x/y is unsigned in
 // the file. ponytail: AUTO (meta.w 0x8000) children ignore x/y entirely, so they don't move.
-export function alignSelected(dir: AlignDir) {
-  const s = $editor.getState();
+const alignFx = attach({
+  source: $editor,
+  effect(s, dir: AlignDir) {
+    const nodes = selectedNodes(s);
 
-  if (!s.face || !s.sel) return;
-  const sel = s.sel;
-  const c = document.createElement("canvas");
+    if (!s.face || !nodes.length) return;
+    const c = document.createElement("canvas");
 
-  c.width = c.height = SCREEN;
-  let parent: FaceNode | null = null;
-  const walk = (n: FaceNode) => {
-    if (n.tag === TAG.group && n.subs?.includes(sel)) parent = n;
-    n.subs?.forEach(walk);
-  };
+    c.width = c.height = SCREEN;
+    // with several nodes selected each one aligns to its own container — same result as running
+    // the action on them one by one. ponytail: aligning to the selection's shared bounding box
+    // (Figma's behaviour for a multi-selection) is a different feature; add it if anyone asks.
+    const alignOne = (sel: FaceNode) => {
+      let parent: FaceNode | null = null;
+      const walk = (n: FaceNode) => {
+        if (n.tag === TAG.group && n.subs?.includes(sel)) parent = n;
+        n.subs?.forEach(walk);
+      };
 
-  for (const scr of s.face.screens) walk(scr);
+      for (const scr of s.face!.screens) walk(scr);
 
-  const pass = (): boolean => {
-    const hits = render(c.getContext("2d")!, s.face!, s.screenTag, s.sim);
-    const h = hits.findLast((h) => h.node === sel);
+      const pass = (): boolean => {
+        const hits = render(c.getContext("2d")!, s.face!, s.screenTag, s.sim);
+        const h = hits.findLast((h) => h.node === sel);
 
-    if (!h) return false;
-    let cont = { x: 0, y: 0, w: SCREEN, h: SCREEN };
+        if (!h) return false;
+        let cont = { x: 0, y: 0, w: SCREEN, h: SCREEN };
 
-    if (parent) {
-      const ph = hits.findLast((x) => x.node === parent);
-      // auto-sized frames report w/h 0 — fall back to the screen for those
-      if (ph) cont = { x: ph.x, y: ph.y, w: ph.w || SCREEN, h: ph.h || SCREEN };
-    }
-    let dx =
-      dir === "left"
-        ? cont.x - h.x
-        : dir === "hcenter"
-          ? Math.round(cont.x + (cont.w - h.w) / 2 - h.x)
-          : dir === "right"
-            ? cont.x + cont.w - h.w - h.x
-            : 0;
-    let dy =
-      dir === "top"
-        ? cont.y - h.y
-        : dir === "vcenter"
-          ? Math.round(cont.y + (cont.h - h.h) / 2 - h.y)
-          : dir === "bottom"
-            ? cont.y + cont.h - h.h - h.y
-            : 0;
-    // a hand's bbox rotates with the live angle — centering means "pivot on container
-    // center", not "AABB centered" (which would drift with the current second)
-    const pivot = sel.subs?.find((n) => n.tag === TAG.pivot);
-    const pst = pivot && sel.subs?.find((n) => n.tag === TAG.struct);
+        if (parent) {
+          const ph = hits.findLast((x) => x.node === parent);
+          // auto-sized frames report w/h 0 — fall back to the screen for those
+          if (ph) cont = { x: ph.x, y: ph.y, w: ph.w || SCREEN, h: ph.h || SCREEN };
+        }
+        let dx =
+          dir === "left"
+            ? cont.x - h.x
+            : dir === "hcenter"
+              ? Math.round(cont.x + (cont.w - h.w) / 2 - h.x)
+              : dir === "right"
+                ? cont.x + cont.w - h.w - h.x
+                : 0;
+        let dy =
+          dir === "top"
+            ? cont.y - h.y
+            : dir === "vcenter"
+              ? Math.round(cont.y + (cont.h - h.h) / 2 - h.y)
+              : dir === "bottom"
+                ? cont.y + cont.h - h.h - h.y
+                : 0;
+        // a hand's bbox rotates with the live angle — centering means "pivot on container
+        // center", not "AABB centered" (which would drift with the current second)
+        const pivot = sel.subs?.find((n) => n.tag === TAG.pivot);
+        const pst = pivot && sel.subs?.find((n) => n.tag === TAG.struct);
 
-    if (pivot && pst) {
-      if (dir === "hcenter") dx = Math.round(cont.x + cont.w / 2) - pivot.pivotX! - pst.x!;
-      if (dir === "vcenter") dy = Math.round(cont.y + cont.h / 2) - pivot.pivotY! - pst.y!;
-    }
-    if (!dx && !dy) return false;
-    if (sel.tag === TAG.group) {
-      const f = sel.subs!.find((n) => n.tag === TAG.frame)!;
-      const v = unhex(f.hex!);
-      const fx = Math.max(0, (v[0] | (v[1] << 8)) + dx),
-        fy = Math.max(0, (v[2] | (v[3] << 8)) + dy);
+        if (pivot && pst) {
+          if (dir === "hcenter") dx = Math.round(cont.x + cont.w / 2) - pivot.pivotX! - pst.x!;
+          if (dir === "vcenter") dy = Math.round(cont.y + cont.h / 2) - pivot.pivotY! - pst.y!;
+        }
+        if (!dx && !dy) return false;
+        if (sel.tag === TAG.group) {
+          const f = sel.subs!.find((n) => n.tag === TAG.frame)!;
+          const v = unhex(f.hex!);
+          const fx = Math.max(0, (v[0] | (v[1] << 8)) + dx),
+            fy = Math.max(0, (v[2] | (v[3] << 8)) + dy);
 
-      v[0] = fx;
-      v[1] = fx >> 8;
-      v[2] = fy;
-      v[3] = fy >> 8;
-      patched({ node: f, patch: { hex: hex(v) } });
-    } else {
-      const st = sel.subs?.find((n) => n.tag === TAG.struct);
+          v[0] = fx;
+          v[1] = fx >> 8;
+          v[2] = fy;
+          v[3] = fy >> 8;
+          patched({ node: f, patch: { hex: hex(v) } });
+        } else {
+          const st = sel.subs?.find((n) => n.tag === TAG.struct);
 
-      if (!st || st.x == null) return false;
-      patched({ node: st, patch: { x: st.x + dx, y: (st.y || 0) + dy } });
-    }
-    return true;
-  };
+          if (!st || st.x == null) return false;
+          patched({ node: st, patch: { x: st.x + dx, y: (st.y || 0) + dy } });
+        }
+        return true;
+      };
 
-  checkpoint(0);
-  // two passes: patching can change a coordinate's meaning mid-flight (a packed NUMBER's
-  // y=0 draws frame-centered, but any nonzero y is literal — see drawGroup's rowCross), so
-  // the first delta may land off-target; a second measure-and-nudge against the re-render
-  // converges exactly for literal coordinates.
-  if (pass()) pass();
-}
+      // two passes: patching can change a coordinate's meaning mid-flight (a packed NUMBER's
+      // y=0 draws frame-centered, but any nonzero y is literal — see drawGroup's rowCross), so
+      // the first delta may land off-target; a second measure-and-nudge against the re-render
+      // converges exactly for literal coordinates.
+      if (pass()) pass();
+    };
+
+    checkpoint(0);
+    nodes.forEach(alignOne);
+  },
+});
+
+// ---- queries ----
+// These three hand a value back to their caller (a .bin to upload, a preview to store), so unlike
+// the actions above they stay callable effects rather than fire-and-forget events.
 
 // async because of flushResized — resized images are only re-encoded here, on the way out
-export async function buildCurrentBin(): Promise<Uint8Array> {
-  const s = $editor.getState();
-
+const binOf = async (s: EditorState): Promise<Uint8Array> => {
   await flushResized(s.face!);
   if (s.dirty) regenPreviews(s.face!, s.sim); // embedded 0x28 previews = current render
   const out = buildBin(s.face!);
 
   parseBin(out); // self-check
   return out;
-}
+};
+
+export const buildCurrentBin = attach({ source: $editor, effect: binOf });
 
 // PNG snapshot of the main screen, for marketplace cards
-export function previewBlob(): Promise<Blob> {
-  const { face, sim } = $editor.getState();
-  const c = document.createElement("canvas");
+export const previewBlob = attach({
+  source: $editor,
+  effect({ face, sim }): Promise<Blob> {
+    const c = document.createElement("canvas");
 
-  c.width = SCREEN;
-  c.height = SCREEN;
-  render(c.getContext("2d")!, face!, TAG.main, sim);
-  return new Promise((res) => c.toBlob((b) => res(b!), "image/png"));
-}
+    c.width = SCREEN;
+    c.height = SCREEN;
+    render(c.getContext("2d")!, face!, TAG.main, sim);
+    return new Promise((res) => c.toBlob((b) => res(b!), "image/png"));
+  },
+});
 
 // Tiny JPEG data URL of the main screen, stored next to the flashed dial id so the watch's
 // id-only list can show what each slot holds (see device/lib/catalog-names). 96px keeps it
 // around 5 KB — previewBlob's full 466px PNG is ~100× that and localStorage is the sink.
-export function previewThumb(): string {
-  const { face, sim } = $editor.getState();
-  const full = document.createElement("canvas");
+export const previewThumb = attach({
+  source: $editor,
+  effect({ face, sim }): string {
+    const full = document.createElement("canvas");
 
-  full.width = full.height = SCREEN;
-  render(full.getContext("2d")!, face!, TAG.main, sim);
-  const thumb = document.createElement("canvas");
+    full.width = full.height = SCREEN;
+    render(full.getContext("2d")!, face!, TAG.main, sim);
+    const thumb = document.createElement("canvas");
 
-  thumb.width = thumb.height = 96;
-  thumb.getContext("2d")!.drawImage(full, 0, 0, 96, 96);
-  return thumb.toDataURL("image/jpeg", 0.7);
-}
+    thumb.width = thumb.height = 96;
+    thumb.getContext("2d")!.drawImage(full, 0, 0, 96, 96);
+    return thumb.toDataURL("image/jpeg", 0.7);
+  },
+});
 
-export async function exportBin() {
-  try {
-    const out = await buildCurrentBin();
+const exportBinFx = attach({
+  source: $editor,
+  async effect(s) {
+    const out = await binOf(s);
     const a = document.createElement("a");
 
     a.href = URL.createObjectURL(new Blob([out as BlobPart]));
-    a.download = `${$editor.getState().face!.name || "watchface"}.bin`;
+    a.download = `${s.face!.name || "watchface"}.bin`;
     a.click();
     URL.revokeObjectURL(a.href);
-  } catch (e) {
-    errored(`export: ${(e as Error).message}`);
-  }
-}
+  },
+});
 
 // ---- business logic ----
 sample({
@@ -810,6 +924,7 @@ sample({
       ...s,
       face,
       sel: null,
+      more: [],
       screenTag: TAG.main,
       ids: collectIds(face),
       fileLabel: label,
@@ -827,7 +942,20 @@ sample({
   fn: (s, sel) => {
     // leaving a layer is what makes a source change's frame trim permanent — see frameStash
     if (sel !== s.sel) frameStash = new Map();
-    return { ...s, sel };
+    return { ...s, sel, more: [] };
+  },
+  target: $editor,
+});
+sample({
+  clock: selectToggled,
+  source: $editor,
+  fn: (s, node) => {
+    frameStash = new Map();
+    const all = selectedNodes(s);
+    // already in: drop it, and promote whatever is left; otherwise it becomes the primary
+    const rest = all.includes(node) ? all.filter((n) => n !== node) : [node, ...all];
+
+    return { ...s, sel: rest[0] ?? null, more: rest.slice(1) };
   },
   target: $editor,
 });
@@ -864,6 +992,7 @@ sample({
     return {
       ...s,
       sel: null,
+      more: [],
       undoN: undoStack.length,
       redoN: redoStack.length,
     };
@@ -881,6 +1010,7 @@ sample({
     return {
       ...s,
       sel: null,
+      more: [],
       undoN: undoStack.length,
       redoN: redoStack.length,
     };
@@ -932,7 +1062,7 @@ sample({
   target: $rightPanel,
 });
 sample({
-  clock: select,
+  clock: [select, selectToggled],
   filter: Boolean,
   fn: () => "props" as const,
   target: $rightPanel,
@@ -1071,6 +1201,60 @@ sample({
   clock: resizeImageRequested,
   target: resizeImageFx,
 });
+sample({
+  clock: deleteWidget,
+  target: deleteWidgetFx,
+});
+sample({
+  clock: addNode,
+  target: addNodeFx,
+});
+sample({
+  clock: toggleCondition,
+  target: toggleConditionFx,
+});
+sample({
+  clock: setSlotBind,
+  target: setSlotBindFx,
+});
+sample({
+  clock: duplicateSelected,
+  target: duplicateFx,
+});
+sample({
+  clock: groupSelected,
+  target: groupFx,
+});
+sample({
+  clock: ungroupSelected,
+  target: ungroupFx,
+});
+sample({
+  clock: moveNode,
+  target: moveNodeFx,
+});
+sample({
+  clock: renameFace,
+  target: renameFaceFx,
+});
+sample({
+  clock: moveImage,
+  target: moveImageFx,
+});
+sample({
+  clock: alignSelected,
+  target: alignFx,
+});
+sample({
+  clock: exportBin,
+  target: exportBinFx,
+});
+sample({
+  clock: exportBinFx.fail,
+  fn: ({ error }) => `export: ${error.message}`,
+  target: errored,
+});
+
 // new pixels — the accent tint was computed off the old ones
 sample({
   clock: [replaceImageFx.done, resizeImageFx.done],

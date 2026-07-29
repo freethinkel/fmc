@@ -102,7 +102,7 @@ test("dropping a widget into a group keeps it where it was, and ungroup puts it 
   shiftNode(group, 50, 30);
   expect(nodeOrigin(group)).toEqual({ x: 50, y: 30 });
 
-  editorModel.moveNode(widget, group, false, true);
+  editorModel.moveNode({ node: widget, target: group, after: false, into: true });
   expect(group.subs).toContain(widget);
   expect(boxOf(widget)).toMatchObject({ x: before.x, y: before.y });
 

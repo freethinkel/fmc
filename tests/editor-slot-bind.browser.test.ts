@@ -41,24 +41,24 @@ test("a layer binds to one slot metric and only draws while that metric is selec
   expect(drawn(layer)).toBe(true); // unbound: always visible
 
   // stand for the slot's SECOND metric — the slot is on its first, so the layer must vanish
-  editorModel.setSlotBind(layer, slot.index, 1);
+  editorModel.setSlotBind({ node: layer, slot: slot.index, metric: 1 });
   const entry = parseBind(layer.subs!.find((n) => n.tag === TAG.bind)!.hex)[0];
 
   expect(entry).toMatchObject({ id: SLOT_SEL_ID + slot.index, val: 1 });
   expect(drawn(layer)).toBe(false);
 
   // ...and stand for the selected metric instead: back on screen
-  editorModel.setSlotBind(layer, slot.index, 0);
+  editorModel.setSlotBind({ node: layer, slot: slot.index, metric: 0 });
   expect(drawn(layer)).toBe(true);
 
   // unbinding drops the whole condition node again, not just the entry
-  editorModel.setSlotBind(layer, null);
+  editorModel.setSlotBind({ node: layer, slot: null });
   expect(layer.subs!.some((n) => n.tag === TAG.bind)).toBe(false);
   expect(drawn(layer)).toBe(true);
 
   // a real metric condition on the same layer must survive the slot binding being rewritten
   editorModel.toggleCondition(layer); // always-true steps >= 0
-  editorModel.setSlotBind(layer, slot.index, 0);
+  editorModel.setSlotBind({ node: layer, slot: slot.index, metric: 0 });
   const ids = parseBind(layer.subs!.find((n) => n.tag === TAG.bind)!.hex).map((e) => e.id);
 
   expect(ids).toEqual([0x19, SLOT_SEL_ID + slot.index]);

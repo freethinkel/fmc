@@ -34,12 +34,15 @@
   const {
     $editor: editor,
     select,
+    selectToggled,
+    selectedNodes,
     screenTagSet,
     checkpoint,
     undo,
     redo,
     patched,
     resizeImageRequested,
+    $resizing: resizing,
     loadRequested,
     newFaceRequested,
     importFacerRequested,
@@ -54,6 +57,7 @@
   } = editorModel;
 
   let canvas = $state<HTMLCanvasElement | null>(null);
+
   let mobilePanel = $state<"tree" | "props" | "sim" | null>(null); // drawer on mobile
   let hits: Hit[] = [];
 
@@ -202,6 +206,15 @@
   }
 
   // ---- rendering ----
+  // A plain (non-$state) mirror of the store: the rAF loop reads the tree every frame, and reading
+  // $editor inside the render effect would make the effect re-run — tearing down and restarting the
+  // loop — on every store update.
+  let scene = $editor;
+
+  $effect(() => {
+    scene = $editor;
+  });
+
   $effect(() => {
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
@@ -209,11 +222,13 @@
     if (!ctx) return;
     let raf = 0;
     const loop = () => {
-      const s = editor.getState();
+      const s = scene;
       const t0 = perf && performance.now();
 
       if (s.face) {
         hits = render(ctx, s.face, s.screenTag, s.sim);
+        // extra picks get a plain box; the primary one carries the handles and the pivot cross
+        for (const n of s.more) drawBox(ctx, n);
         drawSelection(ctx, s.sel);
       } else {
         ctx.clearRect(0, 0, SCREEN, SCREEN);
@@ -226,9 +241,10 @@
     return () => cancelAnimationFrame(raf);
   });
 
-  function drawSelection(ctx: CanvasRenderingContext2D, sel: FaceNode | null) {
-    if (!sel) return;
-    const h = hits.findLast((h) => h.node === sel || h.node.subs?.includes(sel));
+  const hitOf = (n: FaceNode) => hits.findLast((h) => h.node === n || h.node.subs?.includes(n));
+
+  function drawBox(ctx: CanvasRenderingContext2D, node: FaceNode) {
+    const h = hitOf(node);
 
     if (!h) return;
     ctx.save();
@@ -236,13 +252,19 @@
     ctx.lineWidth = 2;
     ctx.setLineDash([6, 4]);
     ctx.strokeRect(h.x - 1, h.y - 1, h.w + 2, h.h + 2);
-    if (rz) {
-      // resize preview: the resource is only re-encoded on pointerup, so nothing about the
-      // drawn image changes during the drag — this ghost is the whole live feedback
-      ctx.strokeStyle = "#4af";
-      ctx.setLineDash([2, 2]);
-      ctx.strokeRect(rz.gx, rz.gy, rz.gw, rz.gh);
-    }
+    ctx.restore();
+  }
+
+  function drawSelection(ctx: CanvasRenderingContext2D, sel: FaceNode | null) {
+    if (!sel) return;
+    const h = hitOf(sel);
+
+    if (!h) return;
+    ctx.save();
+    ctx.strokeStyle = "#4af";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 4]);
+    ctx.strokeRect(h.x - 1, h.y - 1, h.w + 2, h.h + 2);
     if (resizable(h.node)) {
       ctx.setLineDash([]);
       ctx.fillStyle = "#4af";
@@ -316,8 +338,32 @@
     gy: number;
     gw: number;
     gh: number;
+    rw0: number; // the resource's size when the drag started — every step scales off it, not
+    rh0: number; // off the current one, which the live resize has already moved
+    dx0: number; // anchor -> grab point. The scale is measured against THIS, not against the box:
+    dy0: number; // a handle drawn off the true corner (see onDisc) would otherwise jump on move 1
+    started: boolean; // first actual move — that's where the undo checkpoint goes
   };
   let rz: Rz | null = null;
+
+  // Resize the resource to the target box (g*). Runs on every pointermove (skipping moves while the
+  // last one is still decoding) and once more on pointerup, so the last box always lands.
+  function applyResize(z: Rz) {
+    const scale = z.gw / z.w0;
+    // a hand's x/y is owned by the pivot math in resizeImageFx — don't fight it. Everything
+    // else keeps the anchored corner: delta-based, like alignSelected, since st.x is
+    // widget-local while the hit box is screen space.
+    const pinned = z.node.subs?.some((s) => s.tag === TAG.pivot);
+
+    resizeImageRequested({
+      node: z.node,
+      w: Math.round(z.rw0 * scale),
+      h: Math.round(z.rh0 * scale),
+      at: pinned
+        ? undefined
+        : { x: z.x0 + Math.round(z.gx - z.bx), y: z.y0 + Math.round(z.gy - z.by) },
+    });
+  }
 
   const selHit = () =>
     resizable($editor.sel) ? hits.findLast((h) => h.node === $editor.sel) || null : null;
@@ -332,24 +378,11 @@
 
   // ---- selection and drag ----
   type XY = { x: number; y: number };
-  type Drag =
-    | {
-        p: XY;
-        x0: number;
-        y0: number;
-        moved: boolean;
-        st: FaceNode;
-        fr?: undefined;
-      }
-    | {
-        p: XY;
-        x0: number;
-        y0: number;
-        moved: boolean;
-        fr: FaceNode;
-        st?: undefined;
-      };
-  let drag: Drag | null = null;
+  // one entry per dragged node — a multi-selection moves as a block
+  type DragItem =
+    | { x0: number; y0: number; st: FaceNode; fr?: undefined }
+    | { x0: number; y0: number; fr: FaceNode; st?: undefined };
+  let drag: { p: XY; items: DragItem[]; moved: boolean } | null = null;
   const canvasXY = (e: PointerEvent): XY => {
     const r = canvas!.getBoundingClientRect();
 
@@ -380,8 +413,12 @@
 
     if (sh && c) {
       const st = selStruct($editor.sel)!;
+      const r0 = firstRes($editor.sel)!;
 
       rz = {
+        started: false,
+        rw0: r0.w,
+        rh0: r0.h,
         node: $editor.sel!,
         st,
         dirX: c.cx,
@@ -399,31 +436,58 @@
         gy: sh.y,
         gw: sh.w,
         gh: sh.h,
+        dx0: Math.max(1, Math.abs(p.x - (c.cx ? sh.x : sh.x + sh.w))),
+        dy0: Math.max(1, Math.abs(p.y - (c.cy ? sh.y : sh.y + sh.h))),
       };
       canvas?.setPointerCapture(e.pointerId);
       return;
     }
     const h = hits.findLast((h) => p.x >= h.x && p.x < h.x + h.w && p.y >= h.y && p.y < h.y + h.h);
 
-    select(h?.node || null);
-    if (!h?.node) return;
-    const st = selStruct(h.node);
-    const fr = h.node.tag === TAG.group ? parseFrame(h.node) : null;
+    if (!h?.node) {
+      select(null);
+      return;
+    }
+    if (e.shiftKey || e.metaKey || e.ctrlKey) {
+      selectToggled(h.node); // add/remove — no drag, the modifier click is the whole gesture
+      return;
+    }
+    const picked = selectedNodes($editor);
+    // pressing inside an existing multi-selection keeps it, so the whole block can be dragged
+    const nodes = picked.includes(h.node) ? picked : (select(h.node), [h.node]);
+    const items = nodes.map(dragItem).filter((i) => i !== null);
 
-    if (fr) drag = { p, fr: h.node, x0: fr.x, y0: fr.y, moved: false };
-    else if (st && st.x != null) drag = { p, st, x0: st.x, y0: st.y!, moved: false };
+    if (items.length) drag = { p, items, moved: false };
     canvas?.setPointerCapture(e.pointerId);
+  }
+
+  /** What a node moves by: its own struct x/y, or its frame x/y when it's a group. */
+  function dragItem(n: FaceNode): DragItem | null {
+    if (n.tag === TAG.group) {
+      const fr = parseFrame(n);
+
+      return fr ? { fr: n, x0: fr.x, y0: fr.y } : null;
+    }
+    const st = selStruct(n);
+
+    return st && st.x != null ? { st, x0: st.x, y0: st.y! } : null;
   }
   function onMove(e: PointerEvent) {
     if (rz) {
       const p = canvasXY(e);
-      // uniform scale (corner drags keep proportions — free w/h lives in the props panel)
-      const s = Math.max(Math.abs(p.x - rz.ax) / rz.w0, Math.abs(p.y - rz.ay) / rz.h0);
+      // uniform scale (corner drags keep proportions — free w/h lives in the props panel),
+      // measured against the grab point so the box starts at 1:1 wherever the handle was drawn
+      const s = Math.max(Math.abs(p.x - rz.ax) / rz.dx0, Math.abs(p.y - rz.ay) / rz.dy0);
 
       rz.gw = Math.max(1, Math.round(rz.w0 * s));
       rz.gh = Math.max(1, Math.round(rz.h0 * s));
       rz.gx = rz.dirX ? rz.ax : rz.ax - rz.gw;
       rz.gy = rz.dirY ? rz.ay : rz.ay - rz.gh;
+      if (!rz.started) {
+        checkpoint(0); // one undo step for the whole drag, not one per live step
+        rz.started = true;
+      }
+      if (!$resizing) applyResize(rz); // drop the move if the last one is still decoding
       return;
     }
     const d = drag;
@@ -445,37 +509,14 @@
 
     // widget x/y are int16 — negatives are legal (and used by stock faces), so no clamp here;
     // group frames stay >=0, their x/y round-trip through the file as unsigned
-    if (d.st) patched({ node: d.st, patch: { x: d.x0 + dx, y: d.y0 + dy } });
-    else setFrameXY(d.fr, d.x0 + dx, d.y0 + dy); // frame x/y are int16 — a group may hang off
+    for (const it of d.items) {
+      if (it.st) patched({ node: it.st, patch: { x: it.x0 + dx, y: it.y0 + dy } });
+      else setFrameXY(it.fr, it.x0 + dx, it.y0 + dy); // frame x/y are int16 — a group may hang off
+    }
   }
   function onUp() {
     if (rz) {
-      const r0 = firstRes(rz.node);
-      const scale = rz.gw / rz.w0;
-
-      // a hand's x/y is owned by the pivot math in resizeImageFx — don't fight it. Everything
-      // else keeps the anchored corner: delta-based, like alignSelected, since st.x is
-      // widget-local while the hit box is screen space.
-      if (
-        r0 &&
-        !rz.node.subs?.some((s) => s.tag === TAG.pivot) &&
-        (rz.gx !== rz.bx || rz.gy !== rz.by)
-      ) {
-        checkpoint(0);
-        patched({
-          node: rz.st,
-          patch: {
-            x: rz.x0 + Math.round(rz.gx - rz.bx),
-            y: rz.y0 + Math.round(rz.gy - rz.by),
-          },
-        });
-      }
-      if (r0)
-        resizeImageRequested({
-          node: rz.node,
-          w: Math.round(r0.w * scale),
-          h: Math.round(r0.h * scale),
-        });
+      if (rz.started) applyResize(rz); // the last move may have been dropped mid-decode
       rz = null;
     }
     drag = null;
@@ -489,9 +530,9 @@
       e.preventDefault();
       return;
     }
-    const sel = $editor.sel;
+    const picked = selectedNodes($editor);
 
-    if (!sel) return;
+    if (!picked.length) return;
     const d = e.shiftKey ? 10 : 1;
     const moves: Record<string, [number, number]> = {
       ArrowLeft: [-d, 0],
@@ -503,12 +544,13 @@
 
     if (!mv) return;
     checkpoint();
-    const st = selStruct(sel);
-    const fr = sel.tag === TAG.group ? parseFrame(sel) : null;
+    for (const sel of picked) {
+      const it = dragItem(sel);
 
-    if (fr) setFrameXY(sel, fr.x + mv[0], fr.y + mv[1]);
-    else if (st && st.x != null)
-      patched({ node: st, patch: { x: st.x + mv[0], y: st.y! + mv[1] } });
+      if (!it) continue;
+      if (it.fr) setFrameXY(it.fr, it.x0 + mv[0], it.y0 + mv[1]);
+      else patched({ node: it.st, patch: { x: it.x0 + mv[0], y: it.y0 + mv[1] } });
+    }
     e.preventDefault();
   }
 
@@ -517,7 +559,7 @@
     // re-flashing it lands on the slot it already occupies instead of taking another one
     flashRequested({
       bin: await buildCurrentBin(),
-      preview: previewThumb(),
+      preview: await previewThumb(),
       key: $openedWf?.id,
     });
   }
@@ -610,7 +652,7 @@
         </Button>
       </span>
       <span class="tool-slot" title="Export .bin">
-        <Button kind="primary" onClick={exportBin}>
+        <Button kind="primary" onClick={() => exportBin()}>
           <Icon name="download" size={16} />
           <span class="btn-label">Export .bin</span>
         </Button>

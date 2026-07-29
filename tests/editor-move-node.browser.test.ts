@@ -21,11 +21,11 @@ test("moveNode reorders siblings and undo restores the order", async () => {
 
   expect(subs.length).toBeGreaterThan(2);
 
-  editorModel.moveNode(a, b, true); // drop a below b
+  editorModel.moveNode({ node: a, target: b, after: true }); // drop a below b
   expect(subs.indexOf(a)).toBe(subs.indexOf(b) + 1);
 
   // reordering across parents is rejected — the screen itself is not a sibling
-  editorModel.moveNode(a, scr, true);
+  editorModel.moveNode({ node: a, target: scr, after: true });
   expect(subs.indexOf(a)).toBe(subs.indexOf(b) + 1);
 
   editorModel.undo();

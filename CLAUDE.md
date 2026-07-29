@@ -63,13 +63,23 @@ and `frames` sections; `PropsPanel.svelte` is the container and owns the shared 
 
 ## Effector conventions
 
+- **Never `store.getState()`** — anywhere, including inside an effect. State reaches an effect as
+  a parameter: `attach({ source: $editor, effect(s, params) {…} })` for one that's called, or
+  `sample({ clock, source: $editor, fn, target })` for one that's triggered. Components read the
+  store through `$store`; code that needs a value outside a reactive context (an rAF loop) mirrors
+  `$store` into a plain local, it doesn't reach back into the store. Enforced by the
+  `effector/no-get-state` oxlint rule (tests are exempt — they assert on `$store.getState()`).
+- One-shot user actions (delete layer, group, align, export) are a plain event the component fires
+  + an `attach`ed effect wired with `sample({ clock: event, target: fx })`. Only queries that hand a
+  value back (`buildCurrentBin`, `previewBlob`, `previewThumb`) are exported as callable effects.
 - Busy flags — from `someFx.pending`, don't add manual `$state` flags.
 - Effect errors — via `fail`/`failData` into an error store (`errored` in editor, `marketErr` in market).
 - Fire-and-forget effect calls in components — with `.catch(() => {})`, the error is already
   handled in the model.
 - Editor model: the `face` tree is mutable, but every change goes through an event
   (`patched`, `treeChanged`) that returns a new store root — that's how the UI updates.
-  The canvas is drawn via rAF and reads `editor.getState()`, not a subscription.
+  The canvas is drawn via rAF off a plain mirror of `$editor` (see `scene` in editor.svelte), so
+  the render effect isn't re-run — and restarted — by every store update.
   Undo/redo stacks live outside the store; the store only holds the `undoN`/`redoN` counters.
 
 ## UI

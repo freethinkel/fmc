@@ -6,22 +6,12 @@
   import { dialLabel, dialPreview, dialTitle } from "../lib/catalog-names";
   import WatchSelector from "./watch-selector.svelte";
 
-  const {
-    $slotDialogOpen: open,
-    $dials: dials,
-    slotPicked,
-    slotDialogClosed,
-  } = bleModel;
+  const { $slotDialogOpen: open, $dials: dials, slotPicked, slotDialogClosed } = bleModel;
 </script>
 
-<Dialog
-  open={$open}
-  title="The watch is full"
-  onClose={() => slotDialogClosed()}
->
+<Dialog open={$open} title="The watch is full" onClose={() => slotDialogClosed()}>
   <p class="desc">
-    Pick the watchface to replace — its slot number matches the order the watch
-    shows them in.
+    Pick the watchface to replace — its slot number matches the order the watch shows them in.
   </p>
   <div class="dials">
     {#each $dials ?? [] as id, i (id)}
