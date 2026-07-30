@@ -16,9 +16,16 @@
 
 <div class="panel">
   {#if layer}
-    <Geometry {layer} />
-    <Source {layer} />
-    <Frames {layer} />
+    <!-- A locked layer is read-only, and a disabled fieldset is the platform's own way to say
+         so: one attribute switches off every control inside, no per-input plumbing. -->
+    <fieldset class="fields" disabled={Boolean(layer.locked)}>
+      {#if layer.locked}
+        <p class="hint-xs">locked — unlock it in the layer tree to edit</p>
+      {/if}
+      <Geometry {layer} />
+      <Source {layer} />
+      <Frames {layer} />
+    </fieldset>
   {:else}
     <p class="hint">Nothing selected.</p>
   {/if}
@@ -34,6 +41,14 @@
 </div>
 
 <style>
+  /* display: contents, so the fieldset carries the disabled state and nothing else — the
+     sections keep the panel's own layout */
+  .fields {
+    display: contents;
+    border: none;
+    margin: 0;
+    padding: 0;
+  }
   .panel {
     display: flex;
     flex-direction: column;

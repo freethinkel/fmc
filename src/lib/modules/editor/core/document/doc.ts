@@ -166,7 +166,10 @@ interface LayerBase {
   readonly conditions: readonly Condition[];
   /** Editor-only, never written to the file — the format has no string node but 0x86. */
   readonly name?: string;
+  /** Editor-only: left out of the render, so the canvas can't hit it either. */
   readonly hidden?: boolean;
+  /** Editor-only: still drawn, but the canvas won't select, drag or resize it. */
+  readonly locked?: boolean;
 }
 
 interface PlacedLayer extends LayerBase {

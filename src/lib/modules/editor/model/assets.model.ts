@@ -58,6 +58,14 @@ export const resizeImageRequested = createEvent<{
   h: number;
   at?: { x: number; y: number };
 }>();
+/** Resizing a group scales its contents, so it is a factor rather than a size — the children all
+ *  have their own. `at`: where the group's frame must end up, so a corner drag keeps its anchor. */
+export const resizeGroupRequested = createEvent<{
+  layer: NodeId;
+  kw: number;
+  kh: number;
+  at?: { x: number; y: number };
+}>();
 export const adjustImageRequested = createEvent<{ layer: NodeId; adjust: ImageAsset["adjust"] }>();
 export const invertColorsRequested = createEvent();
 
@@ -125,6 +133,49 @@ const replaceImageFx = attach({
 // a rescale of the pixels. Every frame of a multi-frame widget scales by the same ratio, and each
 // one scales off its PINNED ORIGINAL rather than its current size — a live drag fires this per
 // pointermove, so compounded rounding would walk a hand right off the dial.
+const dim = (v: number) => Math.max(1, Math.min(2047, Math.round(v))); // 11-bit, see encodePixels
+
+/** Rescale one layer's frames so the FIRST lands on tw x th, the rest keeping their ratio to it.
+ *  Fills `assets`/`cached` and reports the factors, which the caller needs for a hand's pivot. */
+async function rescaleFrames(
+  doc: Doc,
+  cache: ReadonlyMap<ImageId, ImageCache>,
+  frames: readonly ImageId[],
+  tw: number,
+  th: number,
+  assets: Map<ImageId, ImageAsset>,
+  cached: Map<ImageId, ImageCache>,
+): Promise<{ sx: number; sy: number } | null> {
+  const first = doc.images.get(frames[0]);
+
+  if (!first) return null;
+  const firstSrc = cache.get(frames[0])?.original ?? (await bitmapOf(asResource(first)));
+  const sx = tw / firstSrc.width,
+    sy = th / firstSrc.height;
+
+  for (const id of new Set(frames)) {
+    const a = doc.images.get(id);
+
+    if (!a) continue;
+    const src = cache.get(id)?.original ?? (await bitmapOf(asResource(a)));
+    const rw = id === frames[0] ? tw : dim(src.width * sx),
+      rh = id === frames[0] ? th : dim(src.height * sy);
+
+    assets.set(id, { ...a, w: rw, h: rh });
+    cached.set(id, {
+      // always off the ORIGINAL, so shrink-then-grow is lossless
+      bitmap: await createImageBitmap(src, {
+        resizeWidth: rw,
+        resizeHeight: rh,
+        resizeQuality: "high",
+      }),
+      original: src,
+      accent: undefined, // a stale tint would keep the old size; accentFx recomputes it
+    });
+  }
+  return { sx, sy };
+}
+
 const resizeImageFx = attach({
   source: { doc: $doc, cache: $cache },
   async effect(
@@ -134,41 +185,19 @@ const resizeImageFx = attach({
     const l = doc ? findLayer(doc, layer) : null;
     const frames = l ? framesOf(l) : [];
 
-    if (!doc || !l || !frames.length) return null;
-    const dim = (v: number) => Math.max(1, Math.min(2047, Math.round(v))); // 11-bit, see encodePixels
+    if (!doc || !l || !frames.length || l.locked) return null; // locked: no resize, from anywhere
     const tw = dim(w),
       th = dim(h);
     const first = doc.images.get(frames[0]);
 
     if (!first) return null;
-    const firstSrc = cache.get(frames[0])?.original ?? (await bitmapOf(asResource(first)));
-    const sx = tw / firstSrc.width,
-      sy = th / firstSrc.height;
-
     if (tw === first.w && th === first.h && !at) return null;
     const assets = new Map<ImageId, ImageAsset>();
     const cached = new Map<ImageId, ImageCache>();
+    const scaled = await rescaleFrames(doc, cache, frames, tw, th, assets, cached);
 
-    for (const id of new Set(frames)) {
-      const a = doc.images.get(id);
-
-      if (!a) continue;
-      const src = cache.get(id)?.original ?? (await bitmapOf(asResource(a)));
-      const rw = id === frames[0] ? tw : dim(src.width * sx),
-        rh = id === frames[0] ? th : dim(src.height * sy);
-
-      assets.set(id, { ...a, w: rw, h: rh });
-      cached.set(id, {
-        // always off the ORIGINAL, so shrink-then-grow is lossless
-        bitmap: await createImageBitmap(src, {
-          resizeWidth: rw,
-          resizeHeight: rh,
-          resizeQuality: "high",
-        }),
-        original: src,
-        accent: undefined, // a stale tint would keep the old size; accentFx recomputes it
-      });
-    }
+    if (!scaled) return null;
+    const { sx, sy } = scaled;
 
     // A hand rotates around x+pivot: the pivot scales with the art and x/y shift so the rotation
     // centre stays put, otherwise the hand walks off the dial.
@@ -188,6 +217,78 @@ const resizeImageFx = attach({
       patch = { pivotX, pivotY, x: cx - pivotX, y: cy - pivotY };
     }
     return { assets, cache: cached, layer: l.id, patch };
+  },
+});
+
+/** Scale a group and everything under it — the Figma reading of resizing a group: the children's
+ *  pixels and coordinates follow, not just the box. The frame scales too, since it's what the
+ *  auto-layout measures against; AUTO children (meta.auto) ignore their x/y and are laid out from
+ *  the new pixel sizes anyway. */
+const resizeGroupFx = attach({
+  source: { doc: $doc, cache: $cache },
+  async effect(
+    { doc, cache },
+    { layer, kw, kh, at }: { layer: NodeId; kw: number; kh: number; at?: { x: number; y: number } },
+  ) {
+    const g = doc ? findLayer(doc, layer) : null;
+
+    if (!doc || g?.kind !== "group" || g.locked) return null;
+    const assets = new Map<ImageId, ImageAsset>();
+    const cached = new Map<ImageId, ImageCache>();
+    const scale = (v: number) => Math.round(v * kw);
+    const scaleY = (v: number) => Math.round(v * kh);
+
+    const walk = async (l: Layer): Promise<Layer> => {
+      if (l.kind === "raw" || l.locked) return l; // a locked child holds its size, like anywhere else
+      if (l.kind === "group")
+        return {
+          ...l,
+          frame: {
+            ...l.frame,
+            x: scale(l.frame.x),
+            y: scaleY(l.frame.y),
+            w: scale(l.frame.w),
+            h: scaleY(l.frame.h),
+          },
+          children: await Promise.all(l.children.map(walk)),
+        };
+      const frames = framesOf(l);
+      const first = frames.length ? doc.images.get(frames[0]) : null;
+      const scaled = first
+        ? await rescaleFrames(
+            doc,
+            cache,
+            frames,
+            dim(first.w * kw),
+            dim(first.h * kh),
+            assets,
+            cached,
+          )
+        : null;
+      const moved = { ...l, x: scale(l.x), y: scaleY(l.y) } as Layer;
+
+      if (moved.kind !== "hand" || !scaled) return moved;
+      // the pivot is a coordinate inside the art, so it scales with it
+      return {
+        ...moved,
+        pivotX: Math.round(moved.pivotX * kw),
+        pivotY: Math.round(moved.pivotY * kh),
+      };
+    };
+
+    const next: Layer = {
+      ...g,
+      frame: {
+        ...g.frame,
+        x: at?.x ?? g.frame.x,
+        y: at?.y ?? g.frame.y,
+        w: scale(g.frame.w),
+        h: scaleY(g.frame.h),
+      },
+      children: await Promise.all(g.children.map(walk)),
+    };
+
+    return { assets, cache: cached, layer: g.id, group: next };
   },
 });
 
@@ -238,9 +339,11 @@ const invertColorsFx = attach({
   source: { doc: $doc, cache: $cache, screen: $screen, selected: $selected },
   async effect({ doc, cache, screen, selected }) {
     if (!doc) return null;
-    const roots: readonly Layer[] = selected.length
-      ? selected
-      : (doc.screens.find((s) => s.kind === screen)?.layers ?? []);
+    // a locked layer keeps its pixels too, whether it was picked directly or caught by the
+    // whole-screen pass
+    const roots: readonly Layer[] = (
+      selected.length ? selected : (doc.screens.find((s) => s.kind === screen)?.layers ?? [])
+    ).filter((l) => !l.locked);
     const mine = new Set<ImageId>();
     const walk = (l: Layer) => {
       framesOf(l).forEach((id) => mine.add(id));
@@ -349,6 +452,30 @@ sample({
 sample({
   clock: resizeImageRequested,
   target: resizeImageFx,
+});
+sample({
+  clock: resizeGroupRequested,
+  target: resizeGroupFx,
+});
+sample({
+  clock: resizeGroupFx.doneData,
+  filter: Boolean,
+  fn: ({ assets, layer, group }) => ({
+    edit: (doc: Doc) => {
+      const images = new Map(doc.images);
+
+      assets.forEach((a, id) => images.set(id, a));
+      return patchLayer({ ...doc, images }, layer, group);
+    },
+    coalesce: 600,
+  }),
+  target: committed,
+});
+sample({
+  clock: resizeGroupFx.doneData,
+  filter: Boolean,
+  fn: ({ cache }) => cache,
+  target: cachePatched,
 });
 sample({
   clock: resizeImageFx.doneData,

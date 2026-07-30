@@ -7,7 +7,7 @@
 // had already moved, which is exactly how an undo ends up off by one entry.
 import { createEvent, createStore, sample } from "effector";
 import { reset } from "patronum";
-import { patchLayer } from "../core/document/edits";
+import { findLayer, patchLayer } from "../core/document/edits";
 import { withName } from "../core/document/factory";
 import type { Doc, ImageCache, ImageId, Layer, NodeId } from "../core/document/doc";
 
@@ -101,15 +101,23 @@ sample({
   },
   target: stepped,
 });
+// A locked layer takes no patches at all — that's the one place the props panel's inputs, the
+// canvas drag and the arrow keys all end up, so guarding it here covers every route in. Clearing
+// the flag goes through `committed`, so it stays possible.
+const editable = (doc: Doc | null, { id }: { id: NodeId }) =>
+  Boolean(doc) && !findLayer(doc!, id)?.locked;
+
 sample({
   clock: layerPatched,
   source: $doc,
-  filter: Boolean,
-  fn: (doc, { id, patch }) => patchLayer(doc, id, patch),
+  filter: editable,
+  fn: (doc, { id, patch }) => patchLayer(doc!, id, patch),
   target: $doc,
 });
 sample({
   clock: layerPatched,
+  source: $doc,
+  filter: editable,
   fn: () => true,
   target: $dirty,
 });

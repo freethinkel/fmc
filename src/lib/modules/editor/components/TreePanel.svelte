@@ -18,6 +18,7 @@
     nodeAdded,
     slotAdded,
     aodRemoved,
+    layerFlagsSet,
     widgetAdded,
     deleteRequested,
     duplicateRequested,
@@ -122,6 +123,19 @@
     select(null);
     menuAt(e, true);
   }
+
+  // The per-row eye/lock buttons act on that row alone; the menu entries below act on the whole
+  // selection, keyed off the primary layer's current state.
+  function toggleFlag(e: MouseEvent, l: Layer, key: "hidden" | "locked") {
+    e.stopPropagation();
+    layerFlagsSet({ ids: [l.id], patch: { [key]: !l[key] } });
+  }
+
+  const flagOfSelection = (key: "hidden" | "locked") =>
+    layerFlagsSet({
+      ids: $selected.map((l) => l.id),
+      patch: { [key]: !$selected[0]?.[key] },
+    });
 
   // accordion: closed by default, keyed by layer id — ids survive an immutable edit, object
   // references don't
@@ -320,6 +334,14 @@
       <Icon name="folder" size={14} /> Group
     </MenuItem>
   {/if}
+  <MenuItem onClick={() => flagOfSelection("hidden")}>
+    <Icon name={$selected[0]?.hidden ? "eye" : "eye-off"} size={14} />
+    {$selected[0]?.hidden ? "Show" : "Hide"}
+  </MenuItem>
+  <MenuItem onClick={() => flagOfSelection("locked")}>
+    <Icon name={$selected[0]?.locked ? "lock-open" : "lock"} size={14} />
+    {$selected[0]?.locked ? "Unlock" : "Lock"}
+  </MenuItem>
   <MenuItem danger onClick={deleteRequested}>
     <Icon name="trash" size={14} /> Delete
   </MenuItem>
@@ -390,6 +412,21 @@
     {/if}
     <Icon name={kindIcons[l.kind]} size={14} class="node-icon" />
     <span class="label">{layerLabel(l)}</span>
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <span class="flags">
+      <Icon
+        name={l.hidden ? "eye-off" : "eye"}
+        size={12}
+        class={l.hidden ? "flag on" : "flag"}
+        onclick={(e: MouseEvent) => toggleFlag(e, l, "hidden")}
+      />
+      <Icon
+        name={l.locked ? "lock" : "lock-open"}
+        size={12}
+        class={l.locked ? "flag on" : "flag"}
+        onclick={(e: MouseEvent) => toggleFlag(e, l, "locked")}
+      />
+    </span>
   </button>
   {#if kids.length && openNodes.has(l.id)}
     {#each kids as c (c.id)}
@@ -485,6 +522,26 @@
       color: oklch(from var(--color-text) l c h);
       opacity: 0.55;
     }
+  }
+  .flags {
+    display: inline-flex;
+    margin-inline-start: auto;
+    gap: 0.25rem;
+    padding-inline-start: 0.25rem;
+  }
+  /* a flag that is off only shows on hover — an eye and a padlock on every row is noise */
+  :global(.flag) {
+    flex-shrink: 0;
+    opacity: 0;
+    color: oklch(from var(--color-text) l c h / 55%);
+
+    &:hover {
+      opacity: 1;
+    }
+  }
+  :global(.flag.on),
+  .node-row:hover :global(.flag) {
+    opacity: 0.75;
   }
   .label {
     overflow: hidden;

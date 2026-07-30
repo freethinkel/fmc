@@ -23,6 +23,9 @@
   import IconDownload from "@tabler/icons-svelte/icons/download";
   import IconTypography from "@tabler/icons-svelte/icons/typography";
   import IconEye from "@tabler/icons-svelte/icons/eye";
+  import IconEyeOff from "@tabler/icons-svelte/icons/eye-off";
+  import IconLock from "@tabler/icons-svelte/icons/lock";
+  import IconLockOpen from "@tabler/icons-svelte/icons/lock-open";
   import IconPhoto from "@tabler/icons-svelte/icons/photo";
   import IconContrast from "@tabler/icons-svelte/icons/contrast";
   import IconFolder from "@tabler/icons-svelte/icons/folder";
@@ -93,6 +96,9 @@
     download: IconDownload,
     type: IconTypography,
     eye: IconEye,
+    "eye-off": IconEyeOff,
+    lock: IconLock,
+    "lock-open": IconLockOpen,
     image: IconPhoto,
     contrast: IconContrast,
     folder: IconFolder,

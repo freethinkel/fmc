@@ -76,6 +76,12 @@ export const aodAdded = createEvent();
 /** Drop it again — deleting the AOD root row in the tree. The main screen has no such option:
  *  a face without one has nothing to draw. */
 export const aodRemoved = createEvent();
+/** The editor-only per-layer flags. One event for both: they behave identically — a toggle over
+ *  whatever is selected, or over one layer when the tree's own buttons fire it. */
+export const layerFlagsSet = createEvent<{
+  ids: readonly NodeId[];
+  patch: { hidden?: boolean; locked?: boolean };
+}>();
 export const duplicateRequested = createEvent();
 export const copyRequested = createEvent();
 export const cutRequested = createEvent();
@@ -221,7 +227,9 @@ const sourceIdFx = attach({
 // selection's shared bounding box (Figma's multi-select behaviour) is a different feature.
 const alignFx = attach({
   source: { doc: $doc, cache: $cache, sim: $sim, screen: $screen, selected: $selected },
-  effect({ doc, cache, sim, screen, selected }, dir: AlignDir) {
+  effect({ doc, cache, sim, screen, selected: picked }, dir: AlignDir) {
+    const selected = picked.filter((l) => !l.locked); // a locked layer holds its position
+
     if (!doc || !selected.length) return null;
     const c = document.createElement("canvas");
 
@@ -362,6 +370,15 @@ sample({
   fn: () => "aod" as const,
   target: screenSet,
 });
+sample({
+  clock: layerFlagsSet,
+  filter: ({ ids }) => ids.length > 0,
+  fn: ({ ids, patch }) => ({
+    edit: (doc: Doc) => ids.reduce((d, id) => patchLayer(d, id, patch), doc),
+  }),
+  target: committed,
+});
+
 sample({
   clock: aodRemoved,
   source: $doc,

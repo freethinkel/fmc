@@ -54,6 +54,7 @@
     pasteRequested,
     deleteRequested,
     resizeImageRequested,
+    resizeGroupRequested,
     $lockAspect: lockAspect,
     loadRequested,
     newFaceRequested,
@@ -284,6 +285,11 @@
     ctx.lineWidth = 2;
     ctx.setLineDash([6, 4]);
     ctx.strokeRect(h.x - 1, h.y - 1, h.w + 2, h.h + 2);
+    // a locked layer gets the outline and nothing else: no handles to grab, no pivot to aim
+    if (h.layer.locked) {
+      ctx.restore();
+      return;
+    }
     if (resizable(h.layer)) {
       ctx.setLineDash([]);
       ctx.fillStyle = "#4af";
@@ -336,7 +342,12 @@
 
     return ids.length ? $doc?.images.get(ids[0]) : undefined;
   };
-  const resizable = (l: Layer | null): boolean => Boolean(firstAsset(l));
+
+  /** Does anything under this layer have pixels to scale? A group has none of its own. */
+  const hasArt = (l: Layer): boolean =>
+    framesOf(l).length > 0 || (l.kind === "group" && l.children.some(hasArt));
+  // locked is editor-only (see doc.ts): the layer still draws, it just stops answering the canvas
+  const resizable = (l: Layer | null): boolean => Boolean(l) && hasArt(l!) && !l!.locked;
 
   type Rz = {
     layer: Layer;
@@ -380,13 +391,20 @@
     // container-local while the hit box is screen space.
     const pinned = z.layer.kind === "hand";
 
+    const at = pinned
+      ? undefined
+      : { x: z.x0 + Math.round(z.gx - z.bx), y: z.y0 + Math.round(z.gy - z.by) };
+
+    // a group has no pixels of its own: resizing it scales everything under it, by factor
+    if (z.layer.kind === "group") {
+      resizeGroupRequested({ layer: z.layer.id, kw, kh, at });
+      return;
+    }
     resizeImageRequested({
       layer: z.layer.id,
       w: Math.round(z.rw0 * kw),
       h: Math.round(z.rh0 * kh),
-      at: pinned
-        ? undefined
-        : { x: z.x0 + Math.round(z.gx - z.bx), y: z.y0 + Math.round(z.gy - z.by) },
+      at,
     });
   }
 
@@ -421,6 +439,7 @@
 
   /** What a layer moves by: its own x/y, or its frame's when it is a group. */
   function dragItem(l: Layer): DragItem | null {
+    if (l.locked) return null;
     if (l.kind === "group") return { layer: l, x0: l.frame.x, y0: l.frame.y };
     return l.kind === "raw" ? null : { layer: l, x0: l.x, y0: l.y };
   }
@@ -442,7 +461,8 @@
     const c = sh && handleAt(p, sh);
 
     if (sh && c) {
-      const r0 = firstAsset(sh.layer)!;
+      // a group scales by factor, so its base size is the box itself
+      const r0 = firstAsset(sh.layer) ?? { w: sh.w, h: sh.h };
       const origin = dragItem(sh.layer);
       // The point that stays put while the box grows: normally the corner opposite the dragged
       // one, but a hand scales around its rotation centre — that's the invariant resizeImageFx
@@ -478,7 +498,9 @@
       canvas?.setPointerCapture(e.pointerId);
       return;
     }
-    const h = hits.findLast((h) => p.x >= h.x && p.x < h.x + h.w && p.y >= h.y && p.y < h.y + h.h);
+    const h = hits.findLast(
+      (h) => !h.layer.locked && p.x >= h.x && p.x < h.x + h.w && p.y >= h.y && p.y < h.y + h.h,
+    );
 
     if (!h) {
       select(null);
