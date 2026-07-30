@@ -30,6 +30,9 @@
   import IconPlus from "@tabler/icons-svelte/icons/plus";
   import IconDots from "@tabler/icons-svelte/icons/dots";
   import IconCopy from "@tabler/icons-svelte/icons/copy";
+  import IconScissors from "@tabler/icons-svelte/icons/scissors";
+  import IconClipboard from "@tabler/icons-svelte/icons/clipboard";
+  import IconClipboardCheck from "@tabler/icons-svelte/icons/clipboard-check";
   import IconBraces from "@tabler/icons-svelte/icons/braces";
   import IconGitBranch from "@tabler/icons-svelte/icons/git-branch";
   import IconCrosshair from "@tabler/icons-svelte/icons/crosshair";
@@ -97,6 +100,9 @@
     plus: IconPlus,
     ellipsis: IconDots,
     copy: IconCopy,
+    scissors: IconScissors,
+    clipboard: IconClipboard,
+    "clipboard-check": IconClipboardCheck,
     braces: IconBraces,
     "git-branch": IconGitBranch,
     crosshair: IconCrosshair,

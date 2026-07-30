@@ -48,6 +48,11 @@
     undo,
     redo,
     layerPatched,
+    aodAdded,
+    copyRequested,
+    cutRequested,
+    pasteRequested,
+    deleteRequested,
     resizeImageRequested,
     $lockAspect: lockAspect,
     loadRequested,
@@ -540,13 +545,23 @@
 
   function onKey(e: KeyboardEvent) {
     if (["INPUT", "TEXTAREA", "SELECT"].includes((e.target as HTMLElement).tagName)) return;
-    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
-      if (e.shiftKey) redo();
-      else undo();
+    if (e.metaKey || e.ctrlKey) {
+      const k = e.key.toLowerCase();
+
+      if (k === "z") (e.shiftKey ? redo : undo)();
+      else if (k === "c") copyRequested();
+      else if (k === "x") cutRequested();
+      else if (k === "v") pasteRequested();
+      else return;
       e.preventDefault();
       return;
     }
     if (!$selected.length) return;
+    if (e.key === "Backspace" || e.key === "Delete") {
+      deleteRequested();
+      e.preventDefault();
+      return;
+    }
     const d = e.shiftKey ? 10 : 1;
     const moves: Record<string, [number, number]> = {
       ArrowLeft: [-d, 0],
@@ -579,7 +594,8 @@
   const hasAOD = $derived($doc?.screens.some((s) => s.kind === "aod"));
   const screenItems = $derived([
     { value: "main", label: "Main" },
-    { value: "aod", label: "AOD", disabled: !hasAOD },
+    // not disabled when the face has no AOD screen — picking it creates one (see aodAdded)
+    { value: "aod", label: hasAOD ? "AOD" : "AOD +", disabled: !$doc },
   ]);
   const panelItems = $derived([
     { value: "props", label: "Properties" },
@@ -651,7 +667,8 @@
       <Tabs
         items={screenItems}
         value={$screen}
-        onChange={(v) => screenSet(v === "aod" ? "aod" : "main")}
+        onChange={(v) =>
+          v === "aod" ? (hasAOD ? screenSet("aod") : aodAdded()) : screenSet("main")}
       />
       <span class="tool-slot" title="Undo (⌘Z)">
         <Button kind="ghost" disabled={!$undoN} onClick={() => undo()}>

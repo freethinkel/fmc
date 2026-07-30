@@ -17,9 +17,14 @@
     selectToggled,
     nodeAdded,
     slotAdded,
+    aodRemoved,
     widgetAdded,
     deleteRequested,
     duplicateRequested,
+    copyRequested,
+    cutRequested,
+    pasteRequested,
+    $clipboard: clipboard,
     groupRequested,
     ungroupRequested,
     moveRequested,
@@ -95,14 +100,27 @@
 
   // Right-click menu, positioned at the pointer inside .tree-panel. Same actions as the
   // toolbar's "…" — declared once in the layerActions snippet below.
-  let ctx = $state<{ x: number; y: number } | null>(null);
+  let ctx = $state<{ x: number; y: number; screen?: boolean } | null>(null);
+
+  const menuAt = (e: MouseEvent, screen = false) => {
+    const r = (e.currentTarget as HTMLElement).closest(".tree-panel")!.getBoundingClientRect();
+
+    ctx = { x: e.clientX - r.left, y: e.clientY - r.top, screen };
+  };
 
   function onRowMenu(id: NodeId, e: MouseEvent) {
     e.preventDefault();
     if (!isPicked(id)) select(id); // right-clicking outside the selection moves it, like a file manager
-    const r = (e.currentTarget as HTMLElement).closest(".tree-panel")!.getBoundingClientRect();
+    menuAt(e);
+  }
 
-    ctx = { x: e.clientX - r.left, y: e.clientY - r.top };
+  // The AOD root row is the screen itself, so its menu is about the screen, not a layer. The main
+  // screen has no menu: a face without one has nothing to draw.
+  function onScreenMenu(s: Screen, e: MouseEvent) {
+    e.preventDefault();
+    if (s.kind !== "aod") return;
+    select(null);
+    menuAt(e, true);
   }
 
   // accordion: closed by default, keyed by layer id — ids survive an immutable edit, object
@@ -260,7 +278,13 @@
       style="inset-inline-start: {ctx.x}px; top: {ctx.y}px"
       onclick={() => (ctx = null)}
     >
-      {@render layerActions()}
+      {#if ctx.screen}
+        <MenuItem danger onClick={aodRemoved}>
+          <Icon name="trash" size={14} /> Delete AOD screen
+        </MenuItem>
+      {:else}
+        {@render layerActions()}
+      {/if}
     </div>
   {/if}
 </div>
@@ -276,6 +300,17 @@
   <MenuItem onClick={duplicateRequested}>
     <Icon name="copy" size={14} /> Duplicate
   </MenuItem>
+  <MenuItem onClick={copyRequested}>
+    <Icon name="clipboard" size={14} /> Copy
+  </MenuItem>
+  <MenuItem onClick={cutRequested}>
+    <Icon name="scissors" size={14} /> Cut
+  </MenuItem>
+  {#if $clipboard}
+    <MenuItem onClick={pasteRequested}>
+      <Icon name="clipboard-check" size={14} /> Paste
+    </MenuItem>
+  {/if}
   {#if selIsGroup}
     <MenuItem onClick={ungroupRequested}>
       <Icon name="folder-open" size={14} /> Ungroup
@@ -300,6 +335,7 @@
     class="node-row"
     style="padding-inline-start: 0.5rem"
     onclick={() => select(null)}
+    oncontextmenu={(e) => onScreenMenu(s, e)}
   >
     {#if kids.length}
       <Icon

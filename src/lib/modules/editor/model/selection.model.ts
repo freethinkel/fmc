@@ -25,7 +25,7 @@ export const select = createEvent<NodeId | null>(); // replaces the selection
 export const selectToggled = createEvent<NodeId>(); // ctrl/cmd/shift-click: add or remove one
 export const screenSet = createEvent<Screen["kind"]>();
 /** The whole selection at once, primary first — the one place $sel and $more are written. */
-const selectionSet = createEvent<readonly NodeId[]>();
+export const selectionSet = createEvent<readonly NodeId[]>();
 
 // ---- business logic ----
 sample({

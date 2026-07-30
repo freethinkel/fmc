@@ -178,18 +178,16 @@ const assetOf = (r: Resource): ImageAsset => ({
   data: r.data,
 });
 
-/** An empty face: one screen, a black background and the thumbnail the store list shows. */
-export function blankDoc(name: string, preview: Resource, background: Resource): Doc {
-  const nameRaw = new Uint8Array(16);
-
-  new TextEncoder().encodeInto(name.slice(0, 14), nameRaw);
-  nameRaw[15] = 0x0a; // same as CDN files, byte meaning not figured out
-
-  const previewAsset = assetOf(preview),
-    backgroundAsset = assetOf(background);
-  const screen: Screen = {
+/** A screen with nothing on it but the thumbnail the store list reads and a black background —
+ *  the shape every screen in the corpus starts with, AOD included (a 0x28 preview, then art). */
+export function blankScreen(
+  kind: Screen["kind"],
+  previewId: ImageId,
+  backgroundId: ImageId,
+): Screen {
+  return {
     id: newNodeId(),
-    kind: "main",
+    kind,
     // no 0x86 name layer here — toLegacy synthesizes one from doc.name for every main screen
     layers: [
       {
@@ -203,7 +201,7 @@ export function blankDoc(name: string, preview: Resource, background: Resource):
             kind: "raw",
             prefix: "0000000000",
             refType: 0x61,
-            frames: [previewAsset.id],
+            frames: [previewId],
           },
         ],
       },
@@ -215,10 +213,22 @@ export function blankDoc(name: string, preview: Resource, background: Resource):
         y: 0,
         meta: metaWith({ w: SCREEN, h: SCREEN }), // 466×466, no source, no accent
         refType: 0x61,
-        frames: [backgroundAsset.id],
+        frames: [backgroundId],
       },
     ],
   };
+}
+
+/** An empty face: one screen, a black background and the thumbnail the store list shows. */
+export function blankDoc(name: string, preview: Resource, background: Resource): Doc {
+  const nameRaw = new Uint8Array(16);
+
+  new TextEncoder().encodeInto(name.slice(0, 14), nameRaw);
+  nameRaw[15] = 0x0a; // same as CDN files, byte meaning not figured out
+
+  const previewAsset = assetOf(preview),
+    backgroundAsset = assetOf(background);
+  const screen = blankScreen("main", previewAsset.id, backgroundAsset.id);
 
   return {
     name,

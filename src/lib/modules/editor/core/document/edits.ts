@@ -8,6 +8,7 @@ import {
   framesOf,
   isPlaced,
   newNodeId,
+  type ImageId,
   type Condition,
   type Doc,
   type GroupLayer,
@@ -258,6 +259,31 @@ export function slotBindingOf(l: Layer): { slot: number; metric: number } | null
   const c = l.conditions.find((x) => isSlotSel(x.source));
 
   return c ? { slot: c.source - SLOT_SEL_ID, metric: c.value } : null;
+}
+
+/** Every asset a layer, or anything under it, references. */
+export function assetsOf(l: Layer, out = new Set<ImageId>()): Set<ImageId> {
+  framesOf(l).forEach((i) => out.add(i));
+  childrenOf(l).forEach((k) => assetsOf(k, out));
+  return out;
+}
+
+/** Point a layer and its children at different assets — what a copy into another document needs
+ *  (its ids mean something else there), and what an inverted subtree needs for its private copies. */
+export function repointFrames(l: Layer, remap: ReadonlyMap<ImageId, ImageId>): Layer {
+  const kids = childrenOf(l);
+  const frames = framesOf(l);
+  const moved = frames.map((id) => remap.get(id) ?? id);
+  const framesPatch =
+    l.kind === "number" ? { glyphs: moved } : frames.length ? { frames: moved } : {};
+  const self = kids.length
+    ? withChildren(
+        l,
+        kids.map((k) => repointFrames(k, remap)),
+      )
+    : l;
+
+  return { ...self, ...framesPatch } as Layer;
 }
 
 /** Every asset referenced anywhere — what a "which images are still in use" check wants. */

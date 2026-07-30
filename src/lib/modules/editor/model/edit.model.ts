@@ -1,12 +1,13 @@
 // Everything the user can do to the layer tree. Each action is an event a component fires plus a
 // pure `Doc -> Doc` edit handed to `committed`, so the history and the "what changed" logic stay
 // in one place — this file only decides which edit runs and what ends up selected.
-import { attach, createEffect, createEvent, sample } from "effector";
-import { SCREEN } from "../core/render/screen";
+import { attach, createEffect, createEvent, createStore, sample } from "effector";
+import { PREVIEW, SCREEN } from "../core/render/screen";
 import { renderDoc } from "../core/render/render";
-import { blankFrame, resourceFromFile } from "../core/render/pixels";
+import { blankFrame, opaqueBlack, resourceFromFile } from "../core/render/pixels";
 import {
   addLayer,
+  assetsOf,
   cloneLayer,
   containerOrigin,
   findLayer,
@@ -15,6 +16,7 @@ import {
   parentOf,
   patchLayer,
   removeLayer,
+  repointFrames,
   setSlotBinding,
   shiftLayer,
   ungroup,
@@ -23,6 +25,7 @@ import {
 import {
   SLOT_METRICS,
   SLOT_SIZE,
+  blankScreen,
   newCondition,
   newGroup,
   newHand,
@@ -43,7 +46,7 @@ import {
   type NodeId,
 } from "../core/document/doc";
 import { $doc, committed, docLoaded } from "./doc.model";
-import { $screen, $sel, $selected, select } from "./selection.model";
+import { $screen, $sel, $selected, screenSet, select, selectionSet } from "./selection.model";
 import { $cache, cachePatched } from "./assets.model";
 import { $sim } from "./sim.model";
 import { errored } from "./ui.model";
@@ -67,7 +70,16 @@ export const deleteRequested = createEvent();
 export const nodeAdded = createEvent<"group" | "ring">();
 export const widgetAdded = createEvent<{ kind: WidgetKind; files: File[] }>();
 export const slotAdded = createEvent();
+/** Give the face an always-on screen. A new document starts with the main screen only, and until
+ *  this runs the AOD tab has nothing to show. */
+export const aodAdded = createEvent();
+/** Drop it again — deleting the AOD root row in the tree. The main screen has no such option:
+ *  a face without one has nothing to draw. */
+export const aodRemoved = createEvent();
 export const duplicateRequested = createEvent();
+export const copyRequested = createEvent();
+export const cutRequested = createEvent();
+export const pasteRequested = createEvent();
 export const groupRequested = createEvent();
 export const ungroupRequested = createEvent();
 export const moveRequested = createEvent<{
@@ -140,6 +152,29 @@ const addSlotFx = attach({
 
     tally(doc.screens.find((s) => s.kind === screen)?.layers ?? []);
     return { screen, assets, cache, layer: newSlot(slots, [...assets.keys()]) };
+  },
+});
+
+// The AOD screen starts out the way every screen in the corpus does: its own preview thumbnail
+// (regenPreviewAssets refreshes it on save) over a black background. Async because both are
+// encoded images, same as adding a widget.
+const addAodFx = attach({
+  source: $doc,
+  async effect(doc) {
+    if (!doc || doc.screens.some((s) => s.kind === "aod")) return null;
+    const assets = new Map<ImageId, ImageAsset>();
+    const cache = new Map<ImageId, ImageCache>();
+    const add = async (r: Awaited<ReturnType<typeof opaqueBlack>>) => {
+      const id = newImageId();
+
+      assets.set(id, { id, cf: r.cf, w: r.w, h: r.h, data: r.data });
+      cache.set(id, { bitmap: r.bitmap });
+      return id;
+    };
+    const preview = await add(await opaqueBlack(PREVIEW, PREVIEW));
+    const background = await add(await opaqueBlack(SCREEN, SCREEN));
+
+    return { assets, cache, screen: blankScreen("aod", preview, background) };
   },
 });
 
@@ -302,6 +337,48 @@ sample({
   target: select,
 });
 
+sample({
+  clock: aodAdded,
+  target: addAodFx,
+});
+sample({
+  clock: addAodFx.doneData,
+  filter: Boolean,
+  fn: ({ assets, screen }) => ({
+    edit: (doc: Doc) => ({ ...withAssets(doc, assets), screens: [...doc.screens, screen] }),
+  }),
+  target: committed,
+});
+sample({
+  clock: addAodFx.doneData,
+  filter: Boolean,
+  fn: ({ cache }) => cache,
+  target: cachePatched,
+});
+// adding it is only ever a step towards editing it
+sample({
+  clock: addAodFx.doneData,
+  filter: Boolean,
+  fn: () => "aod" as const,
+  target: screenSet,
+});
+sample({
+  clock: aodRemoved,
+  source: $doc,
+  filter: (doc) => Boolean(doc?.screens.some((s) => s.kind === "aod")),
+  // ponytail: its assets stay in the document — same as a deleted layer's, and toLegacy's walk
+  // drops anything nothing points at when the file is built
+  fn: () => ({
+    edit: (doc: Doc) => ({ ...doc, screens: doc.screens.filter((s) => s.kind !== "aod") }),
+  }),
+  target: committed,
+});
+sample({
+  clock: aodRemoved,
+  fn: () => "main" as const,
+  target: screenSet,
+});
+
 // ponytail: the copy shares its assets with the original, so resize/adjust/invert on one hits
 // both. Splitting them means cloning every frame — do it if that ever surprises anyone.
 sample({
@@ -319,6 +396,120 @@ sample({
     };
   },
   target: [committed, selectAdded],
+});
+
+// ---- clipboard ----
+// The copy carries the assets it references, not just the layers: asset ids are per-document, so
+// pasting into another watchface has to bring the pixels along or it lands on someone else's art.
+interface Clip {
+  readonly layers: readonly Layer[];
+  readonly images: ReadonlyMap<ImageId, ImageAsset>;
+  readonly cache: ReadonlyMap<ImageId, ImageCache>;
+}
+
+export const $clipboard = createStore<Clip | null>(null);
+/** The paste, resolved: fresh layer ids, and the assets this document is missing. */
+const pasted = createEvent<{
+  layers: Layer[];
+  images: Map<ImageId, ImageAsset>;
+  cache: Map<ImageId, ImageCache>;
+}>();
+
+interface ClipSource {
+  selected: Layer[];
+  doc: Doc | null;
+  cache: ReadonlyMap<ImageId, ImageCache>;
+}
+
+const clipOf = ({ selected, doc, cache }: ClipSource): Clip => {
+  const images = new Map<ImageId, ImageAsset>();
+  const cached = new Map<ImageId, ImageCache>();
+
+  for (const l of selected)
+    for (const id of assetsOf(l)) {
+      const a = doc!.images.get(id);
+      const c = cache.get(id);
+
+      if (a) images.set(id, a);
+      if (c) cached.set(id, c);
+    }
+  return { layers: selected, images, cache: cached };
+};
+const hasSelection = ({ selected, doc }: ClipSource) => selected.length > 0 && Boolean(doc);
+
+sample({
+  clock: copyRequested,
+  source: { selected: $selected, doc: $doc, cache: $cache },
+  filter: hasSelection,
+  fn: clipOf,
+  target: $clipboard,
+});
+// Cut fills the clipboard and removes the layers. Both halves are computed from the SAME
+// snapshot and handed on together: firing copy and delete as two events left the order to
+// effector, and the delete won — clearing the selection copy was about to read.
+const cut = createEvent<{ clip: Clip; layers: Layer[] }>();
+
+sample({
+  clock: cutRequested,
+  source: { selected: $selected, doc: $doc, cache: $cache },
+  filter: hasSelection,
+  fn: (s) => ({ clip: clipOf(s), layers: s.selected }),
+  target: cut,
+});
+sample({
+  clock: cut,
+  fn: ({ clip }) => clip,
+  target: $clipboard,
+});
+sample({
+  clock: cut,
+  fn: ({ layers }) => ({
+    edit: (doc: Doc) => layers.reduce((d, l) => removeLayer(d, l.id), doc),
+  }),
+  target: committed,
+});
+sample({
+  clock: pasteRequested,
+  source: { clip: $clipboard, doc: $doc },
+  filter: ({ clip, doc }) => Boolean(clip?.layers.length && doc),
+  fn: ({ clip, doc }) => {
+    // An id already in this document is the same picture only when it's the very same object —
+    // the counters restart per document, so everything else gets a fresh id and a copied asset.
+    const remap = new Map<ImageId, ImageId>();
+    const images = new Map<ImageId, ImageAsset>();
+    const cache = new Map<ImageId, ImageCache>();
+
+    for (const [id, a] of clip!.images) {
+      if (doc!.images.get(id) === a) continue;
+      const fresh = newImageId();
+      const c = clip!.cache.get(id);
+
+      remap.set(id, fresh);
+      images.set(fresh, { ...a, id: fresh });
+      if (c) cache.set(fresh, c);
+    }
+    return { layers: clip!.layers.map((l) => repointFrames(cloneLayer(l), remap)), images, cache };
+  },
+  target: pasted,
+});
+sample({
+  clock: pasted,
+  source: $screen,
+  fn: (screen, { layers, images }) => ({
+    edit: (doc: Doc) => layers.reduce((d, l) => addLayer(d, screen, l), withAssets(doc, images)),
+  }),
+  target: committed,
+});
+sample({
+  clock: pasted,
+  filter: ({ cache }) => cache.size > 0,
+  fn: ({ cache }) => cache,
+  target: cachePatched,
+});
+sample({
+  clock: pasted,
+  fn: ({ layers }) => layers.map((l) => l.id),
+  target: selectionSet,
 });
 
 /** Wrap the selection in a new group, in place. ponytail: screen-level only — a group nested in
@@ -515,7 +706,13 @@ sample({
 });
 
 sample({
-  clock: [addWidgetFx.failData, addSlotFx.failData, sourceIdFx.failData, alignFx.failData],
+  clock: [
+    addWidgetFx.failData,
+    addSlotFx.failData,
+    addAodFx.failData,
+    sourceIdFx.failData,
+    alignFx.failData,
+  ],
   fn: (e: Error) => e.message,
   target: errored,
 });
