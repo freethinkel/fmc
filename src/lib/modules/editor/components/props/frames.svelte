@@ -1,65 +1,50 @@
 <script lang="ts">
   import { Select } from "$lib/shared/components/select";
   import { Icon } from "$lib/shared/components/icon";
-  import { hex, unhex, type FaceNode, type Resource } from "../../lib/wf";
-  import { FRAME_LABELS, metaInfo, pickerLabel } from "../../lib/sources";
-  import { structOf } from "../../lib/tree";
+  import { framesOf, type ImageId, type Layer } from "../../core/document/doc";
+  import { FRAME_LABELS, pickerLabel } from "../../core/document/sources";
   import { editorModel } from "../../model";
   import { set } from "./patch";
 
-  const { node }: { node: FaceNode } = $props();
-  const { $editor: editor, replaceImageRequested, moveImage } = editorModel;
+  const { layer }: { layer: Layer } = $props();
+  const { $doc: doc, $cache: cache, replaceImageRequested, frameMoved } = editorModel;
 
   // native HTML5 drag & drop over the frame list, same shape as TreePanel's layer reorder
   let dragIdx = $state<number | null>(null);
   let dropIdx = $state<number | null>(null);
 
-  const st = $derived(structOf(node));
-  // see the snapshot note in geometry.svelte
-  const images = $derived.by(() => {
-    void $editor;
-    return st?.images;
-  });
-  const frameLabels = $derived.by(() => {
-    void $editor;
-    return st?.meta ? FRAME_LABELS[metaInfo(st).id] : null;
-  });
-
-  // 0x5f: [slotIndex][count][activeIdx][count × metric id][padding] — see 0x85 "Widget slot"
-  const slotNode = $derived(node.tag === 0x85 ? node.subs?.find((s) => s.tag === 0x5f) : null);
-  const slotInfo = $derived.by(() => {
-    void $editor;
-    const v = slotNode?.hex ? unhex(slotNode.hex) : null;
-
-    if (!v || v.length < 3) return null;
-    return { activeIdx: v[2], ids: [...v.subarray(3, 3 + v[1])] };
-  });
+  // a fresh layer object arrives on every edit, so plain deriveds are enough here
+  const images = $derived(framesOf(layer));
+  const frameLabels = $derived(
+    layer.kind !== "group" && layer.kind !== "raw" ? FRAME_LABELS[layer.meta.source] : null,
+  );
+  // the 0x5f body is already decoded on a SlotLayer — no hex to pick apart
+  const slotInfo = $derived(
+    layer.kind === "slot" ? { activeIdx: layer.active, ids: layer.metrics } : null,
+  );
   const slotOptions = $derived(
     slotInfo?.ids.map((id, i) => ({ value: String(i), label: pickerLabel(id) })) ?? [],
   );
 
-  function setSlotActive(idx: number) {
-    if (!slotNode) return;
-    const v = unhex(slotNode.hex || "");
+  const setSlotActive = (active: number) => set(layer.id, { active } as Partial<Layer>);
 
-    v[2] = idx;
-    set(slotNode, { hex: hex(v) });
-  }
-
-  function thumbURL(r: Resource) {
+  function thumbURL(id: ImageId) {
+    const a = $doc?.images.get(id);
     const c = document.createElement("canvas");
 
-    c.width = r.w;
-    c.height = r.h;
-    if (r.bitmap) c.getContext("2d")?.drawImage(r.bitmap, 0, 0);
+    if (!a) return c.toDataURL();
+    c.width = a.w;
+    c.height = a.h;
+    const bitmap = $cache.get(id)?.bitmap;
+
+    if (bitmap) c.getContext("2d")?.drawImage(bitmap, 0, 0);
     return c.toDataURL();
   }
-  function downloadRes(ri: number) {
-    if (!$editor.face) return;
+  function downloadRes(id: ImageId) {
     const a = document.createElement("a");
 
-    a.href = thumbURL($editor.face.resources[ri]);
-    a.download = `res${ri}.png`;
+    a.href = thumbURL(id);
+    a.download = `${id}.png`;
     a.click();
   }
 </script>
@@ -121,8 +106,8 @@
           }}
           ondrop={(e) => {
             e.preventDefault();
-            if (dragIdx !== null && dropIdx === i && st)
-              moveImage({ node: st, from: dragIdx, to: i });
+            if (dragIdx !== null && dropIdx === i)
+              frameMoved({ id: layer.id, from: dragIdx, to: i });
             dragIdx = dropIdx = null;
           }}
           ondragend={() => (dragIdx = dropIdx = null)}
@@ -145,11 +130,11 @@
   </div>
 {/if}
 
-{#snippet thumb(ri: number)}
-  {@const r = $editor.face!.resources[ri]}
+{#snippet thumb(id: ImageId)}
+  {@const a = $doc?.images.get(id)}
   <div class="thumb-wrap">
-    <label title="res{ri} · {r.w}×{r.h} · cf{r.cf} — click to replace" class="thumb">
-      <img src={thumbURL(r)} alt="res{ri}" />
+    <label title="{id} · {a?.w}×{a?.h} · cf{a?.cf} — click to replace" class="thumb">
+      <img src={thumbURL(id)} alt={id} />
       <input
         type="file"
         accept="image/*"
@@ -157,11 +142,11 @@
         onchange={(e) => {
           const file = e.currentTarget.files?.[0];
 
-          if (file) replaceImageRequested({ resIdx: ri, file });
+          if (file) replaceImageRequested({ id, file });
         }}
       />
     </label>
-    <button title="Download PNG" onclick={() => downloadRes(ri)} class="dl-btn">
+    <button title="Download PNG" onclick={() => downloadRes(id)} class="dl-btn">
       <Icon name="download" size={14} />
     </button>
   </div>

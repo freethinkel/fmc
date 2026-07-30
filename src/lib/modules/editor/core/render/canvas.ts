@@ -1,7 +1,7 @@
 // Canvas-side primitives shared by the renderer: its types, and how a Resource becomes
 // something drawImage can take.
-import type { FaceNode, Resource } from "./wf";
-import type { ImageAsset, ImageCache, ImageId, Layer } from "./doc";
+import type { FaceNode, Resource } from "../format";
+import type { ImageAsset, ImageCache, ImageId, Layer } from "../document/doc";
 
 export type Ctx = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 export type Drawable = ImageBitmap | OffscreenCanvas;

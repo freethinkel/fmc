@@ -15,9 +15,9 @@ import {
   type Face as LegacyFace,
   type FaceNode,
   type Resource,
-} from "./wf";
+} from "../format";
 import { buildBind, parseBind, type BindEntry } from "./sources";
-import { arcSpecHex, parseArcSpec, type ArcSpec } from "./arc";
+import { arcSpecHex, parseArcSpec, type ArcSpec } from "../render/arc";
 
 // Branded: a bare number index is exactly what let positional bugs (shared runs, orphaned
 // resources, a duplicate silently sharing its original's pixels) through unnoticed.
@@ -25,8 +25,12 @@ export type NodeId = string & { readonly __node: unique symbol };
 export type ImageId = string & { readonly __image: unique symbol };
 
 let nodeSeq = 0;
+let imageSeq = 0;
 
 export const newNodeId = (): NodeId => `n${++nodeSeq}` as NodeId;
+// `a` rather than `i`: fromLegacy names the assets it reads off the file `i0..iN`, and an id
+// minted here must never collide with one of those.
+export const newImageId = (): ImageId => `a${++imageSeq}` as ImageId;
 
 // ---- assets ----
 

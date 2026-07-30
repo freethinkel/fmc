@@ -3,14 +3,14 @@
 // which is exactly what breaks first when a tree is rebuilt instead of mutated.
 import { test, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { parseBin, buildBin } from "../src/lib/modules/editor/lib/wf";
+import { parseBin, buildBin } from "../src/lib/modules/editor/core/format";
 import {
   fromLegacy,
   toLegacy,
   type Doc,
   type GroupLayer,
   type Layer,
-} from "../src/lib/modules/editor/lib/doc";
+} from "../src/lib/modules/editor/core/document/doc";
 import {
   addLayer,
   cloneLayer,
@@ -26,7 +26,7 @@ import {
   ungroup,
   usedAssets,
   wrapInGroup,
-} from "../src/lib/modules/editor/lib/edits";
+} from "../src/lib/modules/editor/core/document/edits";
 
 const load = (f = "Multifunction__368__Function"): Doc =>
   fromLegacy(parseBin(readFileSync(`tests/__fixtures__/${f}.bin`))).doc;

@@ -1,8 +1,8 @@
 // Progress rings: the 0x5a/0x5b arc spec that 0x80/0x81 widgets carry, and the two ways they
 // are drawn — a ring image clipped to a sector, or a stroked arc when there is no image.
-import { hex, TAG, unhex, type FaceNode } from "./wf";
+import { hex, unhex, type FaceNode } from "../format";
 import { CENTER } from "./screen";
-import { goalOf, idValue, metaInfo, type Sim, type TimeParts } from "./sources";
+import { goalOf, idValue, type Sim, type TimeParts } from "../document/sources";
 import type { Ctx, Drawable, Hit, Size } from "./canvas";
 
 export interface ArcSpec {
@@ -175,16 +175,6 @@ export function drawProceduralArc(
   return { w: 2 * r, h: 2 * r };
 }
 
-// ring stroke color for imageless progress rings: meta bytes 4-6 are an explicit RGB,
-// gated by byte 7 === 1 (byte 7 === 4 on the plain steps ring means "no explicit color").
-// Confirmed against Combo/SportPulse/ActiveTrio: the same metric id carries the same RGB
-// across all three independent files (id 0x26 -> fb471f, id 0x6c -> e3e1e6).
-export function ringRGB(struct: FaceNode): [number, number, number] | null {
-  const m = unhex(struct.meta || "");
-
-  return m.length >= 14 && m[7] === 1 ? [m[4], m[5], m[6]] : null;
-}
-
 // byte 7 !== 1 (no baked RGB) doesn't mean "no color" — it means "follow the device's own
 // accent/theme setting", which isn't in the file at all: confirmed by Combo's plain steps
 // ring baking orange while Activity_Mood's identical-pattern ring bakes blue — two different
@@ -195,26 +185,4 @@ export function hexRGB(hex: string | null): [number, number, number] | null {
   const n = parseInt(hex.slice(1), 16);
 
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
-
-// goal-relative ids (steps/calories "slot" aliases) read as a raw count everywhere, EXCEPT
-// when a NUMBER shares the screen with a progress ring bound to the same id — there it must
-// show that ring's own percent-of-goal (e.g. "80%"), not the raw counter, or it overflows the
-// ring's digit budget (fmt caps it at ~3 digits) and no longer matches the design. The ring and
-// its number aren't nested together (each is positioned independently by x/y), so the lookup
-// is screen-wide, not just among the number's immediate siblings.
-export function collectArcsById(nodes: FaceNode[]): Map<number, FaceNode> {
-  const out = new Map<number, FaceNode>();
-  const walk = (n: FaceNode) => {
-    if (n.tag === 0x80 || n.tag === 0x81) {
-      const struct = n.subs?.find((s) => s.tag === TAG.struct);
-      const { id } = struct ? metaInfo(struct) : { id: 0 };
-
-      if (id && !out.has(id)) out.set(id, n);
-    }
-    n.subs?.forEach(walk);
-  };
-
-  nodes.forEach(walk);
-  return out;
 }

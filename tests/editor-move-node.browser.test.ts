@@ -1,9 +1,9 @@
-// moveNode: reorders a node among its siblings (subs order = draw order).
+// moveRequested: reorders a layer among its siblings (layer order = draw order).
 import { test, expect } from "vitest";
 import { editorModel } from "$lib/modules/editor/model";
 import url from "./__fixtures__/Analog__287__Simple_Dial.bin?url";
 
-test("moveNode reorders siblings and undo restores the order", async () => {
+test("moveRequested reorders siblings and undo restores the order", async () => {
   const buf = await fetch(url).then((r) => r.arrayBuffer());
 
   await new Promise<void>((resolve) => {
@@ -14,20 +14,25 @@ test("moveNode reorders siblings and undo restores the order", async () => {
 
     editorModel.loadRequested({ buf, label: "move-test" });
   });
-  const scr = editorModel.$editor.getState().face!.screens[0];
-  const subs = scr.subs!;
-  const [a, b] = subs;
-  const before = subs.map((n) => n.tag);
+  const order = () => editorModel.$doc.getState()!.screens[0].layers.map((l) => l.id);
+  const before = order();
+  const [a, b] = before;
 
-  expect(subs.length).toBeGreaterThan(2);
+  expect(before.length).toBeGreaterThan(2);
 
-  editorModel.moveNode({ node: a, target: b, after: true }); // drop a below b
-  expect(subs.indexOf(a)).toBe(subs.indexOf(b) + 1);
+  editorModel.moveRequested({ id: a, target: b, after: true }); // drop a below b
+  expect(order().indexOf(a)).toBe(order().indexOf(b) + 1);
 
-  // reordering across parents is rejected — the screen itself is not a sibling
-  editorModel.moveNode({ node: a, target: scr, after: true });
-  expect(subs.indexOf(a)).toBe(subs.indexOf(b) + 1);
+  const moved = order();
+
+  // a screen is not a layer, so it can't be a move target — nothing happens
+  editorModel.moveRequested({
+    id: a,
+    target: editorModel.$doc.getState()!.screens[0].id,
+    after: true,
+  });
+  expect(order()).toEqual(moved);
 
   editorModel.undo();
-  expect(editorModel.$editor.getState().face!.screens[0].subs!.map((n) => n.tag)).toEqual(before);
+  expect(order()).toEqual(before);
 });

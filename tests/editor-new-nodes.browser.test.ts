@@ -2,12 +2,27 @@
 // surgery around them: reparenting into/out of a group, group/ungroup. Checked against the
 // rendered position, not raw x/y — a reparent must not move the pixels.
 import { test, expect } from "vitest";
-import { TAG, parseBin, unhex } from "$lib/modules/editor/lib/wf";
-import { render } from "$lib/modules/editor/lib/render";
-import { parseArcSpec } from "$lib/modules/editor/lib/arc";
-import { nodeOrigin, shiftNode, structOf, SLOT_METRICS } from "$lib/modules/editor/lib/tree";
+import { TAG, parseBin, unhex } from "$lib/modules/editor/core/format";
+import { renderDoc } from "$lib/modules/editor/core/render/render";
+import { findLayer, originOf } from "$lib/modules/editor/core/document/edits";
+import { SLOT_METRICS } from "$lib/modules/editor/core/document/factory";
+import {
+  framesOf,
+  isPlaced,
+  type GroupLayer,
+  type Layer,
+  type NodeId,
+  type SlotLayer,
+} from "$lib/modules/editor/core/document/doc";
 import { editorModel } from "$lib/modules/editor/model";
 import url from "./__fixtures__/Analog__287__Simple_Dial.bin?url";
+
+const doc = () => editorModel.$doc.getState()!;
+const layers = () => doc().screens[0].layers;
+const selId = () => editorModel.$sel.getState()!;
+const selLayer = () => findLayer(doc(), selId());
+const byId = (id: NodeId) => findLayer(doc(), id)!;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const load = async (label: string) => {
   const buf = await fetch(url).then((r) => r.arrayBuffer());
@@ -23,31 +38,49 @@ const load = async (label: string) => {
   editorModel.simPatched({ live: false, time: new Date("2026-01-09T10:09:30").getTime() });
 };
 
-/** Rendered bbox of a node on the current screen. */
-function boxOf(node: unknown) {
-  const s = editorModel.$editor.getState();
+/** Rendered bbox of a layer on the current screen. */
+function boxOf(id: NodeId) {
   const c = document.createElement("canvas");
 
   c.width = c.height = 466;
-  const hits = render(c.getContext("2d")!, s.face!, s.screenTag, s.sim);
+  const hits = renderDoc(
+    c.getContext("2d")!,
+    doc(),
+    editorModel.$store.getState(),
+    editorModel.$screen.getState(),
+    editorModel.$sim.getState(),
+  );
 
-  return hits.findLast((h) => h.node === node) ?? null;
+  return hits.findLast((h) => h.layer.id === id) ?? null;
+}
+
+/** A plain positioned widget, not a hand — a hand's bbox rotates with the clock. */
+const plainWidget = (): Layer => layers().find((l) => l.kind !== "hand" && isPlaced(l) && l.x)!;
+
+/** Wait for an async action (slot creation, image decode) to land. */
+async function until(cond: () => boolean) {
+  for (let i = 0; i < 100 && !cond(); i++) await sleep(5);
+  expect(cond()).toBe(true);
 }
 
 test("a group and a procedural ring can be created and survive a build/parse round trip", async () => {
   await load("new-nodes");
-  editorModel.addNode("ring");
-  const ring = editorModel.$editor.getState().sel!;
+  editorModel.nodeAdded("ring");
+  const ringId = selId();
+  const ring = selLayer()!;
 
-  expect(ring.tag).toBe(0x81);
-  // no bitmap: everything the renderer needs comes out of the 0x5a spec
-  expect(parseArcSpec(ring)).toMatchObject({ min: 0, max: 100, width: 10, radius: 100 });
-  expect(boxOf(ring)).toMatchObject({ w: 200, h: 200 });
+  expect(ring.kind).toBe("ring");
+  // no bitmap: everything the renderer needs comes out of the arc spec
+  expect(ring.kind === "ring" && ring.spec).toMatchObject({
+    min: 0,
+    max: 100,
+    width: 10,
+    radius: 100,
+  });
+  expect(boxOf(ringId)).toMatchObject({ w: 200, h: 200 });
 
-  editorModel.addNode("group");
-  const group = editorModel.$editor.getState().sel!;
-
-  expect(group.tag).toBe(TAG.group);
+  editorModel.nodeAdded("group");
+  expect(selLayer()!.kind).toBe("group");
 
   const out = await editorModel.buildCurrentBin();
   const tags = parseBin(out).screens[0].subs!.map((n) => n.tag);
@@ -58,96 +91,91 @@ test("a group and a procedural ring can be created and survive a build/parse rou
 
 test("a widget slot is created with one icon per metric and a numbered 0x5f", async () => {
   await load("slots");
-  const scr = editorModel.$editor.getState().face!.screens[0];
 
-  editorModel.addSlotRequested();
-  for (let i = 0; i < 50 && editorModel.$editor.getState().sel?.tag !== 0x85; i++)
-    await new Promise((r) => setTimeout(r, 5));
-  const slot = editorModel.$editor.getState().sel!;
-  const spec = unhex(slot.subs!.find((n) => n.tag === 0x5f)!.hex!);
-  const ids = [...spec.subarray(3, 3 + spec[1])];
+  editorModel.slotAdded();
+  await until(() => selLayer()?.kind === "slot");
+  const slot = selLayer() as SlotLayer;
 
-  expect(spec).toHaveLength(33); // fixed width across the corpus
-  expect(spec[0]).toBe(0); // first slot on this screen
-  expect(ids).toEqual(SLOT_METRICS);
-  // imgs[0] is the on-watch placeholder, imgs[1..] the companion-app picker icons
-  expect(structOf(slot)!.images).toHaveLength(SLOT_METRICS.length + 1);
+  expect(slot.index).toBe(0); // first slot on this screen
+  expect(slot.metrics).toEqual(SLOT_METRICS);
+  // frames[0] is the on-watch placeholder, frames[1..] the companion-app picker icons
+  expect(slot.frames).toHaveLength(SLOT_METRICS.length + 1);
 
-  editorModel.addSlotRequested();
-  for (let i = 0; i < 50 && editorModel.$editor.getState().sel === slot; i++)
-    await new Promise((r) => setTimeout(r, 5));
-  const second = editorModel.$editor.getState().sel!;
+  editorModel.slotAdded();
+  await until(() => layers().filter((l) => l.kind === "slot").length === 2);
+  const both = layers().filter((l): l is SlotLayer => l.kind === "slot");
 
-  expect(unhex(second.subs!.find((n) => n.tag === 0x5f)!.hex!)[0]).toBe(1); // slotIndex advanced
+  expect(both.map((l) => l.index)).toEqual([0, 1]); // slotIndex advanced
 
-  const out = await editorModel.buildCurrentBin();
+  const built = parseBin(await editorModel.buildCurrentBin());
+  const written = built.screens[0].subs!.filter((n) => n.tag === 0x85);
 
-  expect(parseBin(out).screens[0].subs!.filter((n) => n.tag === 0x85)).toHaveLength(2);
-  expect(scr.subs!.filter((n) => n.tag === 0x85)).toHaveLength(2);
+  expect(written).toHaveLength(2);
+  // the 0x5f body is a fixed width across the corpus
+  expect(unhex(written[0].subs!.find((n) => n.tag === 0x5f)!.hex!)).toHaveLength(33);
 });
 
 test("dropping a widget into a group keeps it where it was, and ungroup puts it back", async () => {
   await load("reparent");
-  const scr = editorModel.$editor.getState().face!.screens[0];
-  // a plain positioned widget, not a hand (its bbox rotates with the clock)
-  const widget = scr.subs!.find(
-    (n) => n.tag !== TAG.hand && n.subs?.some((k) => k.tag === TAG.struct && k.x),
-  )!;
-  const before = boxOf(widget)!;
+  const widget = plainWidget();
+  const before = boxOf(widget.id)!;
 
-  editorModel.addNode("group");
-  const group = editorModel.$editor.getState().sel!;
+  editorModel.nodeAdded("group");
+  const groupId = selId();
 
   // a frame away from the origin, so the coordinate compensation actually has work to do
-  shiftNode(group, 50, 30);
-  expect(nodeOrigin(group)).toEqual({ x: 50, y: 30 });
+  editorModel.layerPatched({
+    id: groupId,
+    patch: { frame: { ...(byId(groupId) as GroupLayer).frame, x: 50, y: 30 } } as Partial<Layer>,
+  });
+  expect(originOf(byId(groupId))).toEqual({ x: 50, y: 30 });
 
-  editorModel.moveNode({ node: widget, target: group, after: false, into: true });
-  expect(group.subs).toContain(widget);
-  expect(boxOf(widget)).toMatchObject({ x: before.x, y: before.y });
+  editorModel.moveRequested({ id: widget.id, target: groupId, after: false, into: true });
+  expect((byId(groupId) as GroupLayer).children.map((c) => c.id)).toContain(widget.id);
+  expect(boxOf(widget.id)).toMatchObject({ x: before.x, y: before.y });
 
-  editorModel.select(group);
-  editorModel.ungroupSelected();
-  expect(scr.subs).toContain(widget);
-  expect(boxOf(widget)).toMatchObject({ x: before.x, y: before.y });
+  editorModel.select(groupId);
+  editorModel.ungroupRequested();
+  expect(layers().map((l) => l.id)).toContain(widget.id);
+  expect(boxOf(widget.id)).toMatchObject({ x: before.x, y: before.y });
 });
 
-test("groupSelected wraps in place and duplicate copies the whole subtree", async () => {
+test("group wraps in place and duplicate copies the whole subtree", async () => {
   await load("group-dup");
-  const scr = editorModel.$editor.getState().face!.screens[0];
-  const widget = scr.subs!.find(
-    (n) => n.tag !== TAG.hand && n.subs?.some((k) => k.tag === TAG.struct && k.x),
-  )!;
-  const before = boxOf(widget)!;
+  const widget = plainWidget();
+  const before = boxOf(widget.id)!;
 
-  editorModel.select(widget);
-  editorModel.groupSelected();
-  const group = editorModel.$editor.getState().sel!;
+  editorModel.select(widget.id);
+  editorModel.groupRequested();
+  const groupId = selId();
 
-  expect(group.tag).toBe(TAG.group);
-  expect(group.subs).toContain(widget);
-  expect(boxOf(widget)).toMatchObject({ x: before.x, y: before.y });
+  expect(byId(groupId).kind).toBe("group");
+  expect((byId(groupId) as GroupLayer).children.map((c) => c.id)).toContain(widget.id);
+  expect(boxOf(widget.id)).toMatchObject({ x: before.x, y: before.y });
 
-  const n = scr.subs!.length;
+  const n = layers().length;
 
-  editorModel.select(group);
-  editorModel.duplicateSelected();
-  expect(scr.subs!.length).toBe(n + 1);
-  expect(editorModel.$editor.getState().sel).not.toBe(group);
+  editorModel.select(groupId);
+  editorModel.duplicateRequested();
+  expect(layers().length).toBe(n + 1);
+  // the copy becomes the selection, and it is a different layer carrying the same subtree
+  const copy = selLayer() as GroupLayer;
+
+  expect(copy.id).not.toBe(groupId);
+  expect(copy.children).toHaveLength((byId(groupId) as GroupLayer).children.length);
+  // the copy shares the original's assets rather than cloning the pixels
+  expect(framesOf(copy.children[0])).toEqual(framesOf((byId(groupId) as GroupLayer).children[0]));
 });
 
 test("a visibility condition can be added and removed from the selection", async () => {
   await load("cond");
-  const scr = editorModel.$editor.getState().face!.screens[0];
-  const widget = scr.subs!.find((n) => n.subs?.some((k) => k.tag === TAG.struct))!;
+  const widget = plainWidget();
 
-  editorModel.toggleCondition(widget);
-  const bind = widget.subs!.find((n) => n.tag === TAG.bind)!;
-
-  expect(bind).toBeTruthy();
+  editorModel.conditionToggled(widget.id);
+  expect(byId(widget.id).conditions).toHaveLength(1);
   // starts always-true, so adding one must not hide the widget
-  expect(boxOf(widget)).toBeTruthy();
+  expect(boxOf(widget.id)).toBeTruthy();
 
-  editorModel.toggleCondition(widget);
-  expect(widget.subs!.some((n) => n.tag === TAG.bind)).toBe(false);
+  editorModel.conditionToggled(widget.id);
+  expect(byId(widget.id).conditions).toHaveLength(0);
 });

@@ -1,9 +1,11 @@
-// Everything that turns a Resource into pixels and back: browser decode, canvas readback,
-// the non-destructive adjust/resize path, the accent tint and the embedded preview thumbnails.
+// Everything that turns pixels into assets and back: browser decode, canvas readback, the
+// non-destructive adjust/resize path, the accent tint and the embedded preview thumbnails.
 // No store access — the editor model owns when these run.
-import { decodePixels, encodePixels, TAG, type Face, type FaceNode, type Resource } from "./wf";
-import { metaInfo, type Sim } from "./sources";
-import { render } from "./render";
+//
+// `Resource` still appears here because that is what the .bin codec speaks: a file read or a
+// dropped image arrives as one, and becomes an ImageAsset the moment it joins a document.
+import { decodePixels, encodePixels, TAG, type Resource } from "../format";
+import type { Sim } from "../document/sources";
 import { SCREEN } from "./screen";
 import {
   framesOf,
@@ -13,7 +15,7 @@ import {
   type ImageCache,
   type ImageId,
   type Layer,
-} from "./doc";
+} from "../document/doc";
 
 export async function bitmapOf(r: Resource): Promise<ImageBitmap> {
   const px = decodePixels(r);
@@ -67,15 +69,6 @@ export async function encodeBitmap(
   return encodePixels(pixelsOf(b, w, h, filter), w, h, cf).data;
 }
 
-// re-encode every resized or adjusted resource from its original pixels — called just before
-// buildBin, so the downsampling and the brightness/contrast filter land only in what's
-// exported/flashed. r.bitmap (the crisp browser-scaled preview) is left alone; the editing
-// session keeps showing the good one.
-export async function flushResized(face: Face) {
-  for (const r of face.resources)
-    if (r.srcBitmap) r.data = await encodeBitmap(r.srcBitmap, r.w, r.h, r.cf, filterOf(r));
-}
-
 /** A dropped/picked image file as a ready-to-use resource (bitmap included). */
 export async function resourceFromFile(file: File, cf: number): Promise<Resource> {
   const img = await createImageBitmap(file);
@@ -114,63 +107,25 @@ export async function opaqueBlack(w: number, h: number): Promise<Resource> {
   return r;
 }
 
-// the pixels actually on screen: a resized resource still holds the old ones in r.data, and
-// JPEG resources only ever decode through the bitmap
-const livePixels = (r: Resource) => (r.bitmap ? pixelsOf(r.bitmap, r.w, r.h) : decodePixels(r));
-
-// which resource indices are accent-tintable: struct.meta[7]===4 (metaInfo's `accent` field)
-// — a real per-widget capability flag, confirmed against 7 real-device test cases including
-// ones where the accent widget is baked plain white (not a color to pattern-match at all).
-// Supersedes the old pixel-color guessing entirely — see docs/cmf-protocol.md "Accent color".
-export function accentFlaggedResources(face: Face): Set<number> {
-  const flagged = new Set<number>();
-  const walk = (n: FaceNode) => {
-    if (n.tag === TAG.struct && n.images && metaInfo(n).accent) {
-      n.images.forEach((i) => flagged.add(i));
-    }
-    n.subs?.forEach(walk);
-  };
-
-  face.screens.forEach(walk);
-  return flagged;
-}
-
-// preview-only recolor of an accent-flagged resource: replace every non-transparent pixel's
-// RGB with the chosen color (alpha untouched) — the flag identifies the whole resource as
-// tintable regardless of its baked color, so there's no per-pixel color test here. Never
-// touches r.data — the exported .bin must keep the original bytes for the real watch to
-// substitute its own accent color.
-export async function accentBitmapFor(
-  r: Resource,
-  colorHex: string,
-): Promise<ImageBitmap | undefined> {
-  if (r.cf === 1) return undefined; // JPEG — no per-pixel recolor
-  const px = livePixels(r);
-
-  if (!px) return undefined;
-  const n = parseInt(colorHex.slice(1), 16);
-  const cr = (n >> 16) & 255,
-    cg = (n >> 8) & 255,
-    cb = n & 255;
-  let changed = false;
-
-  for (let i = 0; i < px.length; i += 4) {
-    if (px[i + 3] > 0) {
-      px[i] = cr;
-      px[i + 1] = cg;
-      px[i + 2] = cb;
-      changed = true;
-    }
-  }
-  return changed ? createImageBitmap(new ImageData(px, r.w, r.h)) : undefined;
-}
-
 // ---- Doc-side equivalents ----
 // Same maths, but an asset is immutable and its decoded pixels live in the cache, so these
 // return what changed instead of writing through a Resource. The cache is a plain Map the
 // caller owns — it is not part of the document and never reaches the file.
 
-/** Which assets the watch may repaint with the wearer's accent color (meta byte 7 === 4). */
+/** Decode every asset of a document into bitmaps. Part of loading rather than a follow-up step:
+ *  a document whose pixels aren't decoded yet renders as a blank screen, so the two have to
+ *  become visible to the editor together. */
+export async function decodeAssets(
+  images: ReadonlyMap<ImageId, ImageAsset>,
+): Promise<Map<ImageId, ImageCache>> {
+  const out = new Map<ImageId, ImageCache>();
+
+  for (const a of images.values())
+    out.set(a.id, { bitmap: await bitmapOf({ cf: a.cf, w: a.w, h: a.h, data: a.data }) });
+  return out;
+}
+
+/** Which assets the watch may repaint with the wearer's accent color (meta flags === 4). */
 export function accentFlaggedAssets(doc: Doc): Set<ImageId> {
   const flagged = new Set<ImageId>();
   const walk = (l: Layer) => {
@@ -259,7 +214,7 @@ export async function regenPreviewAssets(
   store: { assets: ReadonlyMap<ImageId, ImageAsset>; cache: ReadonlyMap<ImageId, ImageCache> },
   sim: Sim,
 ): Promise<Map<ImageId, { asset: ImageAsset; bitmap: ImageBitmap }>> {
-  const { renderDoc } = await import("./render-doc");
+  const { renderDoc } = await import("./render");
   const out = new Map<ImageId, { asset: ImageAsset; bitmap: ImageBitmap }>();
 
   for (const scr of doc.screens) {
@@ -285,52 +240,4 @@ export async function regenPreviewAssets(
     out.set(a.id, { asset: { ...a, data: await encodeBitmap(bitmap, a.w, a.h, a.cf) }, bitmap });
   }
   return out;
-}
-
-/** Invert one resource in place (alpha untouched). Involutive — twice restores the original. */
-export async function invertResource(r: Resource) {
-  const px = livePixels(r);
-
-  if (!px) return;
-  for (let i = 0; i < px.length; i += 4) {
-    px[i] = 255 - px[i];
-    px[i + 1] = 255 - px[i + 1];
-    px[i + 2] = 255 - px[i + 2];
-  }
-  const bitmap = await createImageBitmap(new ImageData(px, r.w, r.h));
-
-  Object.assign(r, {
-    data: await encodeBitmap(bitmap, r.w, r.h, r.cf),
-    bitmap,
-    srcBitmap: undefined, // the inverted pixels are the original now — see flushResized
-    accentBitmap: undefined,
-  });
-}
-
-/** Re-bake each screen's embedded 0x28 thumbnail from the current render. */
-export function regenPreviews(face: Face, sim: Sim) {
-  for (const scr of face.screens) {
-    const pv = scr.subs
-      ?.find((s) => s.tag === TAG.preview)
-      ?.subs?.find((s) => s.tag === TAG.pvStruct);
-    const ri = pv?.images?.[0];
-
-    if (ri == null) continue;
-    const r = face.resources[ri];
-
-    if (r.cf === 1) continue; // don't re-encode JPEG previews
-    const screen = document.createElement("canvas");
-
-    screen.width = screen.height = SCREEN;
-    render(screen.getContext("2d")!, face, scr.tag, sim);
-    const thumb = document.createElement("canvas");
-
-    thumb.width = r.w;
-    thumb.height = r.h;
-    const tx = thumb.getContext("2d")!;
-
-    tx.drawImage(screen, 0, 0, r.w, r.h);
-    Object.assign(r, encodePixels(tx.getImageData(0, 0, r.w, r.h).data, r.w, r.h, r.cf));
-    bitmapOf(r).then((b) => (r.bitmap = b));
-  }
 }

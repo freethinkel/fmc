@@ -3,9 +3,9 @@
 // importer has to get right: the two obfuscation layers, hand grouping, and which widgets land
 // on which screen.
 import { test, expect } from "vitest";
-import { watchmakerToFace } from "$lib/modules/editor/lib/watchmaker";
-import { TAG, type FaceNode } from "$lib/modules/editor/lib/wf";
-import { metaInfo } from "$lib/modules/editor/lib/sources";
+import { watchmakerToFace } from "$lib/modules/editor/core/import/watchmaker";
+import { TAG, type FaceNode } from "$lib/modules/editor/core/format";
+import { metaInfo } from "$lib/modules/editor/core/document/sources";
 
 const LAYERS = `
  <Layer type="shape" x="0" y="0" width="512" height="512" shape="Circle" color="000000" opacity="100" display="bd"/>

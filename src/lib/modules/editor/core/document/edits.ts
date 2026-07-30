@@ -6,6 +6,7 @@
 // the old code compared node objects, so any rebuilt parent silently invalidated `sel`.
 import {
   framesOf,
+  isPlaced,
   newNodeId,
   type Condition,
   type Doc,
@@ -106,8 +107,14 @@ export function moveLayer(
   into = false,
 ): Doc {
   const moving = findLayer(doc, id);
+  const target = findLayer(doc, targetId);
 
   if (!moving || id === targetId || contains(moving, targetId)) return doc;
+  // Both guards exist because the layer is removed before it is re-inserted: with no valid
+  // destination it would be removed and never come back, i.e. silently dropped from the
+  // document. A screen id is the common case here — a screen is not a layer.
+  if (!target) return doc;
+  if (into && target.kind !== "group") return doc;
   const without = removeLayer(doc, id);
 
   if (into)
@@ -135,11 +142,55 @@ export function wrapInGroup(doc: Doc, id: NodeId, group: GroupLayer): Doc {
   return mapLayers(doc, (l) => (l.id === id ? { ...group, children: [l] } : l));
 }
 
-/** Dissolve a group, lifting its children into its own slot. */
+/** Where a layer's own coordinates sit: a group carries them on its frame, a widget on itself. */
+export const originOf = (l: Layer): { x: number; y: number } =>
+  l.kind === "group"
+    ? { x: l.frame.x, y: l.frame.y }
+    : isPlaced(l)
+      ? { x: l.x, y: l.y }
+      : { x: 0, y: 0 };
+
+/** Move a layer by a delta. Group frames stay clamped to >=0 — their x/y is unsigned in the file,
+ *  unlike a widget's int16 x/y, which may legitimately hang off the left/top edge. */
+export const shiftLayer = (l: Layer, dx: number, dy: number): Layer =>
+  l.kind === "group"
+    ? {
+        ...l,
+        frame: { ...l.frame, x: Math.max(0, l.frame.x + dx), y: Math.max(0, l.frame.y + dy) },
+      }
+    : isPlaced(l)
+      ? { ...l, x: l.x + dx, y: l.y + dy }
+      : l;
+
+/** Absolute origin of the container a layer lives in: child coordinates are measured from their
+ *  group's frame, so reparenting has to shift by the difference of two of these to stay put. */
+export function containerOrigin(doc: Doc, id: NodeId | null): { x: number; y: number } {
+  let out = { x: 0, y: 0 };
+
+  for (let at = id; at;) {
+    const l = findLayer(doc, at);
+
+    if (!l) break;
+    const o = originOf(l);
+
+    out = { x: out.x + o.x, y: out.y + o.y };
+    at = parentOf(doc, at)?.id ?? null;
+  }
+  return out;
+}
+
+/** Dissolve a group, lifting its children into its own slot. The children's coordinates were
+ *  measured from the group's frame, so they shift by its origin and stay visually put.
+ *  ponytail: AUTO children (meta.auto) were placed by the group's flex row and ignore x/y — they
+ *  land at their raw coordinates, same caveat the old tree code carried. */
 export function ungroup(doc: Doc, id: NodeId): Doc {
   const walk = (ls: readonly Layer[]): Layer[] =>
     ls.flatMap((l) => {
-      if (l.id === id && l.kind === "group") return [...l.children];
+      if (l.id === id && l.kind === "group") {
+        const o = originOf(l);
+
+        return l.children.map((c) => shiftLayer(c, o.x, o.y));
+      }
       const kids = childrenOf(l);
 
       return [kids.length ? withChildren(l, walk(kids)) : l];
@@ -154,6 +205,19 @@ export function cloneLayer(l: Layer): Layer {
   const copy = { ...l, id: newNodeId() } as Layer;
 
   return kids.length ? withChildren(copy, kids.map(cloneLayer)) : copy;
+}
+
+/** Insert `layer` right after `afterId`, wherever that sits. */
+export function insertAfter(doc: Doc, afterId: NodeId, layer: Layer): Doc {
+  const walk = (ls: readonly Layer[]): Layer[] =>
+    ls.flatMap((l) => {
+      const kids = childrenOf(l);
+      const self = kids.length ? withChildren(l, walk(kids)) : l;
+
+      return l.id === afterId ? [self, layer] : [self];
+    });
+
+  return { ...doc, screens: doc.screens.map((s) => ({ ...s, layers: walk(s.layers) })) };
 }
 
 export function duplicateLayer(doc: Doc, id: NodeId): { doc: Doc; copy: Layer } | null {

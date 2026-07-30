@@ -8,23 +8,26 @@
   import Source from "./props/source.svelte";
   import Frames from "./props/frames.svelte";
   import { editorModel } from "../model";
-  const { $editor: editor, invertColorsRequested } = editorModel;
+  const { $doc: doc, $selected: selected, invertColorsRequested } = editorModel;
+
+  // the primary selection — the sections are all single-layer
+  const layer = $derived($selected[0] ?? null);
 </script>
 
 <div class="panel">
-  {#if $editor.sel}
-    <Geometry node={$editor.sel} />
-    <Source node={$editor.sel} />
-    <Frames node={$editor.sel} />
+  {#if layer}
+    <Geometry {layer} />
+    <Source {layer} />
+    <Frames {layer} />
   {:else}
     <p class="hint">Nothing selected.</p>
   {/if}
   <!-- scope follows the selection, same as the effect itself — see invertColorsFx -->
-  {#if $editor.face}
+  {#if $doc}
     <div class="row">
       <Button kind="secondary" onClick={() => invertColorsRequested()}>
         <Icon name="contrast" size={14} />
-        invert {$editor.sel ? "layer" : "screen"}
+        invert {layer ? "layer" : "screen"}
       </Button>
     </div>
   {/if}

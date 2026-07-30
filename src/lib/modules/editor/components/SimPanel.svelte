@@ -2,9 +2,9 @@
   import { Input } from "$lib/shared/components/input";
   import { Switch } from "$lib/shared/components/switch";
   import { Icon } from "$lib/shared/components/icon";
-  import { ACCENT_PALETTE, pickerLabel } from "../lib/sources";
+  import { ACCENT_PALETTE, pickerLabel } from "../core/document/sources";
   import { editorModel } from "../model";
-  const { $editor: editor, simPatched, overrideSet } = editorModel;
+  const { $sim: sim, $ids: ids, simPatched, overrideSet } = editorModel;
 
   type NumField =
     | "steps"
@@ -42,38 +42,34 @@
 
 <div class="panel">
   <div class="switch-row">
-    <Switch checked={$editor.sim.live} onChange={(v) => simPatched({ live: v })} />
-    <button
-      type="button"
-      class="check-label"
-      onclick={() => simPatched({ live: !$editor.sim.live })}>live time</button
+    <Switch checked={$sim.live} onChange={(v) => simPatched({ live: v })} />
+    <button type="button" class="check-label" onclick={() => simPatched({ live: !$sim.live })}
+      >live time</button
     >
   </div>
-  {#if !$editor.sim.live}
+  {#if !$sim.live}
     <Input
       type="datetime-local"
       step={1}
-      value={localISO($editor.sim.time)}
+      value={localISO($sim.time)}
       onInput={(v) => simPatched({ time: new Date(v).getTime() })}
     />
   {/if}
   <div class="switch-row">
-    <Switch checked={$editor.sim.is24h} onChange={(v) => simPatched({ is24h: v })} />
-    <button
-      type="button"
-      class="check-label"
-      onclick={() => simPatched({ is24h: !$editor.sim.is24h })}>24-hour format</button
+    <Switch checked={$sim.is24h} onChange={(v) => simPatched({ is24h: v })} />
+    <button type="button" class="check-label" onclick={() => simPatched({ is24h: !$sim.is24h })}
+      >24-hour format</button
     >
   </div>
   <div class="switch-row">
     <Switch
-      checked={$editor.sim.showSlotPlaceholders}
+      checked={$sim.showSlotPlaceholders}
       onChange={(v) => simPatched({ showSlotPlaceholders: v })}
     />
     <button
       type="button"
       class="check-label"
-      onclick={() => simPatched({ showSlotPlaceholders: !$editor.sim.showSlotPlaceholders })}
+      onclick={() => simPatched({ showSlotPlaceholders: !$sim.showSlotPlaceholders })}
       >widget-slot placeholders</button
     >
   </div>
@@ -85,7 +81,7 @@
       <button
         type="button"
         class="swatch none"
-        class:on={!$editor.sim.accentColor}
+        class:on={!$sim.accentColor}
         title="No accent — draw the colors baked into the file"
         aria-label="No accent"
         onclick={() => simPatched({ accentColor: null })}
@@ -96,7 +92,7 @@
         <button
           type="button"
           class="swatch"
-          class:on={$editor.sim.accentColor === c}
+          class:on={$sim.accentColor === c}
           style="background: {c}"
           title={c}
           aria-label={c}
@@ -111,24 +107,24 @@
         <span class="muted-label" title={hint}>{label}</span>
         <Input
           type="number"
-          value={String($editor.sim[key])}
+          value={String($sim[key])}
           onInput={(v) => simPatched({ [key]: v === "" ? "" : +v })}
         />
       </div>
     {/each}
   </div>
 
-  {#if $editor.ids.length}
+  {#if $ids.length}
     <h3 class="section-heading">Data sources</h3>
     <div class="ids-list">
-      {#each $editor.ids as { id, max }}
+      {#each $ids as { id, max }}
         <div class="id-row">
           <span class="id-label">{pickerLabel(id)}</span>
           <span class="id-input">
             <Input
               type="number"
               placeholder="auto"
-              value={String($editor.sim.overrides[id] ?? "")}
+              value={String($sim.overrides[id] ?? "")}
               onInput={(v) => overrideSet({ id, value: v })}
             />
           </span>

@@ -2,10 +2,9 @@
 // than checked in — what matters are the byte-level conventions the watch reads (data source
 // ids, the frame's alignment byte, meta's auto-width marker), not any particular artwork.
 import { test, expect } from "vitest";
-import { facerToFace } from "$lib/modules/editor/lib/facer";
-import { TAG, decodePixels, type FaceNode } from "$lib/modules/editor/lib/wf";
-import { parseFrame } from "$lib/modules/editor/lib/render";
-import { metaInfo } from "$lib/modules/editor/lib/sources";
+import { facerToFace } from "$lib/modules/editor/core/import/facer";
+import { TAG, decodePixels, unhex, type FaceNode } from "$lib/modules/editor/core/format";
+import { metaInfo } from "$lib/modules/editor/core/document/sources";
 
 const LAYERS = [
   { type: "shape", shape_type: 1, x: 0, y: 0, width: 320, height: 320, color: -16777216 },
@@ -178,9 +177,10 @@ test("facerToFace maps tags, hands and alignment", async () => {
   // a centred field is a group whose frame asks for main-axis centring, with an auto-width child
   const temp = nums.find((n) => idOf(n) === 0x5f)!;
   const group = all(main, (n) => n.tag === TAG.group).find((g) => find(g, (x) => x === temp))!;
-  const fr = parseFrame(group)!;
+  // frame byte 8, low 2 bits: the main-axis alignment of the auto-laid-out children
+  const frameMain = unhex(group.subs!.find((s) => s.tag === TAG.frame)!.hex!)[8] & 3;
 
-  expect(fr.main).toBe(2); // CENTER
+  expect(frameMain).toBe(2); // CENTER
   expect(metaInfo(temp.subs!.find((s) => s.tag === TAG.struct)!).w).toBe(0x8000);
   // "°" and #WM# (the unit, always Celsius here) merge into one sibling sprite: value + "°C"
   expect(group.subs!.filter((s) => s.tag !== TAG.frame)).toHaveLength(2);

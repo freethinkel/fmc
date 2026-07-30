@@ -6,8 +6,8 @@
 // hour/minute/second/battery hands. Anything driven by a WatchMaker tag or a Lua expression
 // is skipped and reported.
 import { cropOpaque, encodeCanvas, fileMap } from "./facer/assets";
-import { SCREEN } from "./screen";
-import { hex, TAG, type Face, type FaceNode, type Resource } from "./wf";
+import { SCREEN } from "../render/screen";
+import { hex, TAG, type Face, type FaceNode, type Resource } from "../format";
 
 const W = SCREEN;
 // ponytail: the canvas size is not declared anywhere in the export — every face of this

@@ -7,10 +7,10 @@
   import { marketModel } from "$lib/modules/market/model";
   import PublishDialog from "../components/PublishDialog.svelte";
   import { bleModel } from "$lib/modules/device/model";
-  import { TAG, unhex, hex, type FaceNode } from "../lib/wf";
-  import { render, parseFrame } from "../lib/render";
-  import { CENTER, SCREEN } from "../lib/screen";
-  import type { Hit } from "../lib/canvas";
+  import { renderDoc, type ResizePreview } from "../core/render/render";
+  import { CENTER, SCREEN } from "../core/render/screen";
+  import type { ImageStore, LayerHit } from "../core/render/canvas";
+  import { framesOf, type Layer, type NodeId } from "../core/document/doc";
   import { editorModel } from "../model";
   import TreePanel from "../components/TreePanel.svelte";
   import PropsPanel from "../components/PropsPanel.svelte";
@@ -32,17 +32,24 @@
     publishDialogOpened,
   } = marketModel;
   const {
-    $editor: editor,
+    $doc: doc,
+    $store: store,
+    $sim: sim,
+    $screen: screen,
+    $sel: sel,
+    $selected: selected,
+    $err: err,
+    $undoN: undoN,
+    $redoN: redoN,
     select,
     selectToggled,
-    selectedNodes,
-    screenTagSet,
+    screenSet,
     checkpoint,
     undo,
     redo,
-    patched,
+    layerPatched,
     resizeImageRequested,
-    $resizing: resizing,
+    $lockAspect: lockAspect,
     loadRequested,
     newFaceRequested,
     importFacerRequested,
@@ -59,7 +66,7 @@
   let canvas = $state<HTMLCanvasElement | null>(null);
 
   let mobilePanel = $state<"tree" | "props" | "sim" | null>(null); // drawer on mobile
-  let hits: Hit[] = [];
+  let hits: LayerHit[] = [];
 
   // ---- resizable side panels (desktop only — below 768px both are drawers) ----
   // Widths live in rem, like every other size here, so they keep following the :root scale knob;
@@ -169,7 +176,7 @@
     if (!u) return;
     try {
       saveDraftRequested({
-        name: $editor.face?.name || "Custom",
+        name: $doc?.name || "Custom",
         ownerId: u.id,
         published: $openedWf?.published ?? false,
         bin: await buildCurrentBin(),
@@ -206,13 +213,21 @@
   }
 
   // ---- rendering ----
-  // A plain (non-$state) mirror of the store: the rAF loop reads the tree every frame, and reading
-  // $editor inside the render effect would make the effect re-run — tearing down and restarting the
-  // loop — on every store update.
-  let scene = $editor;
+  // A plain (non-$state) mirror of the stores: the rAF loop reads them every frame, and reading
+  // them inside the render effect would make the effect re-run — tearing down and restarting the
+  // loop — on every update.
+  const snapshot = () => ({
+    doc: $doc,
+    store: $store,
+    sim: $sim,
+    screen: $screen,
+    sel: $sel,
+    selected: $selected,
+  });
+  let scene = snapshot();
 
   $effect(() => {
-    scene = $editor;
+    scene = snapshot();
   });
 
   $effect(() => {
@@ -225,10 +240,10 @@
       const s = scene;
       const t0 = perf && performance.now();
 
-      if (s.face) {
-        hits = render(ctx, s.face, s.screenTag, s.sim);
+      if (s.doc) {
+        hits = renderDoc(ctx, s.doc, s.store, s.screen, s.sim, resizePreview());
         // extra picks get a plain box; the primary one carries the handles and the pivot cross
-        for (const n of s.more) drawBox(ctx, n);
+        for (const l of s.selected.slice(1)) drawBox(ctx, l.id);
         drawSelection(ctx, s.sel);
       } else {
         ctx.clearRect(0, 0, SCREEN, SCREEN);
@@ -241,10 +256,10 @@
     return () => cancelAnimationFrame(raf);
   });
 
-  const hitOf = (n: FaceNode) => hits.findLast((h) => h.node === n || h.node.subs?.includes(n));
+  const hitOf = (id: NodeId | null) => (id ? hits.findLast((h) => h.layer.id === id) : undefined);
 
-  function drawBox(ctx: CanvasRenderingContext2D, node: FaceNode) {
-    const h = hitOf(node);
+  function drawBox(ctx: CanvasRenderingContext2D, id: NodeId) {
+    const h = hitOf(id);
 
     if (!h) return;
     ctx.save();
@@ -255,9 +270,8 @@
     ctx.restore();
   }
 
-  function drawSelection(ctx: CanvasRenderingContext2D, sel: FaceNode | null) {
-    if (!sel) return;
-    const h = hitOf(sel);
+  function drawSelection(ctx: CanvasRenderingContext2D, id: NodeId | null) {
+    const h = hitOf(id);
 
     if (!h) return;
     ctx.save();
@@ -265,7 +279,7 @@
     ctx.lineWidth = 2;
     ctx.setLineDash([6, 4]);
     ctx.strokeRect(h.x - 1, h.y - 1, h.w + 2, h.h + 2);
-    if (resizable(h.node)) {
+    if (resizable(h.layer)) {
       ctx.setLineDash([]);
       ctx.fillStyle = "#4af";
       for (const [cx, cy] of CORNERS) {
@@ -274,12 +288,10 @@
         ctx.fillRect(p.x - HANDLE / 2, p.y - HANDLE / 2, HANDLE, HANDLE);
       }
     }
-    const pv = h.node.subs?.find((s) => s.tag === TAG.pivot);
-    const st = h.node.subs?.find((s) => s.tag === TAG.struct);
-
-    if (pv && st) {
-      const px = st.x! + pv.pivotX!,
-        py = st.y! + pv.pivotY!;
+    // a hand rotates around x+pivot — mark that point, it's what the user aims when centring
+    if (h.layer.kind === "hand") {
+      const px = h.layer.x + h.layer.pivotX,
+        py = h.layer.y + h.layer.pivotY;
 
       ctx.setLineDash([]);
       ctx.beginPath();
@@ -314,16 +326,15 @@
 
     return d <= max ? { x, y } : { x: CENTER + (dx / d) * max, y: CENTER + (dy / d) * max };
   };
-  const firstRes = (n: FaceNode | null) => {
-    const st = n && n.tag !== TAG.group ? n.subs?.find((s) => s.tag === TAG.struct) : null;
+  const firstAsset = (l: Layer | null) => {
+    const ids = l && l.kind !== "group" ? framesOf(l) : [];
 
-    return st?.images?.length ? $editor.face?.resources[st.images[0]] : undefined;
+    return ids.length ? $doc?.images.get(ids[0]) : undefined;
   };
-  const resizable = (n: FaceNode | null): boolean => Boolean(firstRes(n));
+  const resizable = (l: Layer | null): boolean => Boolean(firstAsset(l));
 
   type Rz = {
-    node: FaceNode;
-    st: FaceNode;
+    layer: Layer;
     dirX: number;
     dirY: number;
     ax: number;
@@ -338,36 +349,48 @@
     gy: number;
     gw: number;
     gh: number;
-    rw0: number; // the resource's size when the drag started — every step scales off it, not
-    rh0: number; // off the current one, which the live resize has already moved
+    rw0: number; // the asset's size when the drag started — the target scales off it
+    rh0: number;
     dx0: number; // anchor -> grab point. The scale is measured against THIS, not against the box:
     dy0: number; // a handle drawn off the true corner (see onDisc) would otherwise jump on move 1
-    started: boolean; // first actual move — that's where the undo checkpoint goes
+    started: boolean; // the pointer actually moved — until then there's nothing to preview
   };
   let rz: Rz | null = null;
 
-  // Resize the resource to the target box (g*). Runs on every pointermove (skipping moves while the
-  // last one is still decoding) and once more on pointerup, so the last box always lands.
+  // What the canvas draws mid-drag: the layer scaled around its anchor, no assets touched. The
+  // real rescale happens once, on pointerup — see applyResize.
+  const resizePreview = (): ResizePreview | null =>
+    rz && rz.started
+      ? { id: rz.layer.id, kw: rz.gw / rz.w0, kh: rz.gh / rz.h0, ax: rz.ax, ay: rz.ay }
+      : null;
+
+  // Rescale the assets to the target box (g*) — one call, at the end of the drag.
   function applyResize(z: Rz) {
-    const scale = z.gw / z.w0;
-    // a hand's x/y is owned by the pivot math in resizeImageFx — don't fight it. Everything
-    // else keeps the anchored corner: delta-based, like alignSelected, since st.x is
-    // widget-local while the hit box is screen space.
-    const pinned = z.node.subs?.some((s) => s.tag === TAG.pivot);
+    // the box and the asset scale by the same factors — separately per axis, so a corner drag
+    // can change the aspect ratio
+    const kw = z.gw / z.w0,
+      kh = z.gh / z.h0;
+    // a hand's x/y is owned by the pivot math in resizeImageFx — don't fight it. Everything else
+    // keeps the anchored corner: delta-based, like alignRequested, since a layer's x/y is
+    // container-local while the hit box is screen space.
+    const pinned = z.layer.kind === "hand";
 
     resizeImageRequested({
-      node: z.node,
-      w: Math.round(z.rw0 * scale),
-      h: Math.round(z.rh0 * scale),
+      layer: z.layer.id,
+      w: Math.round(z.rw0 * kw),
+      h: Math.round(z.rh0 * kh),
       at: pinned
         ? undefined
         : { x: z.x0 + Math.round(z.gx - z.bx), y: z.y0 + Math.round(z.gy - z.by) },
     });
   }
 
-  const selHit = () =>
-    resizable($editor.sel) ? hits.findLast((h) => h.node === $editor.sel) || null : null;
-  const handleAt = (p: XY, h: Hit) => {
+  const selHit = () => {
+    const h = hitOf($sel);
+
+    return h && resizable(h.layer) ? h : null;
+  };
+  const handleAt = (p: XY, h: LayerHit) => {
     for (const [cx, cy] of CORNERS) {
       const c = onDisc(h.x + cx * h.w, h.y + cy * h.h);
 
@@ -378,10 +401,9 @@
 
   // ---- selection and drag ----
   type XY = { x: number; y: number };
-  // one entry per dragged node — a multi-selection moves as a block
-  type DragItem =
-    | { x0: number; y0: number; st: FaceNode; fr?: undefined }
-    | { x0: number; y0: number; fr: FaceNode; st?: undefined };
+  // one entry per dragged layer — a multi-selection moves as a block. The layer is captured when
+  // the drag starts, so x0/y0 stay the origin the whole gesture measures from.
+  type DragItem = { layer: Layer; x0: number; y0: number };
   let drag: { p: XY; items: DragItem[]; moved: boolean } | null = null;
   const canvasXY = (e: PointerEvent): XY => {
     const r = canvas!.getBoundingClientRect();
@@ -391,103 +413,102 @@
       y: ((e.clientY - r.top) * SCREEN) / r.height,
     };
   };
-  const selStruct = (n: FaceNode | null) =>
-    n?.tag === TAG.struct ? n : n?.subs?.find((s) => s.tag === TAG.struct);
 
-  function setFrameXY(groupNode: FaceNode, x: number, y: number) {
-    const f = groupNode.subs!.find((s) => s.tag === TAG.frame)!;
-    const v = unhex(f.hex!);
-
-    v[0] = x;
-    v[1] = x >> 8;
-    v[2] = y;
-    v[3] = y >> 8;
-    patched({ node: f, patch: { hex: hex(v) } });
+  /** What a layer moves by: its own x/y, or its frame's when it is a group. */
+  function dragItem(l: Layer): DragItem | null {
+    if (l.kind === "group") return { layer: l, x0: l.frame.x, y0: l.frame.y };
+    return l.kind === "raw" ? null : { layer: l, x0: l.x, y0: l.y };
   }
 
+  // widget x/y are int16 — negatives are legal (and used by stock faces), so no clamp there;
+  // group frames stay >=0, their x/y round-trip through the file as unsigned
+  const moveItem = (it: DragItem, x: number, y: number) =>
+    layerPatched({
+      id: it.layer.id,
+      patch: (it.layer.kind === "group"
+        ? { frame: { ...it.layer.frame, x: Math.max(0, x), y: Math.max(0, y) } }
+        : { x, y }) as Partial<Layer>,
+    });
+
   function onDown(e: PointerEvent) {
-    if (!$editor.face) return;
+    if (!$doc) return;
     const p = canvasXY(e);
     const sh = selHit();
     const c = sh && handleAt(p, sh);
 
     if (sh && c) {
-      const st = selStruct($editor.sel)!;
-      const r0 = firstRes($editor.sel)!;
+      const r0 = firstAsset(sh.layer)!;
+      const origin = dragItem(sh.layer);
+      // The point that stays put while the box grows: normally the corner opposite the dragged
+      // one, but a hand scales around its rotation centre — that's the invariant resizeImageFx
+      // keeps, and the preview has to agree with it or the hand jumps on release.
+      // ponytail: a hand's x/y is container-local, so this is off for one nested in a group —
+      // no corpus face does that; read the centre off the hit box if one ever turns up.
+      const hand = sh.layer.kind === "hand" ? sh.layer : null;
+      const ax = hand ? hand.x + hand.pivotX : c.cx ? sh.x : sh.x + sh.w;
+      const ay = hand ? hand.y + hand.pivotY : c.cy ? sh.y : sh.y + sh.h;
 
       rz = {
         started: false,
         rw0: r0.w,
         rh0: r0.h,
-        node: $editor.sel!,
-        st,
+        layer: sh.layer,
         dirX: c.cx,
         dirY: c.cy,
-        // the dragged corner moves, the opposite one stays put — that's the anchor
-        ax: c.cx ? sh.x : sh.x + sh.w,
-        ay: c.cy ? sh.y : sh.y + sh.h,
+        ax,
+        ay,
         w0: sh.w,
         h0: sh.h,
-        x0: st.x ?? 0,
-        y0: st.y ?? 0,
+        x0: origin?.x0 ?? 0,
+        y0: origin?.y0 ?? 0,
         bx: sh.x,
         by: sh.y,
         gx: sh.x,
         gy: sh.y,
         gw: sh.w,
         gh: sh.h,
-        dx0: Math.max(1, Math.abs(p.x - (c.cx ? sh.x : sh.x + sh.w))),
-        dy0: Math.max(1, Math.abs(p.y - (c.cy ? sh.y : sh.y + sh.h))),
+        dx0: Math.max(1, Math.abs(p.x - ax)),
+        dy0: Math.max(1, Math.abs(p.y - ay)),
       };
       canvas?.setPointerCapture(e.pointerId);
       return;
     }
     const h = hits.findLast((h) => p.x >= h.x && p.x < h.x + h.w && p.y >= h.y && p.y < h.y + h.h);
 
-    if (!h?.node) {
+    if (!h) {
       select(null);
       return;
     }
     if (e.shiftKey || e.metaKey || e.ctrlKey) {
-      selectToggled(h.node); // add/remove — no drag, the modifier click is the whole gesture
+      selectToggled(h.layer.id); // add/remove — no drag, the modifier click is the whole gesture
       return;
     }
-    const picked = selectedNodes($editor);
     // pressing inside an existing multi-selection keeps it, so the whole block can be dragged
-    const nodes = picked.includes(h.node) ? picked : (select(h.node), [h.node]);
-    const items = nodes.map(dragItem).filter((i) => i !== null);
+    const inSelection = $selected.some((l) => l.id === h.layer.id);
+    const layers = inSelection ? $selected : (select(h.layer.id), [h.layer]);
+    const items = layers.map(dragItem).filter((i): i is DragItem => i !== null);
 
     if (items.length) drag = { p, items, moved: false };
     canvas?.setPointerCapture(e.pointerId);
   }
 
-  /** What a node moves by: its own struct x/y, or its frame x/y when it's a group. */
-  function dragItem(n: FaceNode): DragItem | null {
-    if (n.tag === TAG.group) {
-      const fr = parseFrame(n);
-
-      return fr ? { fr: n, x0: fr.x, y0: fr.y } : null;
-    }
-    const st = selStruct(n);
-
-    return st && st.x != null ? { st, x0: st.x, y0: st.y! } : null;
-  }
   function onMove(e: PointerEvent) {
     if (rz) {
       const p = canvasXY(e);
-      // uniform scale (corner drags keep proportions — free w/h lives in the props panel),
-      // measured against the grab point so the box starts at 1:1 wherever the handle was drawn
-      const s = Math.max(Math.abs(p.x - rz.ax) / rz.dx0, Math.abs(p.y - rz.ay) / rz.dy0);
+      // The dragged corner follows the pointer on BOTH axes, each measured against the grab
+      // point (dx0/dy0), so the box starts at 1:1 wherever the handle happened to be drawn.
+      // Free w/h when the aspect lock is off: a uniform scale is driven by the long side, so on a
+      // wide layer pulling the short side barely moved it. Shift inverts the lock, as usual.
+      const rx = Math.abs(p.x - rz.ax) / rz.dx0,
+        ry = Math.abs(p.y - rz.ay) / rz.dy0;
+      const locked = $lockAspect !== e.shiftKey;
+      const [sw, sh] = locked ? [Math.max(rx, ry), Math.max(rx, ry)] : [rx, ry];
 
-      rz.gw = Math.max(1, Math.round(rz.w0 * s));
-      rz.gh = Math.max(1, Math.round(rz.h0 * s));
+      rz.gw = Math.max(1, Math.round(rz.w0 * sw));
+      rz.gh = Math.max(1, Math.round(rz.h0 * sh));
       rz.gx = rz.dirX ? rz.ax : rz.ax - rz.gw;
       rz.gy = rz.dirY ? rz.ay : rz.ay - rz.gh;
-      if (!rz.started) {
-        checkpoint(0); // one undo step for the whole drag, not one per live step
-        rz.started = true;
-      }
-      if (!$resizing) applyResize(rz); // drop the move if the last one is still decoding
+      rz.started = true; // from here the canvas draws the preview (resizePreview)
       return;
     }
     const d = drag;
@@ -507,16 +528,11 @@
     const dx = Math.round(p.x - d.p.x),
       dy = Math.round(p.y - d.p.y);
 
-    // widget x/y are int16 — negatives are legal (and used by stock faces), so no clamp here;
-    // group frames stay >=0, their x/y round-trip through the file as unsigned
-    for (const it of d.items) {
-      if (it.st) patched({ node: it.st, patch: { x: it.x0 + dx, y: it.y0 + dy } });
-      else setFrameXY(it.fr, it.x0 + dx, it.y0 + dy); // frame x/y are int16 — a group may hang off
-    }
+    for (const it of d.items) moveItem(it, it.x0 + dx, it.y0 + dy);
   }
   function onUp() {
     if (rz) {
-      if (rz.started) applyResize(rz); // the last move may have been dropped mid-decode
+      if (rz.started) applyResize(rz); // the whole drag lands as one rescale
       rz = null;
     }
     drag = null;
@@ -530,9 +546,7 @@
       e.preventDefault();
       return;
     }
-    const picked = selectedNodes($editor);
-
-    if (!picked.length) return;
+    if (!$selected.length) return;
     const d = e.shiftKey ? 10 : 1;
     const moves: Record<string, [number, number]> = {
       ArrowLeft: [-d, 0],
@@ -544,12 +558,10 @@
 
     if (!mv) return;
     checkpoint();
-    for (const sel of picked) {
-      const it = dragItem(sel);
+    for (const l of $selected) {
+      const it = dragItem(l);
 
-      if (!it) continue;
-      if (it.fr) setFrameXY(it.fr, it.x0 + mv[0], it.y0 + mv[1]);
-      else patched({ node: it.st, patch: { x: it.x0 + mv[0], y: it.y0 + mv[1] } });
+      if (it) moveItem(it, it.x0 + mv[0], it.y0 + mv[1]);
     }
     e.preventDefault();
   }
@@ -564,14 +576,14 @@
     });
   }
 
-  const hasAOD = $derived($editor.face?.screens.some((s) => s.tag === TAG.aod));
+  const hasAOD = $derived($doc?.screens.some((s) => s.kind === "aod"));
   const screenItems = $derived([
     { value: "main", label: "Main" },
     { value: "aod", label: "AOD", disabled: !hasAOD },
   ]);
   const panelItems = $derived([
     { value: "props", label: "Properties" },
-    { value: "sim", label: "Simulator", disabled: !$editor.face },
+    { value: "sim", label: "Simulator", disabled: !$doc },
   ]);
   const mobileTitle = $derived(
     mobilePanel === "tree"
@@ -625,12 +637,12 @@
         <Icon name="file-plus" size={16} /> <span class="btn-label">New</span>
       </Button>
     </span>
-    {#if $editor.face}
+    {#if $doc}
       <!-- commits on blur/Enter, not per keystroke: every rename is one undo step, and the
            header field only holds 15 bytes anyway (see renameFace) -->
       <input
         class="wf-name"
-        value={$editor.face.name}
+        value={$doc.name}
         title="Watchface name — the watch's own list shows the first 15 characters"
         maxlength="63"
         onchange={(e) => renameFace(e.currentTarget.value.trim())}
@@ -638,16 +650,16 @@
       />
       <Tabs
         items={screenItems}
-        value={$editor.screenTag === TAG.aod ? "aod" : "main"}
-        onChange={(v) => screenTagSet(v === "aod" ? TAG.aod : TAG.main)}
+        value={$screen}
+        onChange={(v) => screenSet(v === "aod" ? "aod" : "main")}
       />
       <span class="tool-slot" title="Undo (⌘Z)">
-        <Button kind="ghost" disabled={!$editor.undoN} onClick={() => undo()}>
+        <Button kind="ghost" disabled={!$undoN} onClick={() => undo()}>
           <Icon name="undo" size={16} />
         </Button>
       </span>
       <span class="tool-slot" title="Redo (⇧⌘Z)">
-        <Button kind="ghost" disabled={!$editor.redoN} onClick={() => redo()}>
+        <Button kind="ghost" disabled={!$redoN} onClick={() => redo()}>
           <Icon name="redo" size={16} />
         </Button>
       </span>
@@ -689,7 +701,7 @@
         {/if}
       {/if}
     {/if}
-    {#if $bleInfo && $editor.face}
+    {#if $bleInfo && $doc}
       <span class="tool-slot" title="Upload to the watch">
         <Button kind="primary" onClick={flashWatch} disabled={$flashing}>
           <Icon name="zap" size={16} />
@@ -699,9 +711,9 @@
     {/if}
   </div>
 
-  {#if $editor.err || ($flashing && $bleStatus) || $bleStatus?.startsWith("error:")}
-    <p class="statusbar" class:error={$editor.err || $bleStatus?.startsWith("error:")}>
-      {$editor.err || $bleStatus}
+  {#if $err || ($flashing && $bleStatus) || $bleStatus?.startsWith("error:")}
+    <p class="statusbar" class:error={$err || $bleStatus?.startsWith("error:")}>
+      {$err || $bleStatus}
     </p>
   {/if}
 
@@ -725,11 +737,12 @@
           ></canvas>
         </div>
       </div>
-      {#if perf && $editor.face}
+      {#if perf && $doc}
         <p class="fps" class:slow={fps > 0 && fps < 50}>{fps} fps · {drawMs} ms draw</p>
       {/if}
       <p class="hint">
-        click — select · drag / arrow keys (⇧ ×10) — move · corners — resize · ⌘Z undo
+        click — select · drag / arrow keys (⇧ ×10) — move · corners — resize (⇧ inverts the aspect
+        lock) · ⌘Z undo
       </p>
     </section>
 
@@ -752,7 +765,7 @@
       </div>
     </aside>
 
-    {#if $editor.face}
+    {#if $doc}
       <div class="mobile-actions">
         <Button kind="secondary" onClick={() => (mobilePanel = "tree")}>
           <Icon name="list-tree" size={16} /> Tree

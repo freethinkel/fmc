@@ -1,8 +1,8 @@
 // Data sources: what the watch feeds a widget, and the simulated values the editor feeds it
 // instead. A source id is meta[9] of a struct (see docs/cmf-protocol.md §9.6a), the id of a
 // visibility condition, and an entry of a widget slot's metric menu.
-import { hex, TAG, unhex, type Face, type FaceNode } from "./wf";
-import type { Layer } from "./doc";
+import { hex, unhex, type FaceNode } from "../format";
+import type { Condition, Doc, Layer } from "./doc";
 
 // "?" = guess, not confirmed.
 // 0x1c/0x24/0x48/0x76/0x8b — labels corrected against Function's widget-slot menu (companion-app
@@ -398,91 +398,6 @@ export interface SlotInfo {
   ids: number[];
 }
 
-/** Every widget slot (0x85) on a screen, so a layer can say which slot metric it belongs to. */
-export function collectSlots(nodes: FaceNode[]): SlotInfo[] {
-  const out: SlotInfo[] = [];
-  const walk = (n: FaceNode) => {
-    if (n.tag === 0x85) {
-      const sf = n.subs?.find((s) => s.tag === 0x5f);
-      const v = sf?.hex ? unhex(sf.hex) : null;
-
-      if (v && v.length >= 3)
-        out.push({ index: v[0], activeIdx: v[2], ids: [...v.subarray(3, 3 + v[1])] });
-    }
-    n.subs?.forEach(walk);
-  };
-
-  nodes.forEach(walk);
-  return out.sort((a, b) => a.index - b.index);
-}
-
-// Same conditions as isVisible() reads, in words — the raw hex is unreadable and these gates are
-// what makes half a face look "broken" (a widget silently hidden). Equality lines OR together,
-// the rest must all hold.
-export function describeBind(hexStr?: string): string[] {
-  return parseBind(hexStr).map(({ id, op, val }) => {
-    const s = sourceLabel(id);
-
-    switch (op & 0x7f) {
-      case 0x01:
-        return `show if ${s} = ${val}`;
-      case 0x02:
-        return `hide if ${s} = ${val}`;
-      case 0x03:
-        return `show if ${s} = ${val} (no-data marker)`;
-      case 0x05:
-        return `only if ${s} ≥ ${val}`;
-      case 0x06:
-        return `only if ${s} ≤ ${val}`;
-      default:
-        return `${s} op 0x${op.toString(16)} ${val} — unknown, ignored`;
-    }
-  });
-}
-
-export function isVisible(node: FaceNode, sim: Sim, t: TimeParts): boolean {
-  const bind = node.subs?.find((s) => s.tag === TAG.bind);
-
-  if (!bind) return true;
-  // bit 0x80 in op shows up on exclusive variants (0x81) — semantically the same equality.
-  // op 0x03 = "value == no-data marker" (e.g. heart rate 1000), also equality.
-  // op 0x05/0x06 = inclusive range bounds (>=/<=) — seen paired on minute-bucket highlights
-  // (e.g. Digital__281__Metaball's metaball chain, each node lit for its 5-minute window).
-  const entries = parseBind(bind.hex).map((e) => ({ ...e, op: e.op & 0x7f }));
-  const of = (...ops: number[]) => entries.filter((e) => ops.includes(e.op));
-  const value = (e: BindEntry) => idValue(e.id, sim, t);
-  const equals = of(0x01, 0x03);
-
-  if (equals.length && !equals.some((e) => value(e) === e.val)) return false;
-  return (
-    of(0x02).every((e) => value(e) !== e.val) &&
-    of(0x05).every((e) => value(e) >= e.val) &&
-    of(0x06).every((e) => value(e) <= e.val)
-  );
-}
-
-// widget-slot (0x85) tiles: each slot's sibling "skin" Groups (per-metric alternates sharing one
-// frame position, e.g. Function's temperature/steps/heart-rate tiles) are gated by a bind
-// condition on a synthetic id — confirmed on the real device: 0x79 + slotIndex (0x5f's own
-// byte 0), compared for equality against the metric's position in that slot's own list (0x5f's
-// activeIdx). Neither side is a real sim data source, so synthesize it as an override before
-// drawing — the existing isVisible()/parseBind machinery does the rest, unchanged.
-export function withSlotOverrides(nodes: FaceNode[], sim: Sim): Sim {
-  const extra: Record<number, number> = {};
-  const walk = (n: FaceNode) => {
-    if (n.tag === 0x85) {
-      const sf = n.subs?.find((s) => s.tag === 0x5f);
-      const v = sf ? unhex(sf.hex || "") : null;
-
-      if (v && v.length >= 3) extra[0x79 + v[0]] = v[2]; // v[0]=slotIndex, v[2]=activeIdx
-    }
-    n.subs?.forEach(walk);
-  };
-
-  nodes.forEach(walk);
-  return Object.keys(extra).length ? { ...sim, overrides: { ...extra, ...sim.overrides } } : sim;
-}
-
 /** withSlotOverrides over the Doc model — same synthetic 0x79 + slotIndex, read off SlotLayers. */
 export function withSlotOverridesDoc(layers: readonly Layer[], sim: Sim): Sim {
   const extra: Record<number, number> = {};
@@ -498,20 +413,54 @@ export function withSlotOverridesDoc(layers: readonly Layer[], sim: Sim): Sim {
   return Object.keys(extra).length ? { ...sim, overrides: { ...extra, ...sim.overrides } } : sim;
 }
 
-/** All data sources appearing in the face — the list the simulator panel offers to override. */
-export function collectIds(face: Face): { id: number; max: number }[] {
-  const ids = new Map<number, number>();
-  const walk = (n: FaceNode) => {
-    if (n.tag === TAG.struct && n.meta) {
-      const { id, max } = metaInfo(n);
-
-      if (id) ids.set(id, max || ids.get(id) || 0);
+/** collectSlots over the Doc model — a SlotLayer already carries what the 0x5f body encodes. */
+export function collectSlotsDoc(layers: readonly Layer[]): SlotInfo[] {
+  const out: SlotInfo[] = [];
+  const walk = (ls: readonly Layer[]) => {
+    for (const l of ls) {
+      if (l.kind === "slot") out.push({ index: l.index, activeIdx: l.active, ids: [...l.metrics] });
+      if (l.kind === "group") walk(l.children);
+      if (l.kind === "raw" && l.children) walk(l.children);
     }
-    if (n.tag === TAG.bind)
-      for (const e of parseBind(n.hex)) if (e.id) ids.set(e.id, ids.get(e.id) || 0);
-    n.subs?.forEach(walk);
   };
 
-  face.screens.forEach(walk);
+  walk(layers);
+  return out.sort((a, b) => a.index - b.index);
+}
+
+/** describeBind over decoded conditions — same wording, no hex to parse. */
+export function describeConditions(conditions: readonly Condition[]): string[] {
+  return conditions.map(({ source, op, value }) => {
+    const s = sourceLabel(source);
+
+    switch (op) {
+      case "eq":
+        return `show if ${s} = ${value}`;
+      case "ne":
+        return `hide if ${s} = ${value}`;
+      case "noData":
+        return `show if ${s} = ${value} (no-data marker)`;
+      case "gte":
+        return `only if ${s} ≥ ${value}`;
+      case "lte":
+        return `only if ${s} ≤ ${value}`;
+    }
+  });
+}
+
+/** collectIds over the Doc model: a layer's own source plus every source its conditions gate on. */
+export function collectIdsDoc(doc: Doc): { id: number; max: number }[] {
+  const ids = new Map<number, number>();
+  const walk = (ls: readonly Layer[]) => {
+    for (const l of ls) {
+      if (l.kind !== "group" && l.kind !== "raw" && l.meta.source)
+        ids.set(l.meta.source, l.meta.max || ids.get(l.meta.source) || 0);
+      for (const c of l.conditions) if (c.source) ids.set(c.source, ids.get(c.source) || 0);
+      if (l.kind === "group") walk(l.children);
+      if (l.kind === "raw" && l.children) walk(l.children);
+    }
+  };
+
+  doc.screens.forEach((s) => walk(s.layers));
   return [...ids.entries()].map(([id, max]) => ({ id, max })).sort((a, b) => a.id - b.id);
 }

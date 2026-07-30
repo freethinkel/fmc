@@ -4,7 +4,7 @@
 // <hash>.png), fonts/<name> (raw TTF). Supported: shapes, static images, literal
 // text, hour/minute/second hands, and digital fields (time/date/battery/steps/…) whose
 // template resolves to known #tag#s. Everything else is skipped and reported.
-import { hex, TAG, type Face, type FaceNode, type Resource } from "../wf";
+import { hex, TAG, type Face, type FaceNode, type Resource } from "../../format";
 import {
   argb,
   cropOpaque,
@@ -16,7 +16,7 @@ import {
   tinted,
   unb64,
 } from "./assets";
-import { SCREEN } from "../screen";
+import { SCREEN } from "../../render/screen";
 import {
   classifyText,
   DIGITS,

@@ -3,8 +3,13 @@
 // same file rebuilds to without the detour.
 import { test, expect } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
-import { parseBin, buildBin, hex } from "../src/lib/modules/editor/lib/wf";
-import { fromLegacy, toLegacy, framesOf, type Layer } from "../src/lib/modules/editor/lib/doc";
+import { parseBin, buildBin, hex } from "../src/lib/modules/editor/core/format";
+import {
+  fromLegacy,
+  toLegacy,
+  framesOf,
+  type Layer,
+} from "../src/lib/modules/editor/core/document/doc";
 
 const FIXTURES = readdirSync("tests/__fixtures__").filter((f) => f.endsWith(".bin"));
 

@@ -4,8 +4,22 @@
 //
 // Every device-verified layout rule lives in render.ts's comments; this file deliberately
 // doesn't restate them, so there's one place to correct when the next face disagrees.
-import { framesOf, ringColorOf, type Doc, type GroupLayer, type ImageId, type Layer } from "./doc";
-import { idValue, timeParts, withSlotOverridesDoc, type Sim, type TimeParts } from "./sources";
+import {
+  framesOf,
+  ringColorOf,
+  type Doc,
+  type GroupLayer,
+  type ImageId,
+  type Layer,
+  type NodeId,
+} from "../document/doc";
+import {
+  idValue,
+  timeParts,
+  withSlotOverridesDoc,
+  type Sim,
+  type TimeParts,
+} from "../document/sources";
 import {
   bmpOf,
   ringBmpOf,
@@ -19,12 +33,24 @@ import {
 import { drawProceduralArc, drawSector, hexRGB, progressFrac } from "./arc";
 import { CENTER, SCREEN } from "./screen";
 
+/** One layer drawn at a scale it doesn't have yet — what a corner drag shows while it lasts.
+ *  Rescaling the assets per pointermove costs a decode per frame; this costs a matrix. `ax`/`ay`
+ *  is the point that stays put: the anchored corner, or a hand's rotation centre. */
+export interface ResizePreview {
+  id: NodeId;
+  kw: number;
+  kh: number;
+  ax: number;
+  ay: number;
+}
+
 interface Env {
   ctx: Ctx | null;
   store: ImageStore;
   sim: Sim;
   t: TimeParts;
   hits: LayerHit[] | null;
+  preview?: ResizePreview | null;
   /** screen-wide source id -> ring, so a number sharing an id shows that ring's percent */
   arcs: Map<number, Extract<Layer, { kind: "ring" }>>;
 }
@@ -64,6 +90,35 @@ function blit(env: Env, l: Layer, b: Drawable, x: number, y: number): Size {
 }
 
 function drawLayer(env: Env, l: Layer, place: Place = {}): Size | null {
+  const pv = env.preview?.id === l.id ? env.preview : null;
+
+  if (!pv) return drawPlain(env, l, place);
+  // scale the drawn pixels around the anchor, then move the hits the same way — the layer's own
+  // draw code stays unaware it's being previewed
+  const from = env.hits?.length ?? 0;
+
+  env.ctx?.save();
+  env.ctx?.translate(pv.ax, pv.ay);
+  env.ctx?.scale(pv.kw, pv.kh);
+  env.ctx?.translate(-pv.ax, -pv.ay);
+  const size = drawPlain(env, l, place);
+
+  env.ctx?.restore();
+  for (let i = from; i < (env.hits?.length ?? 0); i++) {
+    const h = env.hits![i];
+
+    env.hits![i] = {
+      ...h,
+      x: pv.ax + (h.x - pv.ax) * pv.kw,
+      y: pv.ay + (h.y - pv.ay) * pv.kh,
+      w: h.w * pv.kw,
+      h: h.h * pv.kh,
+    };
+  }
+  return size && { w: size.w * pv.kw, h: size.h * pv.kh };
+}
+
+function drawPlain(env: Env, l: Layer, place: Place = {}): Size | null {
   if (!visible(l, env.sim, env.t)) return null;
   if (l.kind === "group") return drawGroup(env, l, place);
   if (l.kind === "raw") return null; // preview/name nodes aren't drawn
@@ -328,6 +383,7 @@ export function renderDoc(
   store: ImageStore,
   screen: "main" | "aod",
   sim: Sim,
+  preview?: ResizePreview | null,
 ): LayerHit[] {
   const hits: LayerHit[] = [];
   const scr = doc.screens.find((s) => s.kind === screen) ?? doc.screens[0];
@@ -339,6 +395,7 @@ export function renderDoc(
     t: timeParts(sim),
     hits,
     arcs: collectArcs(layers),
+    preview,
   };
 
   ctx.clearRect(0, 0, SCREEN, SCREEN);

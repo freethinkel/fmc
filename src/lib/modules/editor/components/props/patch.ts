@@ -1,11 +1,11 @@
-// One checkpointed patch, shared by every inspector section: undo history is per edit, so
-// each field write goes through the model rather than mutating the node in the component.
+// One checkpointed patch, shared by every inspector section: undo history is per edit, so each
+// field write goes through the model rather than rebuilding the layer in the component.
 import { editorModel } from "../../model";
-import type { FaceNode } from "../../lib/wf";
+import type { Layer, NodeId } from "../../core/document/doc";
 
-export const set = (node: FaceNode, patch: Partial<FaceNode>) => {
+export const set = (id: NodeId, patch: Partial<Layer>) => {
   editorModel.checkpoint();
-  editorModel.patched({ node, patch });
+  editorModel.layerPatched({ id, patch });
 };
 
 export const num = (s: string) => Number(s) || 0;

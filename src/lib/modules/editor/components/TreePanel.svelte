@@ -3,88 +3,63 @@
   import { Button } from "$lib/shared/components/button";
   import { Icon, type IconName } from "$lib/shared/components/icon";
   import { Menu, MenuItem } from "$lib/shared/components/menu";
-  import { TAG, unhex, type FaceNode } from "../lib/wf";
-  import { metaInfo, pickerLabel, describeBind } from "../lib/sources";
-  import { contains, findParent } from "../lib/tree";
+  import { TAG } from "../core/format";
+  import { pickerLabel, describeConditions } from "../core/document/sources";
+  import { contains, parentOf } from "../core/document/edits";
+  import { framesOf, type Layer, type NodeId, type Screen } from "../core/document/doc";
   import { editorModel } from "../model";
   const {
-    $editor: editor,
+    $doc: doc,
+    $screen: screen,
+    $sel: sel,
+    $selected: selected,
     select,
     selectToggled,
-    selectedNodes,
-    addNode,
-    addSlotRequested,
-    addWidgetRequested,
-    deleteWidget,
-    duplicateSelected,
-    groupSelected,
-    ungroupSelected,
-    moveNode,
+    nodeAdded,
+    slotAdded,
+    widgetAdded,
+    deleteRequested,
+    duplicateRequested,
+    groupRequested,
+    ungroupRequested,
+    moveRequested,
   } = editorModel;
 
-  const tagNames = {
-    [TAG.main]: "Screen",
-    [TAG.aod]: "AOD",
+  // A Doc layer is already interpreted, so the tree lists layers only — the struct/pivot/fmt/frame
+  // rows the old TLV tree showed are fields on the layer now, edited in the inspector.
+  const kindNames: Record<Layer["kind"], string> = {
+    image: "Image",
+    number: "Number",
+    hand: "Hand",
+    ring: "Progress ring",
+    slot: "Widget slot",
+    group: "Group",
+    raw: "Node",
+  };
+  const kindIcons: Record<Layer["kind"], IconName> = {
+    image: "image",
+    number: "hash",
+    hand: "clock-3",
+    ring: "loader",
+    slot: "square-dashed",
+    group: "folder",
+    raw: "box",
+  };
+  // the handful of raw tags that do turn up, so their rows aren't all called "Node"
+  const rawNames: Record<number, string> = {
     [TAG.name]: "Name",
     [TAG.preview]: "Preview",
-    [TAG.image]: "Image",
-    [TAG.number]: "Number",
-    [TAG.group]: "Group",
-    [TAG.hand]: "Hand",
-    [TAG.struct]: "struct",
-    [TAG.bind]: "cond",
-    [TAG.pivot]: "pivot",
-    [TAG.fmt]: "format",
-    [TAG.frame]: "frame",
     [TAG.pvStruct]: "preview",
-    0x38: "Widget 0x38",
-    0x80: "Arc",
-    0x81: "Progress ring",
-    0x82: "Arc 0x82",
-    0x85: "Widget slot",
   };
 
-  const tagIcons: Record<number, IconName> = {
-    [TAG.main]: "monitor",
-    [TAG.aod]: "moon",
-    [TAG.name]: "type",
-    [TAG.preview]: "eye",
-    [TAG.image]: "image",
-    [TAG.number]: "hash",
-    [TAG.group]: "folder",
-    [TAG.hand]: "clock-3",
-    [TAG.struct]: "braces",
-    [TAG.bind]: "git-branch",
-    [TAG.pivot]: "crosshair",
-    [TAG.fmt]: "braces",
-    [TAG.frame]: "film",
-    [TAG.pvStruct]: "eye",
-    0x80: "circle",
-    0x81: "loader",
-    0x82: "circle",
-    0x85: "square-dashed",
-  };
+  export function layerLabel(l: Layer) {
+    let s = l.kind === "raw" ? (rawNames[l.tag] ?? `0x${l.tag.toString(16)}`) : kindNames[l.kind];
 
-  export function nodeLabel(n: FaceNode) {
-    let s = tagNames[n.tag as keyof typeof tagNames] || `0x${n.tag.toString(16)}`;
-    const st = n.tag === TAG.struct ? n : n.subs?.find((c) => c.tag === TAG.struct);
-
-    if (st?.meta) {
-      const { id } = metaInfo(st);
-
-      if (id) s += ` · ${pickerLabel(id)}`;
-    }
-    // a condition node's own row: show what it gates, not just "cond"
-    if (n.tag === TAG.bind) s += ` · ${describeBind(n.hex).join(", ") || "empty"}`;
-    if (n.tag === 0x85) {
-      // 0x5f: [slotIndex][count][activeIdx][count × metric id] — show the currently assigned metric
-      const sf = n.subs?.find((c) => c.tag === 0x5f);
-      const v = sf?.hex ? unhex(sf.hex) : null;
-      const activeId = v && v.length >= 3 ? v[3 + v[2]] : undefined;
-
-      if (activeId != null) s += ` · ${pickerLabel(activeId)}`;
-    }
-    if (n._kind) s += ` · ${n._kind}`;
+    if (l.kind !== "group" && l.kind !== "raw" && l.meta.source)
+      s += ` · ${pickerLabel(l.meta.source)}`;
+    if (l.kind === "slot") s += ` · ${pickerLabel(l.metrics[l.active])}`;
+    if (l.kind === "hand" && l.meta.source) s += ` · hand`;
+    if (l.conditions.length) s += ` · ${describeConditions(l.conditions).join(", ")}`;
     return s;
   }
 
@@ -96,89 +71,112 @@
     const t = e.target as HTMLInputElement;
     const files = t.files;
 
-    if (files?.length) addWidgetRequested({ kind, files: [...files] });
+    if (files?.length) widgetAdded({ kind, files: [...files] });
     t.value = "";
   }
 
-  const picked = $derived(selectedNodes($editor));
-  const isPicked = (n: FaceNode) => picked.includes(n);
+  const currentScreen = $derived($doc?.screens.find((s) => s.kind === $screen) ?? null);
+  const pickedIds = $derived(new Set($selected.map((l) => l.id)));
+  const isPicked = (id: NodeId) => pickedIds.has(id);
 
-  // grouping happens at screen level only, and one parent at a time — see groupSelected
+  // grouping happens at screen level only, and one parent at a time — see groupRequested
   const canGroup = $derived.by(() => {
-    const face = $editor.face;
-
-    if (!face || !picked.length) return false;
-    const parents = picked.map((n) => findParent(face.screens, n));
-
-    return parents.every((p) => p === parents[0] && (p?.tag === TAG.main || p?.tag === TAG.aod));
+    if (!$doc || !$selected.length) return false;
+    return $selected.every((l) => parentOf($doc, l.id) === null);
   });
+  const selIsGroup = $derived($selected.length === 1 && $selected[0].kind === "group");
 
-  // ponytail: a modifier click toggles one node — shift does the same as ctrl rather than
+  // ponytail: a modifier click toggles one layer — shift does the same as ctrl rather than
   // selecting a range, which would need the visible rows flattened into a list first
-  function onRowClick(n: FaceNode, e: MouseEvent) {
-    if (e.shiftKey || e.metaKey || e.ctrlKey) selectToggled(n);
-    else select(n);
+  function onRowClick(id: NodeId, e: MouseEvent) {
+    if (e.shiftKey || e.metaKey || e.ctrlKey) selectToggled(id);
+    else select(id);
   }
 
   // Right-click menu, positioned at the pointer inside .tree-panel. Same actions as the
   // toolbar's "…" — declared once in the layerActions snippet below.
   let ctx = $state<{ x: number; y: number } | null>(null);
 
-  function onRowMenu(n: FaceNode, e: MouseEvent) {
+  function onRowMenu(id: NodeId, e: MouseEvent) {
     e.preventDefault();
-    if (!isPicked(n)) select(n); // right-clicking outside the selection moves it, like a file manager
+    if (!isPicked(id)) select(id); // right-clicking outside the selection moves it, like a file manager
     const r = (e.currentTarget as HTMLElement).closest(".tree-panel")!.getBoundingClientRect();
 
     ctx = { x: e.clientX - r.left, y: e.clientY - r.top };
   }
 
-  const openNodes = new SvelteSet(); // accordion: closed by default, keyed by the node itself (tree is mutable, refs are stable)
+  // accordion: closed by default, keyed by layer id — ids survive an immutable edit, object
+  // references don't
+  const openNodes = new SvelteSet<NodeId>();
 
   // reveal the selection: clicking a widget on the canvas must open the accordion down to its
-  // row, otherwise the selected node isn't even mounted
+  // row, otherwise the selected layer isn't even mounted
   $effect(() => {
-    const { face, sel } = $editor;
-
-    if (!face || !sel) return;
-    for (let p = findParent(face.screens, sel); p; p = findParent(face.screens, p))
-      openNodes.add(p);
+    if (!$doc || !$sel) return;
+    for (let p = parentOf($doc, $sel); p; p = parentOf($doc, p.id)) openNodes.add(p.id);
+    if (currentScreen) openNodes.add(currentScreen.id);
   });
 
-  function toggleOpen(n: FaceNode, e: Event) {
+  function toggleOpen(id: NodeId, e: Event) {
     e.stopPropagation();
-    if (openNodes.has(n)) openNodes.delete(n);
-    else openNodes.add(n);
+    if (openNodes.has(id)) openNodes.delete(id);
+    else openNodes.add(id);
   }
 
-  // Native HTML5 drag & drop. Three drop zones: the top/bottom quarter of a row reorders next
-  // to it (across parents too — moveNode fixes the coordinates up), the middle of a *group* row
+  // Native HTML5 drag & drop. Three drop zones: the top/bottom quarter of a row reorders next to
+  // it (across parents too — the model fixes the coordinates up), the middle of a *group* row
   // drops into that group.
-  // $state.raw, not $state: a proxied node would break identity checks against the tree
-  let drag = $state.raw<FaceNode | null>(null);
-  let dropAt = $state.raw<{ node: FaceNode; after: boolean; into: boolean } | null>(null);
+  let drag = $state.raw<NodeId | null>(null);
+  let dropAt = $state.raw<{ id: NodeId; after: boolean; into: boolean } | null>(null);
 
-  function onDragStart(n: FaceNode, e: DragEvent) {
-    drag = n;
+  function onDragStart(id: NodeId, e: DragEvent) {
+    drag = id;
     e.dataTransfer?.setData("text/plain", ""); // Firefox needs payload to start a drag
     if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
   }
 
-  function onDragOver(n: FaceNode, parent: FaceNode | null, e: DragEvent) {
-    // no parent = a screen row: it can still take children, but only by dropping into it
-    if (!drag || contains(drag, n)) return;
+  function onDragOver(l: Layer, e: DragEvent) {
+    const dragged = drag && $doc ? findDragged() : null;
+
+    // dropping a layer into its own subtree would detach it from the document
+    if (!dragged || contains(dragged, l.id)) return;
     e.preventDefault();
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const rel = (e.clientY - r.top) / r.height;
-    const groupish = n.tag === TAG.group || !parent;
 
-    dropAt = { node: n, after: rel > 0.5, into: groupish && rel > 0.25 && rel < 0.75 };
+    // only a group's middle is a drop-into zone — nothing else can hold children
+    dropAt = {
+      id: l.id,
+      after: rel > 0.5,
+      into: l.kind === "group" && rel > 0.25 && rel < 0.75,
+    };
   }
 
-  function onDrop(n: FaceNode, e: DragEvent) {
+  const findDragged = () =>
+    $doc && drag ? ($selected.find((l) => l.id === drag) ?? layerById(drag)) : null;
+
+  function layerById(id: NodeId): Layer | null {
+    const walk = (ls: readonly Layer[]): Layer | null => {
+      for (const l of ls) {
+        if (l.id === id) return l;
+        const hit = walk(childrenOf(l));
+
+        if (hit) return hit;
+      }
+      return null;
+    };
+
+    return $doc ? walk(currentScreen?.layers ?? []) : null;
+  }
+
+  const childrenOf = (l: Layer): readonly Layer[] =>
+    l.kind === "group" ? l.children : l.kind === "raw" ? (l.children ?? []) : [];
+
+  function onDrop(l: Layer, e: DragEvent) {
     e.preventDefault();
-    // the list is reversed, so dropping visually below the target means earlier in subs
-    if (drag && dropAt?.node === n)
-      moveNode({ node: drag, target: n, after: !dropAt.after, into: dropAt.into });
+    // the list is reversed, so dropping visually below the target means earlier in layer order
+    if (drag && dropAt?.id === l.id)
+      moveRequested({ id: drag, target: l.id, after: !dropAt.after, into: dropAt.into });
     drag = dropAt = null;
   }
 </script>
@@ -210,7 +208,7 @@
     <Menu align="start">
       {#snippet trigger({ toggle })}
         <span class="tool-slot" title="Add a layer">
-          <Button kind="secondary" disabled={!$editor.face} onClick={toggle}>
+          <Button kind="secondary" disabled={!$doc} onClick={toggle}>
             <Icon name="plus" size={16} />
           </Button>
         </span>
@@ -224,13 +222,13 @@
       <MenuItem onClick={() => fileInput.hand?.click()}>
         <Icon name="clock-3" size={14} /> Hand…
       </MenuItem>
-      <MenuItem onClick={() => addNode("ring")}>
+      <MenuItem onClick={() => nodeAdded("ring")}>
         <Icon name="loader" size={14} /> Progress ring
       </MenuItem>
-      <MenuItem onClick={() => addNode("group")}>
+      <MenuItem onClick={() => nodeAdded("group")}>
         <Icon name="folder" size={14} /> Group
       </MenuItem>
-      <MenuItem onClick={() => addSlotRequested()}>
+      <MenuItem onClick={() => slotAdded()}>
         <Icon name="square-dashed" size={14} /> Widget slot
       </MenuItem>
     </Menu>
@@ -238,7 +236,7 @@
     <Menu>
       {#snippet trigger({ toggle })}
         <span class="tool-slot" title="Selected layer">
-          <Button kind="ghost" disabled={!$editor.sel} onClick={toggle}>
+          <Button kind="ghost" disabled={!$sel} onClick={toggle}>
             <Icon name="ellipsis" size={16} />
           </Button>
         </span>
@@ -247,10 +245,8 @@
     </Menu>
   </div>
   <div class="list">
-    {#if $editor.face}
-      {#each $editor.face.screens.filter((s) => s.tag === $editor.screenTag) as scr}
-        {@render treeNode(scr, 0, null)}
-      {/each}
+    {#if currentScreen}
+      {@render screenRow(currentScreen)}
     {:else}
       <p class="empty">Drop a .bin here or grab one from the marketplace.</p>
     {/if}
@@ -277,61 +273,91 @@
 />
 
 {#snippet layerActions()}
-  <MenuItem onClick={duplicateSelected}>
+  <MenuItem onClick={duplicateRequested}>
     <Icon name="copy" size={14} /> Duplicate
   </MenuItem>
-  {#if picked.length === 1 && $editor.sel?.tag === TAG.group}
-    <MenuItem onClick={ungroupSelected}>
+  {#if selIsGroup}
+    <MenuItem onClick={ungroupRequested}>
       <Icon name="folder-open" size={14} /> Ungroup
     </MenuItem>
   {:else if canGroup}
-    <MenuItem onClick={groupSelected}>
+    <MenuItem onClick={groupRequested}>
       <Icon name="folder" size={14} /> Group
     </MenuItem>
   {/if}
-  <MenuItem danger onClick={deleteWidget}>
+  <MenuItem danger onClick={deleteRequested}>
     <Icon name="trash" size={14} /> Delete
   </MenuItem>
 {/snippet}
 
-{#snippet treeNode(n: FaceNode, depth: number, parent: FaceNode | null)}
-  {@const nodeIcon = tagIcons[n.tag] || "box"}
-  <!-- reversed: subs order is draw order, so the last sub is the topmost layer and goes first -->
-  {@const kids = (n.subs || []).filter((c) => c.subs || c.tag === TAG.struct).reverse()}
+<!-- The screen is not a layer, so its row is its own thing: it can't be dragged, and it has no
+     drop zone either. ponytail: moving a layer back out to the top level is done by dropping it
+     next to another top-level row, which is how it already worked in practice. -->
+{#snippet screenRow(s: Screen)}
+  {@const kids = [...s.layers].reverse()}
   <button
     type="button"
     class="node-row"
-    class:selected={isPicked(n)}
-    class:primary={$editor.sel === n && picked.length > 1}
-    class:dragging={drag === n}
-    class:drop-into={dropAt?.node === n && dropAt.into}
-    class:drop-before={dropAt?.node === n && !dropAt.into && !dropAt.after}
-    class:drop-after={dropAt?.node === n && !dropAt.into && dropAt.after}
+    style="padding-inline-start: 0.5rem"
+    onclick={() => select(null)}
+  >
+    {#if kids.length}
+      <Icon
+        name="chevron-right"
+        size={12}
+        class={openNodes.has(s.id) ? "chevron open" : "chevron"}
+        onclick={(e: MouseEvent) => toggleOpen(s.id, e)}
+      />
+    {:else}
+      <span class="chevron-spacer"></span>
+    {/if}
+    <Icon name={s.kind === "aod" ? "moon" : "monitor"} size={14} class="node-icon" />
+    <span class="label">{s.kind === "aod" ? "AOD" : "Screen"}</span>
+  </button>
+  {#if kids.length && openNodes.has(s.id)}
+    {#each kids as l (l.id)}
+      {@render treeNode(l, 1)}
+    {/each}
+  {/if}
+{/snippet}
+
+{#snippet treeNode(l: Layer, depth: number)}
+  <!-- reversed: layer order is draw order, so the last one is topmost and goes first -->
+  {@const kids = [...childrenOf(l)].reverse()}
+  <button
+    type="button"
+    class="node-row"
+    class:selected={isPicked(l.id)}
+    class:primary={$sel === l.id && $selected.length > 1}
+    class:dragging={drag === l.id}
+    class:drop-into={dropAt?.id === l.id && dropAt.into}
+    class:drop-before={dropAt?.id === l.id && !dropAt.into && !dropAt.after}
+    class:drop-after={dropAt?.id === l.id && !dropAt.into && dropAt.after}
     style="padding-inline-start: {0.5 + depth * 0.75}rem"
-    draggable={!!parent}
-    onclick={(e) => onRowClick(n, e)}
-    oncontextmenu={(e) => onRowMenu(n, e)}
-    ondragstart={(e) => onDragStart(n, e)}
-    ondragover={(e) => onDragOver(n, parent, e)}
-    ondrop={(e) => onDrop(n, e)}
+    draggable="true"
+    onclick={(e) => onRowClick(l.id, e)}
+    oncontextmenu={(e) => onRowMenu(l.id, e)}
+    ondragstart={(e) => onDragStart(l.id, e)}
+    ondragover={(e) => onDragOver(l, e)}
+    ondrop={(e) => onDrop(l, e)}
     ondragend={() => (drag = dropAt = null)}
   >
     {#if kids.length}
       <Icon
         name="chevron-right"
         size={12}
-        class={openNodes.has(n) ? "chevron open" : "chevron"}
-        onclick={(e: MouseEvent) => toggleOpen(n, e)}
+        class={openNodes.has(l.id) ? "chevron open" : "chevron"}
+        onclick={(e: MouseEvent) => toggleOpen(l.id, e)}
       />
     {:else}
       <span class="chevron-spacer"></span>
     {/if}
-    <Icon name={nodeIcon} size={14} class="node-icon" />
-    <span class="label">{nodeLabel(n)}</span>
+    <Icon name={kindIcons[l.kind]} size={14} class="node-icon" />
+    <span class="label">{layerLabel(l)}</span>
   </button>
-  {#if kids.length && openNodes.has(n)}
-    {#each kids as c}
-      {@render treeNode(c, depth + 1, n)}
+  {#if kids.length && openNodes.has(l.id)}
+    {#each kids as c (c.id)}
+      {@render treeNode(c, depth + 1)}
     {/each}
   {/if}
 {/snippet}

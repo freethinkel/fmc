@@ -6,10 +6,11 @@
 // itself uses for regenPreviews()/previewBlob().
 import { describe, test, expect } from "vitest";
 import pixelmatch from "pixelmatch";
-import { parseBin, TAG } from "$lib/modules/editor/lib/wf";
-import { render as drawFace } from "$lib/modules/editor/lib/render";
-import { defaultSim } from "$lib/modules/editor/lib/sources";
-import { bitmapOf } from "$lib/modules/editor/lib/pixels";
+import { parseBin, TAG } from "$lib/modules/editor/core/format";
+import { renderDoc } from "$lib/modules/editor/core/render/render";
+import { fromLegacy, framesOf } from "$lib/modules/editor/core/document/doc";
+import { defaultSim } from "$lib/modules/editor/core/document/sources";
+import { decodeAssets } from "$lib/modules/editor/core/render/pixels";
 
 import analogUrl from "./__fixtures__/Analog__287__Simple_Dial.bin?url";
 import digitalUrl from "./__fixtures__/Digital__281__Metaball.bin?url";
@@ -193,13 +194,12 @@ function imageData(source: CanvasImageSource, w: number, h: number): Uint8Clampe
   return cx.getImageData(0, 0, w, h).data;
 }
 
-describe("render() output matches embedded preview", () => {
+describe("renderDoc() output matches embedded preview", () => {
   for (const { name, url, time, sim: simOverrides, maxDiffRatio } of CASES) {
     test(name, async () => {
       const buf = await fetch(url).then((r) => r.arrayBuffer());
-      const face = parseBin(buf);
-
-      for (const res of face.resources) res.bitmap = await bitmapOf(res);
+      const { doc } = fromLegacy(parseBin(buf));
+      const cache = await decodeAssets(doc.images);
 
       const row = document.createElement("div");
 
@@ -222,16 +222,19 @@ describe("render() output matches embedded preview", () => {
         ...simOverrides, // per-case steps/calories/temp/... to match a specific baked value
       };
 
-      drawFace(canvas.getContext("2d")!, face, TAG.main, sim);
+      renderDoc(canvas.getContext("2d")!, doc, { assets: doc.images, cache }, "main", sim);
 
-      const scr = face.screens.find((s) => s.tag === TAG.main) ?? face.screens[0];
-      const pv = scr.subs
-        ?.find((s) => s.tag === TAG.preview)
-        ?.subs?.find((s) => s.tag === TAG.pvStruct);
-      const r = face.resources[pv!.images![0]];
+      // the embedded 0x28 preview has no widget shape of its own, so it stays a raw layer and is
+      // found by tag; its child is what carries the thumbnail asset
+      const scr = doc.screens.find((s) => s.kind === "main") ?? doc.screens[0];
+      const pv = scr.layers.find((l) => l.kind === "raw" && l.tag === TAG.preview);
+      const holder = pv?.kind === "raw" ? pv.children?.find((c) => framesOf(c).length) : null;
+      const previewId = framesOf(holder!)[0];
+      const r = doc.images.get(previewId)!;
+      const baked = cache.get(previewId)!.bitmap!;
 
       const actual = imageData(canvas, r.w, r.h);
-      const expected = imageData(r.bitmap!, r.w, r.h);
+      const expected = imageData(baked, r.w, r.h);
 
       const diff = new Uint8ClampedArray(r.w * r.h * 4);
       // no diffMask here — the default pixelmatch overlay dims the matching pixels and

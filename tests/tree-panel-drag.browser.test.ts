@@ -18,14 +18,14 @@ test("dragging a layer row onto its sibling reorders the tree", async () => {
     editorModel.loadRequested({ buf, label: "drag-test" });
   });
   render(TreePanel);
-  const subs = editorModel.$editor.getState().face!.screens[0].subs!;
-  const before = [...subs]; // node refs — sibling tags repeat, so identity is what tells order apart
+  // layer ids — sibling kinds repeat, so identity is what tells the order apart
+  const before = editorModel.$doc.getState()!.screens[0].layers.map((l) => l.id);
 
   document.querySelector(".chevron")!.dispatchEvent(new MouseEvent("click", { bubbles: true })); // expand
   await new Promise((r) => setTimeout(r, 50));
   const rows = document.querySelectorAll(".node-row");
 
-  // rows[0] is the screen itself; rows[1..] are its children, topmost layer first (reversed subs)
+  // rows[0] is the screen itself; rows[1..] are its layers, topmost first (reversed layer order)
   expect(rows.length).toBeGreaterThan(3);
 
   const dragged = before.at(-1)!; // rows[1]
@@ -33,7 +33,7 @@ test("dragging a layer row onto its sibling reorders the tree", async () => {
 
   await userEvent.dragAndDrop(rows[1] as HTMLElement, rows[3] as HTMLElement);
 
-  const after = editorModel.$editor.getState().face!.screens[0].subs!;
+  const after = editorModel.$doc.getState()!.screens[0].layers.map((l) => l.id);
 
   expect(after).not.toEqual(before);
   expect(after.length).toBe(before.length);

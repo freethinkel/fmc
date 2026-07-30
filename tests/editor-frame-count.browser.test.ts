@@ -1,9 +1,10 @@
-// sourceIdSet: picking a value-indexed source (AM/PM 2, weekday 7, month 12) resizes the
-// widget's frame run to the length that source needs, and the frames a shrink drops stay
-// recoverable until the selection moves to another layer.
+// sourceIdSet: picking a value-indexed source (AM/PM 2, weekday 7, month 12) resizes the widget's
+// frame run to the length that source needs, and the frames a shrink drops stay recoverable until
+// the selection moves to another layer.
 import { test, expect } from "vitest";
-import { TAG, parseBin } from "$lib/modules/editor/lib/wf";
-import { structOf } from "$lib/modules/editor/lib/tree";
+import { parseBin } from "$lib/modules/editor/core/format";
+import { findLayer } from "$lib/modules/editor/core/document/edits";
+import { framesOf, type NodeId } from "$lib/modules/editor/core/document/doc";
 import { editorModel } from "$lib/modules/editor/model";
 import url from "./__fixtures__/Analog__287__Simple_Dial.bin?url";
 
@@ -11,12 +12,16 @@ const AMPM = 0x13,
   WEEKDAY = 0x18,
   MONTH = 0x15;
 
+const doc = () => editorModel.$doc.getState()!;
+const layers = () => doc().screens[0].layers;
+const framesOfId = (id: NodeId) => framesOf(findLayer(doc(), id)!);
+
 // the effect encodes placeholder frames, so the store lands a tick or two later
-async function setSource(node: unknown, id: number, want: number) {
-  editorModel.sourceIdSet({ node, id } as never);
-  for (let i = 0; i < 50 && structOf(node as never)?.images?.length !== want; i++)
+async function setSource(id: NodeId, source: number, want: number) {
+  editorModel.sourceIdSet({ id, source });
+  for (let i = 0; i < 100 && framesOfId(id).length !== want; i++)
     await new Promise((r) => setTimeout(r, 5));
-  return structOf(node as never)!.images!;
+  return [...framesOfId(id)];
 }
 
 test("frame count follows the source, and a trim is undone by switching back", async () => {
@@ -30,41 +35,41 @@ test("frame count follows the source, and a trim is undone by switching back", a
 
     editorModel.loadRequested({ buf, label: "frames" });
   });
-  const scr = editorModel.$editor.getState().face!.screens[0];
-  const widget = scr.subs!.find((n) => n.tag !== TAG.hand && structOf(n)?.images?.length)!;
+  const widget = layers().find((l) => l.kind !== "hand" && framesOf(l).length)!;
+  const id = widget.id;
 
-  editorModel.select(widget);
+  editorModel.select(id);
 
-  const week = await setSource(widget, WEEKDAY, 7);
+  expect(await setSource(id, WEEKDAY, 7)).toHaveLength(7);
 
-  expect(week).toHaveLength(7);
-
-  // growing needs a fresh consecutive run (base + count is all the format stores)
-  const month = [...(await setSource(widget, MONTH, 12))];
+  const month = await setSource(id, MONTH, 12);
 
   expect(month).toHaveLength(12);
-  expect(month.every((ri, i) => i === 0 || ri === month[i - 1] + 1)).toBe(true);
   // the frames it already had are carried over, only the tail is new
   expect(month.slice(0, 7)).not.toEqual(month.slice(5));
 
   // shrink, then come straight back — same art, not 12 blank slots
-  expect(await setSource(widget, AMPM, 2)).toEqual(month.slice(0, 2));
-  expect(await setSource(widget, MONTH, 12)).toEqual(month);
+  expect(await setSource(id, AMPM, 2)).toEqual(month.slice(0, 2));
+  expect(await setSource(id, MONTH, 12)).toEqual(month);
 
-  // ...but leaving the layer between the shrink and the re-grow makes the trim permanent:
-  // the 5 dropped frames are no longer remembered, so coming back allocates blank ones
-  await setSource(widget, WEEKDAY, 7);
-  editorModel.select(scr.subs!.find((n) => n !== widget)!);
-  editorModel.select(widget);
-  const regrown = await setSource(widget, MONTH, 12);
+  // ...but leaving the layer between the shrink and the re-grow makes the trim permanent: the 5
+  // dropped frames are no longer remembered, so coming back allocates blank ones
+  await setSource(id, WEEKDAY, 7);
+  editorModel.select(layers().find((l) => l.id !== id)!.id);
+  editorModel.select(id);
+  const regrown = await setSource(id, MONTH, 12);
 
   expect(regrown).toHaveLength(12);
-  expect(regrown.slice(0, 7)).not.toEqual(month.slice(0, 7)); // reallocated from the 7 it had
+  expect(regrown.slice(7)).not.toEqual(month.slice(7)); // the tail was reallocated
 
-  // whatever the shuffling, the file still builds: the run stayed consecutive
-  const out = await editorModel.buildCurrentBin();
+  // A Doc layer holds a plain list of asset ids, but the FILE stores a frame run as a base
+  // offset + count — so whatever the shuffling, the run toLegacy lays out has to come out
+  // consecutive, or buildBin's refTailBytes would reject it.
+  const built = parseBin(await editorModel.buildCurrentBin());
+  const rebuilt = built.screens[0]
+    .subs!.map((n) => n.subs?.find((k) => k.images?.length === 12)?.images)
+    .find(Boolean)!;
 
-  expect(structOf(parseBin(out).screens[0].subs![scr.subs!.indexOf(widget)])!.images).toHaveLength(
-    12,
-  );
+  expect(rebuilt).toHaveLength(12);
+  expect(rebuilt.every((ri, i) => i === 0 || ri === rebuilt[i - 1] + 1)).toBe(true);
 });
