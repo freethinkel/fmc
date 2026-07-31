@@ -7,9 +7,10 @@ import type { Resource } from "../src/lib/modules/editor/core/format";
 import { patchLayer } from "../src/lib/modules/editor/core/document/edits";
 import { blankDoc } from "../src/lib/modules/editor/core/document/factory";
 import { saveNames, withNames } from "../src/lib/modules/editor/core/document/names";
+import { PREVIEW, SCREEN } from "../src/lib/modules/editor/core/render/screen";
 
 const res = (w: number, h: number): Resource => ({ cf: 4, w, h, data: new Uint8Array(w * h * 2) });
-const fresh = () => blankDoc("Fresh", res(2, 2), res(466, 466));
+const fresh = () => blankDoc("Fresh", res(PREVIEW, PREVIEW), res(SCREEN, SCREEN));
 
 test("names come back on a document reparsed from the same record", () => {
   const doc = fresh();
