@@ -99,6 +99,9 @@
       display: flex;
       gap: 0.25rem;
     }
+    .grow {
+      flex: 1;
+    }
     .icon-btn {
       display: flex;
       align-items: center;

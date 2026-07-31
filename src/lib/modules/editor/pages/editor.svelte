@@ -10,7 +10,8 @@
   import { renderDoc, type ResizePreview } from "../core/render/render";
   import { CENTER, SCREEN } from "../core/render/screen";
   import type { ImageStore, LayerHit } from "../core/render/canvas";
-  import { framesOf, type Layer, type NodeId } from "../core/document/doc";
+  import { framesOf, isPlaced, type Layer, type NodeId } from "../core/document/doc";
+  import { containerOrigin, findLayer, parentOf } from "../core/document/edits";
   import { editorModel } from "../model";
   import TreePanel from "../components/TreePanel.svelte";
   import PropsPanel from "../components/PropsPanel.svelte";
@@ -264,27 +265,53 @@
 
   const hitOf = (id: NodeId | null) => (id ? hits.findLast((h) => h.layer.id === id) : undefined);
 
-  function drawBox(ctx: CanvasRenderingContext2D, id: NodeId) {
-    const h = hitOf(id);
+  /** Where a layer WOULD sit when the render skipped it: a widget slot with placeholders turned
+   *  off draws nothing at all, and a layer a condition hides this frame is in the same boat — so
+   *  selecting one from the tree left no box anywhere and no way to tell where it is. */
+  function ghostBox(id: NodeId | null) {
+    const l = id && $doc ? findLayer($doc, id) : null;
 
-    if (!h) return;
+    if (!l || !isPlaced(l) || !l.meta.w || !l.meta.h) return null;
+    // containerOrigin counts the layer it is given, so ask about the PARENT — a group child's
+    // own x/y is measured from its group's frame
+    const o = containerOrigin($doc!, parentOf($doc!, l.id)?.id ?? null);
+
+    return { x: o.x + l.x, y: o.y + l.y, w: l.meta.w, h: l.meta.h, ghost: true as const };
+  }
+
+  const boxOf = (id: NodeId | null) => hitOf(id) ?? ghostBox(id);
+
+  function outline(
+    ctx: CanvasRenderingContext2D,
+    b: { x: number; y: number; w: number; h: number },
+    ghost = false,
+  ) {
     ctx.save();
     ctx.strokeStyle = "#4af";
     ctx.lineWidth = 2;
-    ctx.setLineDash([6, 4]);
-    ctx.strokeRect(h.x - 1, h.y - 1, h.w + 2, h.h + 2);
+    // a longer dash for the ghost, so "here, but not drawn" doesn't read as an ordinary selection
+    ctx.setLineDash(ghost ? [2, 5] : [6, 4]);
+    ctx.strokeRect(b.x - 1, b.y - 1, b.w + 2, b.h + 2);
     ctx.restore();
+  }
+
+  function drawBox(ctx: CanvasRenderingContext2D, id: NodeId) {
+    const b = boxOf(id);
+
+    if (b) outline(ctx, b, "ghost" in b);
   }
 
   function drawSelection(ctx: CanvasRenderingContext2D, id: NodeId | null) {
     const h = hitOf(id);
 
-    if (!h) return;
+    if (!h) {
+      const g = ghostBox(id);
+
+      if (g) outline(ctx, g, true);
+      return;
+    }
+    outline(ctx, h);
     ctx.save();
-    ctx.strokeStyle = "#4af";
-    ctx.lineWidth = 2;
-    ctx.setLineDash([6, 4]);
-    ctx.strokeRect(h.x - 1, h.y - 1, h.w + 2, h.h + 2);
     // a locked layer gets the outline and nothing else: no handles to grab, no pivot to aim
     if (h.layer.locked) {
       ctx.restore();

@@ -124,6 +124,12 @@ export function newRing(): RingLayer {
 
 /** What a fresh widget slot offers the wearer. Any set works — the list lives in the file, not
  *  the firmware — these are just the four the corpus's own slots lean on. */
+/** Every metric id a stock slot offers, ordered by how often the corpus uses it (100 files, 14
+ *  of them with slots, 23 slots). What each one means comes from ID_LABELS; the three that read
+ *  as guesses there are guesses here too — the companion-app icons a face ships are its own art
+ *  and are NOT laid out in metric order, so they can't be used to name the ids. */
+export const SLOT_METRIC_CHOICES = [0x1c, 0x48, 0x24, 0x19, 0x76, 0x8b, 0x6a, 0x1a, 0x5f, 0x6d];
+/** What a freshly added slot offers — the four the corpus's own slots lean on. */
 export const SLOT_METRICS = [0x19, 0x1a, 0x1c, 0x24]; // steps, heart rate, calories, battery
 export const SLOT_SIZE = 136; // the tile Function's slots use; meta w/h and the art both take it
 

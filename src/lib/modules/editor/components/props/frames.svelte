@@ -5,6 +5,7 @@
   import { FRAME_LABELS, pickerLabel } from "../../core/document/sources";
   import { editorModel } from "../../model";
   import { set } from "./patch";
+  import FrameThumb from "./frame-thumb.svelte";
 
   const { layer }: { layer: Layer } = $props();
   const { $doc: doc, $cache: cache, replaceImageRequested, frameMoved } = editorModel;
@@ -27,26 +28,6 @@
   );
 
   const setSlotActive = (active: number) => set(layer.id, { active } as Partial<Layer>);
-
-  function thumbURL(id: ImageId) {
-    const a = $doc?.images.get(id);
-    const c = document.createElement("canvas");
-
-    if (!a) return c.toDataURL();
-    c.width = a.w;
-    c.height = a.h;
-    const bitmap = $cache.get(id)?.bitmap;
-
-    if (bitmap) c.getContext("2d")?.drawImage(bitmap, 0, 0);
-    return c.toDataURL();
-  }
-  function downloadRes(id: ImageId) {
-    const a = document.createElement("a");
-
-    a.href = thumbURL(id);
-    a.download = `${id}.png`;
-    a.click();
-  }
 </script>
 
 {#if slotInfo}
@@ -67,19 +48,6 @@
     <span class="muted-label">placeholder (widget-edit screen only)</span>
     <div class="images">{@render thumb(images[0])}</div>
   </div>
-  {#if images.length > 1}
-    <div>
-      <span class="muted-label">companion-app menu icons</span>
-      <div class="images">
-        {#each images.slice(1) as ri, i}
-          <div class="thumb-col" class:active={i === slotInfo.activeIdx}>
-            {@render thumb(ri)}
-            <span class="thumb-cap">{pickerLabel(slotInfo.ids[i])}</span>
-          </div>
-        {/each}
-      </div>
-    </div>
-  {/if}
 {:else if images && images.length > 1}
   <!-- A multi-frame widget is indexed BY VALUE (images[value % count]), so the order is
        data, not decoration — a set imported in the wrong order shows the wrong day/month
@@ -131,25 +99,7 @@
 {/if}
 
 {#snippet thumb(id: ImageId)}
-  {@const a = $doc?.images.get(id)}
-  <div class="thumb-wrap">
-    <label title="{id} · {a?.w}×{a?.h} · cf{a?.cf} — click to replace" class="thumb">
-      <img src={thumbURL(id)} alt={id} />
-      <input
-        type="file"
-        accept="image/*"
-        hidden
-        onchange={(e) => {
-          const file = e.currentTarget.files?.[0];
-
-          if (file) replaceImageRequested({ id, file });
-        }}
-      />
-    </label>
-    <button title="Download PNG" onclick={() => downloadRes(id)} class="dl-btn">
-      <Icon name="download" size={14} />
-    </button>
-  </div>
+  <FrameThumb {id} />
 {/snippet}
 
 <style>
@@ -204,59 +154,9 @@
     flex-wrap: wrap;
     gap: 0.5rem;
   }
-  .thumb-wrap {
-    position: relative;
-  }
-  .thumb-col {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.125rem;
-    max-width: 4rem;
-  }
   .thumb-cap {
     font-size: 0.625rem;
     text-align: center;
     color: oklch(from var(--color-text) l c h / 55%);
-  }
-  .thumb-col.active .thumb-cap {
-    color: var(--color-accent);
-  }
-  .thumb {
-    display: block;
-    cursor: pointer;
-    border-radius: 0.375rem;
-    overflow: hidden;
-    background: repeating-conic-gradient(
-        oklch(from var(--color-text) l c h / 15%) 0 25%,
-        oklch(from var(--color-text) l c h / 8%) 0 50%
-      )
-      0 0 / 0.75rem 0.75rem;
-
-    img {
-      display: block;
-      max-width: 3.5rem;
-      max-height: 3.5rem;
-    }
-  }
-  .dl-btn {
-    position: absolute;
-    top: 0.125rem;
-    inset-inline-end: 0.125rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0.125rem;
-    border: none;
-    border-radius: 0.25rem;
-    background: oklch(from var(--color-background) l c h / 80%);
-    color: var(--color-text);
-    cursor: pointer;
-    opacity: 0;
-    transition: opacity 0.15s ease;
-  }
-  .thumb-wrap:hover .dl-btn,
-  .dl-btn:focus-visible {
-    opacity: 1;
   }
 </style>

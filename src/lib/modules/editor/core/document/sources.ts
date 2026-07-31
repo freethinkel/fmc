@@ -53,6 +53,9 @@ export const ID_LABELS: Record<number, string> = {
   0x49: "steps (slot)",
   0x5f: "temperature",
   0x6a: "steps (slot)?",
+  // slot-menu ids seen in the corpus with nothing to pin them to: a face's picker icons are its
+  // own art and aren't laid out in metric order, so they can't name these
+  0x6d: "slot metric 0x6d ?",
   0x6c: "steps (slot)?",
   0x6f: "steps (slot)?",
   0x70: "hour (hand)",

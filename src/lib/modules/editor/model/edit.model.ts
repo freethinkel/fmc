@@ -96,6 +96,11 @@ export const moveRequested = createEvent<{
 }>();
 export const conditionToggled = createEvent<NodeId>();
 export const slotBindSet = createEvent<{ id: NodeId; slot: number | null; metric?: number }>();
+/** The metrics a slot offers the wearer — its own 0x5f list, which the companion app shows as a
+ *  menu. Adding one needs an icon frame, so it goes through an effect; removing one is a plain
+ *  edit. See SLOT_METRIC_CHOICES for what the corpus uses. */
+export const slotMetricAdded = createEvent<{ id: NodeId; metric: number }>();
+export const slotMetricRemoved = createEvent<{ id: NodeId; metric: number }>();
 export const frameMoved = createEvent<{ id: NodeId; from: number; to: number }>();
 export const alignRequested = createEvent<AlignDir>();
 /** meta.source — the data a widget reads. Not a plain patch: value-indexed sources also fix the
@@ -181,6 +186,29 @@ const addAodFx = attach({
     const background = await add(await opaqueBlack(SCREEN, SCREEN));
 
     return { assets, cache, screen: blankScreen("aod", preview, background) };
+  },
+});
+
+// A metric's icon is the frame beside it, so adding one means encoding a blank tile for the
+// companion app's picker to show until the user drops art on it.
+const addSlotMetricFx = attach({
+  source: $doc,
+  async effect(doc, { id, metric }: { id: NodeId; metric: number }) {
+    const l = doc ? findLayer(doc, id) : null;
+
+    if (!doc || l?.kind !== "slot" || l.locked || l.metrics.includes(metric)) return null;
+    const r = await blankFrame(SLOT_SIZE, SLOT_SIZE);
+    const frame = newImageId();
+
+    return {
+      id,
+      metric,
+      frame,
+      assets: new Map<ImageId, ImageAsset>([
+        [frame, { id: frame, cf: r.cf, w: r.w, h: r.h, data: r.data }],
+      ]),
+      cache: new Map<ImageId, ImageCache>([[frame, { bitmap: r.bitmap }]]),
+    };
   },
 });
 
@@ -343,6 +371,59 @@ sample({
   filter: Boolean,
   fn: ({ layer }) => layer.id,
   target: select,
+});
+
+sample({
+  clock: slotMetricAdded,
+  target: addSlotMetricFx,
+});
+sample({
+  clock: addSlotMetricFx.doneData,
+  filter: Boolean,
+  fn: ({ id, metric, frame, assets }) => ({
+    edit: (doc: Doc) => {
+      const l = findLayer(doc, id);
+
+      if (l?.kind !== "slot") return doc;
+      // frames[0] is the on-watch placeholder, so a metric's icon appends after the rest
+      return patchLayer(withAssets(doc, assets), id, {
+        metrics: [...l.metrics, metric],
+        frames: [...l.frames, frame],
+      });
+    },
+  }),
+  target: committed,
+});
+sample({
+  clock: addSlotMetricFx.doneData,
+  filter: Boolean,
+  fn: ({ cache }) => cache,
+  target: cachePatched,
+});
+sample({
+  clock: slotMetricRemoved,
+  source: $doc,
+  filter: (doc, { id, metric }) => {
+    const l = doc ? findLayer(doc, id) : null;
+
+    // the last one can't go: a slot with no metrics has nothing to offer
+    return l?.kind === "slot" && !l.locked && l.metrics.includes(metric) && l.metrics.length > 1;
+  },
+  fn: (_doc, { id, metric }) => ({
+    edit: (doc: Doc) => {
+      const l = findLayer(doc, id);
+
+      if (l?.kind !== "slot") return doc;
+      const at = l.metrics.indexOf(metric);
+
+      return patchLayer(doc, id, {
+        metrics: l.metrics.filter((_, i) => i !== at),
+        frames: l.frames.filter((_, i) => i !== at + 1), // its icon goes with it
+        active: Math.min(l.active, l.metrics.length - 2),
+      });
+    },
+  }),
+  target: committed,
 });
 
 sample({
@@ -726,6 +807,7 @@ sample({
   clock: [
     addWidgetFx.failData,
     addSlotFx.failData,
+    addSlotMetricFx.failData,
     addAodFx.failData,
     sourceIdFx.failData,
     alignFx.failData,

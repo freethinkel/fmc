@@ -20,17 +20,33 @@
     ID_LABELS,
   } from "../../core/document/sources";
   import { slotBindingOf } from "../../core/document/edits";
+  import { SLOT_METRIC_CHOICES } from "../../core/document/factory";
   import { editorModel } from "../../model";
   import { num, set } from "./patch";
+  import FrameThumb from "./frame-thumb.svelte";
 
   const { layer }: { layer: Layer } = $props();
-  const { $doc: doc, $screen: screen, conditionToggled, sourceIdSet, slotBindSet } = editorModel;
+  const {
+    $doc: doc,
+    $cache: cache,
+    $screen: screen,
+    conditionToggled,
+    sourceIdSet,
+    slotBindSet,
+    slotMetricAdded,
+    slotMetricRemoved,
+  } = editorModel;
 
   // A fresh layer object arrives on every edit, so these are plain deriveds.
   const placed = $derived(isPlaced(layer) ? layer : null);
   const meta = $derived(placed?.meta ?? null);
   const images = $derived(framesOf(layer));
   const num_ = $derived(layer.kind === "number" ? layer : null);
+  const slot = $derived(layer.kind === "slot" ? layer : null);
+  // what this slot could still offer — the corpus's full menu minus what it already has
+  const addable = $derived(
+    slot ? SLOT_METRIC_CHOICES.filter((m) => !slot.metrics.includes(m)) : [],
+  );
   const ring = $derived(layer.kind === "ring" ? layer : null);
   const conditions = $derived(layer.conditions);
   const bindLines = $derived(describeConditions(conditions));
@@ -169,6 +185,41 @@
     <button type="button" class="check-label" onclick={() => setFmt(num_.digits, !num_.padZero)}
       >leading zeros</button
     >
+  </div>
+{/if}
+{#if slot}
+  <div>
+    <span class="muted-label">slot metrics</span>
+    <!-- the menu the companion app shows for this slot; the wearer picks one of these on the
+         watch, and a sibling layer bound to it (see "widget slot binding") is what draws -->
+    {#each slot.metrics as m, i (m)}
+      <div class="row">
+        <!-- frames[0] is the on-watch placeholder, so metric i wears frames[i + 1]. Same
+             component as the frame list: click to replace the art, hover to download it. -->
+        <FrameThumb id={slot.frames[i + 1]} size={2} />
+        <span class="field-label grow">{pickerLabel(m)}</span>
+        <button
+          type="button"
+          class="icon-btn"
+          title="Remove this metric"
+          disabled={slot.metrics.length < 2}
+          onclick={() => slotMetricRemoved({ id: layer.id, metric: m })}
+        >
+          <Icon name="x" size={14} />
+        </button>
+      </div>
+    {/each}
+    {#if addable.length}
+      <Select
+        value=""
+        options={[
+          { value: "", label: "add a metric…" },
+          ...addable.map((m) => ({ value: String(m), label: pickerLabel(m) })),
+        ]}
+        onChange={(v) => v && slotMetricAdded({ id: layer.id, metric: Number(v) })}
+      />
+    {/if}
+    <p class="hint-xs">each metric gets a blank icon for the app's picker — drop art on it below</p>
   </div>
 {/if}
 {#if showSlotBind}
