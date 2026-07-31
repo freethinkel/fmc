@@ -2,8 +2,8 @@
 // object: the document is immutable, so every edit hands back fresh layer objects and a stored
 // reference would go stale on the next keystroke.
 import { combine, createEvent, createStore, sample } from "effector";
-import { findLayer } from "../core/document/edits";
-import type { Layer, NodeId, Screen } from "../core/document/doc";
+import { findLayer, parentOf, siblingsOf } from "../core/document/edits";
+import type { Doc, Layer, NodeId, Screen } from "../core/document/doc";
 import { $doc } from "./doc.model";
 import { $rightPanel } from "./ui.model";
 
@@ -26,6 +26,17 @@ export const selectToggled = createEvent<NodeId>(); // ctrl/cmd/shift-click: add
 export const screenSet = createEvent<Screen["kind"]>();
 /** The whole selection at once, primary first — the one place $sel and $more are written. */
 export const selectionSet = createEvent<readonly NodeId[]>();
+/** ⌘A — every top-level layer of the screen being edited. Group children come along with their
+ *  group, the way selecting a group already behaves everywhere else. */
+export const selectAllRequested = createEvent();
+/** Keyboard navigation: the next (+1) or previous (-1) sibling of the primary selection. */
+export const siblingSelected = createEvent<1 | -1>();
+/** Step into a group (+1 — its first child) or out to the parent (-1). */
+export const nestSelected = createEvent<1 | -1>();
+
+// ---- helpers ----
+const layersOf = (doc: Doc, kind: Screen["kind"]): readonly Layer[] =>
+  doc.screens.find((s) => s.kind === kind)?.layers ?? [];
 
 // ---- business logic ----
 sample({
@@ -57,6 +68,40 @@ sample({
 sample({
   clock: screenSet,
   target: $screen,
+});
+sample({
+  clock: selectAllRequested,
+  source: { doc: $doc, screen: $screen },
+  filter: ({ doc }) => Boolean(doc),
+  fn: ({ doc, screen }) => layersOf(doc!, screen).map((l) => l.id),
+  target: selectionSet,
+});
+// Sibling and nesting steps collapse a multi-selection down to the one layer they land on —
+// that is what makes them useful for walking a tree with the keyboard.
+sample({
+  clock: siblingSelected,
+  source: { doc: $doc, sel: $sel },
+  filter: ({ doc, sel }) => Boolean(doc && sel),
+  fn: ({ doc, sel }, dir) => {
+    const row = siblingsOf(doc!, sel!);
+    const i = row.findIndex((l) => l.id === sel);
+
+    // wraps: a row of two is faster to walk round than to reverse direction on
+    return i < 0 ? sel : row[(i + dir + row.length) % row.length].id;
+  },
+  target: select,
+});
+sample({
+  clock: nestSelected,
+  source: { doc: $doc, sel: $sel },
+  filter: ({ doc, sel }) => Boolean(doc && sel),
+  fn: ({ doc, sel }, dir) => {
+    if (dir < 0) return parentOf(doc!, sel!)?.id ?? sel;
+    const l = findLayer(doc!, sel!);
+
+    return l?.kind === "group" ? (l.children[0]?.id ?? sel) : sel;
+  },
+  target: select,
 });
 // opening a layer's properties is what the user means by clicking it
 sample({

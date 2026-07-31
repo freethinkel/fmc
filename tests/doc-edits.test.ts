@@ -22,6 +22,7 @@ import {
   patchLayer,
   removeLayer,
   setSlotBinding,
+  shiftLayer,
   slotBindingOf,
   ungroup,
   usedAssets,
@@ -174,4 +175,22 @@ test("dropping a layer drops its assets from the file, not from other users of t
 
   expect(slotsLeft).toBe(1);
   expect(after).toBe(before);
+});
+
+// The canvas drag used to clamp a group's frame to >=0 on the theory that it is unsigned in the
+// file, which left the inspector able to type a coordinate the mouse could not reach. It isn't:
+// the 0x48 frame is read with i16 and written back as two's complement, same as a widget's x/y.
+test("a group dragged off the top-left corner keeps its negative frame through the file", () => {
+  const doc = load();
+  const group = flatten(doc).find((l) => l.kind === "group") as GroupLayer;
+  const moved = patchLayer(
+    doc,
+    group.id,
+    shiftLayer(group, -200 - group.frame.x, -37) as Partial<Layer>,
+  );
+  const at = flatten(moved).findIndex((l) => l.id === group.id);
+  // ids are handed out fresh on every parse, so the round-tripped layer is found by position
+  const back = flatten(fromLegacy(parseBin(buildBin(toLegacy(moved)))).doc)[at] as GroupLayer;
+
+  expect(back.frame).toMatchObject({ x: -200, y: group.frame.y - 37 });
 });
