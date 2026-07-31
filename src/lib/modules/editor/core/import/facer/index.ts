@@ -478,11 +478,11 @@ export async function facerToFace(files: File[]): Promise<{ face: Face; skipped:
     const color = rgba(argb(ambient ? (l.low_power_color ?? l.color) : l.color));
     const labelsOf = (p: Part) => (!isLive(p) ? [p.text] : p.type === "select" ? p.labels : DIGITS);
     // one vertical metric across every part so the whole row shares a baseline
-    const tall = glyphCell(cls.parts.flatMap(labelsOf), font, sizePx);
+    const tall = glyphCell(cls.parts.flatMap(labelsOf), font);
     const sprites = new Map<string, number[]>(); // hour and minute share one digit set
     const cellOf = async (p: Part) => {
       const labels = labelsOf(p);
-      const cell = { ...glyphCell(labels, font, sizePx), h: tall.h, base: tall.base };
+      const cell = { ...glyphCell(labels, font), h: tall.h, base: tall.base };
       const key = labels.join("|");
 
       if (!sprites.has(key)) {
