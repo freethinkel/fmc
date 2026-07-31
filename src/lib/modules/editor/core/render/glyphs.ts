@@ -33,7 +33,7 @@ export const ensureFont = (font: string) => document.fonts.load(font).catch(() =
 // edge (`cx += b.width` in drawDigits), so unequal widths make the value jitter as it changes.
 // `spacing` widens the cell without moving the glyph — tracking, since there is nothing between
 // two sprites to space out.
-export function glyphCell(labels: string[], font: string, sizePx: number, spacing = 0): Cell {
+export function glyphCell(labels: string[], font: string, spacing = 0): Cell {
   const meas = new OffscreenCanvas(4, 4).getContext("2d")!;
 
   meas.font = font;
@@ -45,8 +45,12 @@ export function glyphCell(labels: string[], font: string, sizePx: number, spacin
     const m = meas.measureText(s);
 
     w = Math.max(w, Math.ceil(m.width));
-    asc = Math.max(asc, m.actualBoundingBoxAscent || sizePx * 0.75);
-    desc = Math.max(desc, m.actualBoundingBoxDescent || sizePx * 0.25);
+    // measured, never guessed from the point size: digits have no descender, so a guessed one
+    // fires or doesn't depending on whether the browser reports an exact 0 — which differs
+    // between platforms and even between sizes of the same face, and makes the cell's height
+    // jump by a quarter of the point size instead of following it
+    asc = Math.max(asc, m.actualBoundingBoxAscent || 0);
+    desc = Math.max(desc, m.actualBoundingBoxDescent || 0);
   }
   const base = Math.ceil(asc) + 2;
 
@@ -85,6 +89,33 @@ export type GlyphSpec = {
   spacing: number;
 };
 
+/** The point size whose cell comes out `h` tall. One ratio step misses by up to a few pixels —
+ *  the cell rounds ascent and descent up separately, so its height isn't proportional to the
+ *  point size — so the ratio is re-applied against a fresh measurement until it lands. Measuring
+ *  is measureText only, no rasterizing. */
+export async function sizeForHeight(spec: GlyphSpec, h: number): Promise<number> {
+  const labels = spec.labels.filter((s) => s.length);
+  let size = spec.sizePx,
+    best = size,
+    err = Infinity;
+
+  for (let i = 0; i < 6; i++) {
+    const font = fontOf(spec.family, size, spec.weight, spec.italic);
+
+    await ensureFont(font);
+    const cell = glyphCell(labels, font, spec.spacing);
+    const off = Math.abs(cell.h - h);
+
+    if (off < err) {
+      err = off;
+      best = size;
+    }
+    if (!off) break;
+    size = Math.max(1, (size * (h - CELL_PAD)) / Math.max(1, cell.h - CELL_PAD));
+  }
+  return best;
+}
+
 /** The sprites a spec describes, encoded and decoded: what the generator stores and what a resize
  *  re-renders. Empty labels are dropped — the caller's text field is free-form. */
 export async function glyphSprites(spec: GlyphSpec, cf = GLYPH_CF) {
@@ -92,7 +123,7 @@ export async function glyphSprites(spec: GlyphSpec, cf = GLYPH_CF) {
   const font = fontOf(spec.family, spec.sizePx, spec.weight, spec.italic);
 
   await ensureFont(font);
-  const cell = glyphCell(labels, font, spec.sizePx, spec.spacing);
+  const cell = glyphCell(labels, font, spec.spacing);
 
   return Promise.all(
     renderGlyphs(labels, font, spec.color, cell).map(async (canvas) => ({

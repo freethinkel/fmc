@@ -14,7 +14,7 @@ import {
   invertAsset,
   resourceFromFile,
 } from "../core/render/pixels";
-import { CELL_PAD, glyphSprites, type GlyphSpec } from "../core/render/glyphs";
+import { glyphSprites, sizeForHeight, type GlyphSpec } from "../core/render/glyphs";
 import {
   framesOf,
   type Doc,
@@ -210,9 +210,9 @@ const resizeImageFx = attach({
     const spec = glyphSpecs.get(l.id);
 
     if (spec && spec.labels.length === frames.length) {
-      // the cell's padding doesn't scale, so it comes off both heights before the ratio
-      const k = Math.max(0.05, (th - CELL_PAD) / Math.max(1, first.h - CELL_PAD));
-      const next = { ...spec, sizePx: spec.sizePx * k, spacing: spec.spacing * k };
+      const sizePx = await sizeForHeight(spec, th);
+      const k = sizePx / Math.max(0.05, spec.sizePx);
+      const next = { ...spec, sizePx, spacing: spec.spacing * k };
       const sprites = await glyphSprites(next);
 
       frames.forEach((id, i) => {
