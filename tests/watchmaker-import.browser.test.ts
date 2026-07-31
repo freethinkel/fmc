@@ -6,6 +6,7 @@ import { test, expect } from "vitest";
 import { watchmakerToFace } from "$lib/modules/editor/core/import/watchmaker";
 import { TAG, type FaceNode } from "$lib/modules/editor/core/format";
 import { metaInfo } from "$lib/modules/editor/core/document/sources";
+import { CENTER, SCREEN } from "$lib/modules/editor/core/render/screen";
 
 const LAYERS = `
  <Layer type="shape" x="0" y="0" width="512" height="512" shape="Circle" color="000000" opacity="100" display="bd"/>
@@ -52,7 +53,7 @@ test("watchmakerToFace decodes the export and maps hands, screens and skips", as
   expect(aod.tag).toBe(TAG.aod);
   expect(face.name).toBe("Probe Face");
   // a full-screen JPEG (cf 1) background reboots the watch when it leaves AOD — cf 4 only
-  const bgs = face.resources.filter((r) => r.w === 466 && r.h === 466);
+  const bgs = face.resources.filter((r) => r.w === SCREEN && r.h === SCREEN);
 
   expect(bgs).toHaveLength(2); // one per screen
   expect(bgs.map((r) => r.cf)).toEqual([4, 4]);
@@ -64,13 +65,13 @@ test("watchmakerToFace decodes the export and maps hands, screens and skips", as
   expect(hands.map(idOf)).toEqual([0x0a, 0x0e, 0x12]);
   expect(hands.map((h) => structOf(h)._kind)).toEqual(["hour", "minute", "second"]);
 
-  // every hand rotates about the dial centre (466 / 2 = 233), wherever its crop landed
+  // every hand rotates about the dial centre, wherever its crop landed
   for (const h of hands) {
     const st = structOf(h);
     const pv = h.subs!.find((s) => s.tag === TAG.pivot)!;
 
-    expect(Math.abs(st.x! + pv.pivotX! - 233)).toBeLessThanOrEqual(1);
-    expect(Math.abs(st.y! + pv.pivotY! - 233)).toBeLessThanOrEqual(1);
+    expect(Math.abs(st.x! + pv.pivotX! - CENTER)).toBeLessThanOrEqual(1);
+    expect(Math.abs(st.y! + pv.pivotY! - CENTER)).toBeLessThanOrEqual(1);
   }
 
   // display="b" keeps the second hand off the AOD; display="d" is what the battery hand is for

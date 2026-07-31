@@ -67,6 +67,12 @@ export const TAG = {
   number: 0x60,
   group: 0x68,
   hand: 0x70,
+  /** Progress-ring spec, in two flavours: `arc` carries its own radius, `arcClipped` takes one
+   *  from the ring image it is clipped to. See core/render/arc.ts for the body. */
+  arc: 0x5a,
+  arcClipped: 0x5b,
+  /** A widget slot's body: index, the metrics it offers, and the active one. */
+  slot: 0x5f,
 } as const;
 
 // 0x0a/0x0e were swapped until this fix — confirmed by comparing hand geometry in

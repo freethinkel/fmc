@@ -281,9 +281,9 @@ const SERVICE = new Set<number>([
   TAG.pivot,
   TAG.fmt,
   TAG.frame,
-  0x5a,
-  0x5b,
-  0x5f,
+  TAG.arc,
+  TAG.arcClipped,
+  TAG.slot,
 ]);
 
 /** A digit strip is tagged 0x60 in most faces, but the renderer also treats any node with a
@@ -331,7 +331,7 @@ function toLayer(n: FaceNode, ids: readonly ImageId[]): Layer {
     };
     const pivot = sub(n, TAG.pivot);
     const spec = parseArcSpec(n);
-    const slot = sub(n, 0x5f);
+    const slot = sub(n, TAG.slot);
 
     if (pivot)
       return {
@@ -492,7 +492,7 @@ function toNode(l: Layer, runAt: ReadonlyMap<string, number[]>): FaceNode {
     out[2] = l.active;
     out.set(l.metrics, 3);
     out.set(v, 3 + l.metrics.length);
-    subs.push({ tag: 0x5f, hex: hex(out) });
+    subs.push({ tag: TAG.slot, hex: hex(out) });
   }
   return { tag: l.tag, subs };
 }

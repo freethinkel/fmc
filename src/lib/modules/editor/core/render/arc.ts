@@ -1,6 +1,6 @@
 // Progress rings: the 0x5a/0x5b arc spec that 0x80/0x81 widgets carry, and the two ways they
 // are drawn — a ring image clipped to a sector, or a stroked arc when there is no image.
-import { hex, unhex, type FaceNode } from "../format";
+import { hex, TAG, unhex, type FaceNode } from "../format";
 import { CENTER } from "./screen";
 import { goalOf, idValue, type Sim, type TimeParts } from "../document/sources";
 import type { Ctx, Drawable, Hit, Size } from "./canvas";
@@ -20,7 +20,7 @@ export interface ArcSpec {
 
 /** 0x5a/0x5b body: min i32 ‖ max i32 ‖ start i16 (0.1°) ‖ end i16 ‖ width u16 ‖ radius u16. */
 export function parseArcSpec(node: FaceNode): ArcSpec | null {
-  const sp = node.subs?.find((n) => n.tag === 0x5a || n.tag === 0x5b);
+  const sp = node.subs?.find((n) => n.tag === TAG.arc || n.tag === TAG.arcClipped);
 
   if (!sp) return null;
   const v = unhex(sp.hex || "");
@@ -40,16 +40,16 @@ export function parseArcSpec(node: FaceNode): ArcSpec | null {
     start: i16(8) / 10,
     end: i16(10) / 10,
     width: v[12] | (v[13] << 8),
-    radius: sp.tag === 0x5a && v.length >= 16 ? v[14] | (v[15] << 8) : 0,
+    radius: sp.tag === TAG.arc && v.length >= 16 ? v[14] | (v[15] << 8) : 0,
     // 0x5b never has its radius read, so its bytes 14.. are part of the tail
-    rest: hex(v.subarray(sp.tag === 0x5a ? 16 : 14)),
+    rest: hex(v.subarray(sp.tag === TAG.arc ? 16 : 14)),
   };
 }
 
 /** Inverse of parseArcSpec. The decoded head is 16 bytes for 0x5a and 14 for 0x5b (whose radius
  *  is never read), and `rest` carries whatever the file had past that. */
 export function arcSpecHex(spec: Omit<ArcSpec, "kind"> & { kind?: number }): string {
-  const head = spec.kind === 0x5b ? 14 : 16;
+  const head = spec.kind === TAG.arcClipped ? 14 : 16;
   const v = new Uint8Array(head);
   const put = (o: number, n: number, bytes: number) => {
     for (let i = 0; i < bytes; i++) v[o + i] = n >> (8 * i);
