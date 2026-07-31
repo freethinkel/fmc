@@ -16,7 +16,7 @@ import {
   tinted,
   unb64,
 } from "./assets";
-import { SCREEN } from "../../render/screen";
+import { PREVIEW, SCREEN } from "../../render/screen";
 import {
   classifyText,
   DIGITS,
@@ -562,7 +562,7 @@ export async function facerToFace(files: File[]): Promise<{ face: Face; skipped:
   async function screen(tag: number, sh: Sheet, pick: (f: Field) => boolean, ambient: boolean) {
     const subs: FaceNode[] = tag === TAG.main ? [{ tag: TAG.name, text: name }] : [];
 
-    subs.push(preview(await addRes(scaled(sh.base, 270, 270), 4)));
+    subs.push(preview(await addRes(scaled(sh.base, PREVIEW, PREVIEW), 4)));
     subs.push(imgWidget(0, 0, BG_META, await addRes(sh.base, 4)));
     for (const f of fields) if (pick(f)) subs.push(await buildField(f, ambient));
     for (const sel of sels.values())

@@ -89,7 +89,7 @@ export const FRAME_LABELS: Record<number, string[]> = {
 // (0x5f byte 2), only ever seen in visibility conditions.
 export const sourceLabel = (id: number) =>
   ID_LABELS[id] ??
-  (id >= 0x79 && id <= 0x7e ? `slot ${id - 0x79} selection` : `id 0x${id.toString(16)}`);
+  (isSlotSel(id) ? `slot ${id - SLOT_SEL_ID} selection` : `id 0x${id.toString(16)}`);
 
 // The firmware exposes several aliases under one name — two `month`, two `battery`, four
 // `steps (slot)?`. Those are the only entries where the raw id is doing any work, so it's the
