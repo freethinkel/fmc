@@ -12,6 +12,8 @@
   import type { ImageStore, LayerHit } from "../core/render/canvas";
   import { framesOf, isPlaced, type Layer, type NodeId } from "../core/document/doc";
   import { containerOrigin, findLayer, parentOf } from "../core/document/edits";
+  import { snapAxis, snapTargets, type SnapTargets } from "../core/render/snap";
+  import { SNAP_THRESHOLD, GUIDE_WIDTH, GUIDE_COLOR } from "../shared/constants";
   import { editorModel } from "../model";
   import TreePanel from "../components/TreePanel.svelte";
   import PropsPanel from "../components/PropsPanel.svelte";
@@ -252,6 +254,7 @@
         // extra picks get a plain box; the primary one carries the handles and the pivot cross
         for (const l of s.selected.slice(1)) drawBox(ctx, l.id);
         drawSelection(ctx, s.sel);
+        drawGuides(ctx);
       } else {
         ctx.clearRect(0, 0, SCREEN, SCREEN);
       }
@@ -449,6 +452,32 @@
     return null;
   };
 
+  // ---- snapping ----
+  // Targets are collected once on pointerdown: hits is rebuilt every frame, and the dragged
+  // node's own box would otherwise snap to itself. ⌥ holds the drag off the guides.
+  let snapT: SnapTargets | null = null;
+  let cvScale = 1; // canvas units per screen px — the thresholds are in screen px
+  let box0: LayerHit | null = null;
+  let guides: { x: number[]; y: number[] } = { x: [], y: [] };
+
+  function drawGuides(ctx: CanvasRenderingContext2D) {
+    if (!guides.x.length && !guides.y.length) return;
+    ctx.save();
+    ctx.strokeStyle = GUIDE_COLOR;
+    ctx.lineWidth = GUIDE_WIDTH * cvScale;
+    ctx.beginPath();
+    for (const x of guides.x) {
+      ctx.moveTo(x + 0.5, 0);
+      ctx.lineTo(x + 0.5, 466);
+    }
+    for (const y of guides.y) {
+      ctx.moveTo(0, y + 0.5);
+      ctx.lineTo(466, y + 0.5);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
   // ---- selection and drag ----
   type XY = { x: number; y: number };
   // one entry per dragged layer — a multi-selection moves as a block. The layer is captured when
@@ -542,7 +571,15 @@
     const layers = inSelection ? $selected : (select(h.layer.id), [h.layer]);
     const items = layers.map(dragItem).filter((i): i is DragItem => i !== null);
 
-    if (items.length) drag = { p, items, moved: false };
+    if (items.length) {
+      drag = { p, items, moved: false };
+      // the hitbox, not the layer's x/y — a number's box is its composed digits, a hand's the
+      // rotated AABB. Everything in the drag moves by one delta, so snapping this box is enough.
+      box0 = h;
+      snapT = snapTargets(hits, layers);
+      // the canvas doesn't resize mid-drag, so one layout read is enough for the whole gesture
+      cvScale = SCREEN / (canvas?.getBoundingClientRect().width || SCREEN);
+    }
     canvas?.setPointerCapture(e.pointerId);
   }
 
@@ -579,9 +616,25 @@
       d.moved = true;
     }
     const p = canvasXY(e);
-    const dx = Math.round(p.x - d.p.x),
+    let dx = Math.round(p.x - d.p.x),
       dy = Math.round(p.y - d.p.y);
 
+    guides = { x: [], y: [] };
+    if (box0 && snapT && !e.altKey) {
+      const tol = SNAP_THRESHOLD * cvScale;
+      const sx = snapAxis(box0.x + dx, box0.w, snapT.xs, tol);
+      const sy = snapAxis(box0.y + dy, box0.h, snapT.ys, tol);
+
+      if (sx) {
+        dx += Math.round(sx.corr);
+        guides.x = [sx.line];
+      }
+      if (sy) {
+        dy += Math.round(sy.corr);
+        guides.y = [sy.line];
+      }
+    }
+    // one delta for the whole drag, so a multi-selection keeps its shape while it snaps
     for (const it of d.items) moveItem(it, it.x0 + dx, it.y0 + dy);
   }
   function onUp() {
@@ -589,7 +642,8 @@
       if (rz.started) applyResize(rz); // the whole drag lands as one rescale
       rz = null;
     }
-    drag = null;
+    drag = box0 = snapT = null;
+    guides = { x: [], y: [] };
   }
 
   function onKey(e: KeyboardEvent) {
@@ -807,8 +861,8 @@
         <p class="fps" class:slow={fps > 0 && fps < 50}>{fps} fps · {drawMs} ms draw</p>
       {/if}
       <p class="hint">
-        click — select · drag / arrow keys (⇧ ×10) — move · corners — resize (⇧ inverts the aspect
-        lock) · ⌘Z undo
+        click — select · drag / arrow keys (⇧ ×10) — move · ⌥ drag — no snap · corners — resize (⇧
+        inverts the aspect lock) · ⌘Z undo
       </p>
     </section>
 
