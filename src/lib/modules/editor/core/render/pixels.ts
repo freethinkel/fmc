@@ -69,6 +69,14 @@ export async function encodeBitmap(
   return encodePixels(pixelsOf(b, w, h, filter), w, h, cf).data;
 }
 
+/** A canvas as a resource — the encode side of pixelsOf. No bitmap: the caller already has the
+ *  canvas, and `createImageBitmap` on it is cheaper than decoding what was just encoded. */
+export function resourceFromCanvas(canvas: OffscreenCanvas, cf: number): Resource {
+  const { width: w, height: h } = canvas;
+
+  return encodePixels(canvas.getContext("2d")!.getImageData(0, 0, w, h).data, w, h, cf);
+}
+
 /** A dropped/picked image file as a ready-to-use resource (bitmap included). */
 export async function resourceFromFile(file: File, cf: number): Promise<Resource> {
   const img = await createImageBitmap(file);

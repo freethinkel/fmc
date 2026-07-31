@@ -14,8 +14,9 @@
 <style>
   textarea {
     width: 100%;
-    padding: 0.625rem 0.75rem;
+    padding: 0.5rem 0.625rem;
     font: inherit;
+    font-size: 0.75rem;
     color: var(--color-text);
     background: oklch(from var(--color-text) l c h / 5%);
     border: 1px solid transparent;

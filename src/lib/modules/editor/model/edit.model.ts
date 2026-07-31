@@ -5,6 +5,7 @@ import { attach, createEffect, createEvent, createStore, sample } from "effector
 import { PREVIEW, SCREEN } from "../core/render/screen";
 import { renderDoc } from "../core/render/render";
 import { blankFrame, opaqueBlack, resourceFromFile } from "../core/render/pixels";
+import { glyphSprites, type GlyphSpec } from "../core/render/glyphs";
 import {
   addLayer,
   assetsOf,
@@ -48,13 +49,15 @@ import {
 } from "../core/document/doc";
 import { $doc, committed, docLoaded } from "./doc.model";
 import { $screen, $sel, $selected, screenSet, select, selectionSet } from "./selection.model";
-import { $cache, cachePatched } from "./assets.model";
+import { $cache, cachePatched, glyphSpecRemembered } from "./assets.model";
 import { $sim } from "./sim.model";
-import { errored } from "./ui.model";
+import { errored, glyphDialogClosed } from "./ui.model";
 
 /** Figma-style alignment direction. */
 export type AlignDir = "left" | "hcenter" | "right" | "top" | "vcenter" | "bottom";
-export type WidgetKind = "image" | "number" | "hand";
+/** The widgets that are created FROM files. A number isn't one of them — its ten frames start
+ *  blank and are filled from a font (see numberAdded / glyphsRequested). */
+export type WidgetKind = "image" | "hand";
 
 /** Frames dropped by a shrinking source change, keyed by layer. Switching month (12 frames) to
  *  weekday (7) trims the run but keeps the originals here, so switching back restores the art
@@ -70,6 +73,13 @@ const withAssets = (doc: Doc, added: ReadonlyMap<ImageId, ImageAsset>): Doc => (
 export const deleteRequested = createEvent();
 export const nodeAdded = createEvent<"group" | "ring">();
 export const widgetAdded = createEvent<{ kind: WidgetKind; files: File[] }>();
+/** Rasterize a set of labels into the target widget's frames: the ten digits of a number, the
+ *  labels of a value-indexed set. Replaces what the layer draws — the layer itself stays. */
+export type GlyphRequest = GlyphSpec & { target: NodeId };
+export const glyphsRequested = createEvent<GlyphRequest>();
+/** A number widget. Always created empty — ten blank frames, filled from a font afterwards; the
+ *  ten-PNG picker this used to open is what the font generator replaces. */
+export const numberAdded = createEvent();
 export const slotAdded = createEvent();
 /** Give the face an always-on screen. A new document starts with the main screen only, and until
  *  this runs the AOD tab has nothing to show. */
@@ -132,10 +142,51 @@ const addWidgetFx = attach({
     }
     const ids = [...assets.keys()];
     const first = assets.get(ids[0])!;
-    const layer =
-      kind === "image" ? newImage(ids) : kind === "number" ? newNumber(ids) : newHand(ids, first);
 
-    return { screen, assets, cache, layer };
+    return { screen, assets, cache, layer: kind === "image" ? newImage(ids) : newHand(ids, first) };
+  },
+});
+
+// The font generator: one sprite per label, all sharing the widest cell so the value can't shift
+// as it changes — that is the whole point of generating a digit set rather than drawing ten PNGs
+// by hand (drawDigits packs the glyphs edge to edge, so unequal widths make the number jitter).
+const glyphsFx = attach({
+  source: $doc,
+  async effect(doc, spec: GlyphRequest) {
+    const target = doc ? findLayer(doc, spec.target) : null;
+
+    if (!doc || !spec.labels.some((s) => s.length) || !target) return null;
+    if (target.kind === "group" || target.kind === "raw" || target.locked) return null;
+    const assets = new Map<ImageId, ImageAsset>();
+    const cache = new Map<ImageId, ImageCache>();
+
+    for (const { resource: r, bitmap } of await glyphSprites(spec)) {
+      const id = newImageId();
+
+      assets.set(id, { id, cf: r.cf, w: r.w, h: r.h, data: r.data });
+      cache.set(id, { bitmap });
+    }
+    return { spec, ids: [...assets.keys()], assets, cache };
+  },
+});
+
+// Ten transparent frames, one per digit: a number widget whose art comes later, from a font or
+// from PNGs dropped on the frames one at a time. The size is a placeholder — both paths bring
+// their own (replaceImageFx takes the file's, the generator the font cell's).
+const addNumberFx = attach({
+  source: $screen,
+  async effect(screen) {
+    const assets = new Map<ImageId, ImageAsset>();
+    const cache = new Map<ImageId, ImageCache>();
+
+    for (let i = 0; i < 10; i++) {
+      const r = await blankFrame(32, 48);
+      const id = newImageId();
+
+      assets.set(id, { id, cf: r.cf, w: r.w, h: r.h, data: r.data });
+      cache.set(id, { bitmap: r.bitmap });
+    }
+    return { screen, assets, cache, layer: newNumber([...assets.keys()]) };
   },
 });
 
@@ -353,11 +404,15 @@ sample({
   target: addWidgetFx,
 });
 sample({
+  clock: numberAdded,
+  target: addNumberFx,
+});
+sample({
   clock: slotAdded,
   target: addSlotFx,
 });
 sample({
-  clock: [addWidgetFx.doneData, addSlotFx.doneData],
+  clock: [addWidgetFx.doneData, addNumberFx.doneData, addSlotFx.doneData],
   filter: Boolean,
   fn: ({ screen, assets, layer }) => ({
     edit: (doc: Doc) => addLayer(withAssets(doc, assets), screen, layer),
@@ -365,16 +420,57 @@ sample({
   target: committed,
 });
 sample({
-  clock: [addWidgetFx.doneData, addSlotFx.doneData],
+  clock: [addWidgetFx.doneData, addNumberFx.doneData, addSlotFx.doneData],
   filter: Boolean,
   fn: ({ cache }) => cache,
   target: cachePatched,
 });
 sample({
-  clock: [addWidgetFx.doneData, addSlotFx.doneData],
+  clock: [addWidgetFx.doneData, addNumberFx.doneData, addSlotFx.doneData],
   filter: Boolean,
   fn: ({ layer }) => layer.id,
   target: select,
+});
+
+sample({
+  clock: glyphsRequested,
+  target: glyphsFx,
+});
+sample({
+  clock: glyphsFx.doneData,
+  filter: Boolean,
+  fn: ({ spec, ids, assets }) => ({
+    edit: (doc: Doc) => {
+      const l = findLayer(doc, spec.target);
+
+      if (!l || l.kind === "group" || l.kind === "raw") return doc;
+      // frames only: meta (source, accent flag, digit count) is the inspector's, and a
+      // regeneration must not reach over and change it
+      return patchLayer(
+        withAssets(doc, assets),
+        l.id,
+        (l.kind === "number" ? { glyphs: ids } : { frames: ids }) as Partial<Layer>,
+      );
+    },
+  }),
+  target: committed,
+});
+sample({
+  clock: glyphsFx.doneData,
+  filter: Boolean,
+  fn: ({ cache }) => cache,
+  target: cachePatched,
+});
+/** Hand the recipe to the resize, which re-renders rather than rescaling these frames. */
+sample({
+  clock: glyphsFx.doneData,
+  filter: Boolean,
+  fn: ({ spec }) => ({ layer: spec.target, spec }),
+  target: glyphSpecRemembered,
+});
+sample({
+  clock: glyphsFx.done,
+  target: glyphDialogClosed,
 });
 
 sample({
@@ -828,6 +924,8 @@ sample({
 sample({
   clock: [
     addWidgetFx.failData,
+    addNumberFx.failData,
+    glyphsFx.failData,
     addSlotFx.failData,
     addSlotMetricFx.failData,
     addAodFx.failData,

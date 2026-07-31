@@ -6,6 +6,7 @@
   import { authModel } from "$lib/modules/auth/model";
   import { marketModel } from "$lib/modules/market/model";
   import PublishDialog from "../components/PublishDialog.svelte";
+  import GlyphsDialog from "../components/GlyphsDialog.svelte";
   import { bleModel } from "$lib/modules/device/model";
   import { renderDoc, type ResizePreview } from "../core/render/render";
   import { CENTER, SCREEN } from "../core/render/screen";
@@ -983,6 +984,7 @@
 </Dialog>
 
 <PublishDialog />
+<GlyphsDialog />
 
 <ShortcutsDialog open={helpOpen} onClose={() => (helpOpen = false)} />
 

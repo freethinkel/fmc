@@ -21,6 +21,7 @@
     aodRemoved,
     layerFlagsSet,
     widgetAdded,
+    numberAdded,
     deleteRequested,
     duplicateRequested,
     copyRequested,
@@ -74,7 +75,7 @@
   // a <label><input type=file> can't live inside a MenuItem's own <button>
   let fileInput = $state<Record<string, HTMLInputElement | undefined>>({});
 
-  function onAdd(kind: "image" | "number" | "hand", e: Event) {
+  function onAdd(kind: "image" | "hand", e: Event) {
     const t = e.target as HTMLInputElement;
     const files = t.files;
 
@@ -224,14 +225,6 @@
       onchange={(e) => onAdd("image", e)}
     />
     <input
-      bind:this={fileInput.number}
-      type="file"
-      accept="image/*"
-      multiple
-      hidden
-      onchange={(e) => onAdd("number", e)}
-    />
-    <input
       bind:this={fileInput.hand}
       type="file"
       accept="image/*"
@@ -249,8 +242,10 @@
       <MenuItem onClick={() => fileInput.image?.click()}>
         <Icon name="image" size={14} /> Image…
       </MenuItem>
-      <MenuItem onClick={() => fileInput.number?.click()}>
-        <Icon name="hash" size={14} /> Number…
+      <!-- ten blank frames: the art comes from the inspector, either "regenerate from a font"
+           or a PNG dropped on a single frame — no ten-file picker any more -->
+      <MenuItem onClick={() => numberAdded()}>
+        <Icon name="hash" size={14} /> Number
       </MenuItem>
       <MenuItem onClick={() => fileInput.hand?.click()}>
         <Icon name="clock-3" size={14} /> Hand…

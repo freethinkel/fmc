@@ -43,7 +43,7 @@
   {#if $err}
     <p class="error">{$err}</p>
   {/if}
-  <Button size="large" type="submit" kind="primary" disabled={$busy}>Login</Button>
+  <Button type="submit" kind="primary" disabled={$busy}>Login</Button>
   <p class="link">Don't have an account? <a href="/register">Sign up</a></p>
 </form>
 

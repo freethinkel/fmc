@@ -1,0 +1,139 @@
+// Text -> sprites. The format has no text rendering at all: a number widget is ten bitmaps and a
+// weekday selector seven, so every label a face shows has to be rasterized first. Written for the
+// Facer importer, which bakes the same sets out of a template; the editor's own "from a font"
+// generator is the second caller, which is why this sits here and not under import/facer.
+import { resourceFromCanvas } from "./pixels";
+
+export const DIGITS = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
+
+/** cf 5 — RGB565 + 8-bit alpha, the one format that keeps antialiased edges. */
+export const GLYPH_CF = 5;
+
+/** The cell every sprite of a set shares. `base` is the text baseline inside it — Facer positions
+ *  text by its baseline, so a field's y is the layer's y minus this. */
+export interface Cell {
+  w: number;
+  h: number;
+  base: number;
+}
+
+/** A CSS font shorthand — what both measuring and drawing take. */
+export const fontOf = (
+  family: string,
+  sizePx: number,
+  weight: number | string = 400,
+  italic = false,
+) => `${italic ? "italic " : ""}${weight} ${sizePx}px ${family}`;
+
+/** A family may not be rasterized yet (a webfont, or one just registered from a file) — measuring
+ *  before it loads silently falls back to the default face and every metric comes out wrong. */
+export const ensureFont = (font: string) => document.fonts.load(font).catch(() => []);
+
+// One cell wide enough for every label in the set: the number widget lays its glyphs out edge to
+// edge (`cx += b.width` in drawDigits), so unequal widths make the value jitter as it changes.
+// `spacing` widens the cell without moving the glyph — tracking, since there is nothing between
+// two sprites to space out.
+export function glyphCell(labels: string[], font: string, sizePx: number, spacing = 0): Cell {
+  const meas = new OffscreenCanvas(4, 4).getContext("2d")!;
+
+  meas.font = font;
+  let w = 1,
+    asc = 0,
+    desc = 0;
+
+  for (const s of labels) {
+    const m = meas.measureText(s);
+
+    w = Math.max(w, Math.ceil(m.width));
+    asc = Math.max(asc, m.actualBoundingBoxAscent || sizePx * 0.75);
+    desc = Math.max(desc, m.actualBoundingBoxDescent || sizePx * 0.25);
+  }
+  const base = Math.ceil(asc) + 2;
+
+  return { w: Math.max(1, w + CELL_PAD + spacing), h: base + Math.ceil(desc) + 2, base };
+}
+
+/** Room for antialiasing around the glyph, on both axes. Fixed, so it is what a resize has to
+ *  take off both sizes before working out how much the point size itself has to change. */
+export const CELL_PAD = 4;
+
+/** Rasterize each label centered in the shared cell. */
+export function renderGlyphs(labels: string[], font: string, color: string, cell: Cell) {
+  return labels.map((s) => {
+    const c = new OffscreenCanvas(cell.w, cell.h);
+    const cx = c.getContext("2d")!;
+
+    cx.font = font;
+    cx.fillStyle = color;
+    cx.textAlign = "center";
+    cx.textBaseline = "alphabetic";
+    cx.fillText(s, cell.w / 2, cell.base);
+    return c;
+  });
+}
+
+/** Everything needed to rasterize a set — kept around by the editor so a resize can re-render at
+ *  the new size instead of scaling the bitmaps, which is what makes big digits soft. */
+export type GlyphSpec = {
+  labels: readonly string[];
+  family: string;
+  sizePx: number;
+  weight: number;
+  italic: boolean;
+  color: string;
+  /** Extra cell width. The sprites are drawn edge to edge, so tracking is all there is to space. */
+  spacing: number;
+};
+
+/** The sprites a spec describes, encoded and decoded: what the generator stores and what a resize
+ *  re-renders. Empty labels are dropped — the caller's text field is free-form. */
+export async function glyphSprites(spec: GlyphSpec, cf = GLYPH_CF) {
+  const labels = spec.labels.filter((s) => s.length);
+  const font = fontOf(spec.family, spec.sizePx, spec.weight, spec.italic);
+
+  await ensureFont(font);
+  const cell = glyphCell(labels, font, spec.sizePx, spec.spacing);
+
+  return Promise.all(
+    renderGlyphs(labels, font, spec.color, cell).map(async (canvas) => ({
+      resource: resourceFromCanvas(canvas, cf),
+      bitmap: await createImageBitmap(canvas),
+    })),
+  );
+}
+
+/** What a set costs in the file: the same LZ4'd payloads buildBin writes, summed. */
+export const glyphBytes = (sprites: OffscreenCanvas[], cf = GLYPH_CF) =>
+  sprites.reduce((n, c) => n + resourceFromCanvas(c, cf).data.length, 0);
+
+// A font file the user picked, registered under a family name of our own so it can't collide with
+// an installed one. Keyed by name+size: re-picking the same file must not register it twice.
+const registered = new Map<string, string>();
+
+export async function registerFont(file: File): Promise<string> {
+  const key = `${file.name}:${file.size}`;
+  const hit = registered.get(key);
+
+  if (hit) return hit;
+  const family = `fmc_${file.name.replace(/\W/g, "_")}`;
+  const ff = new FontFace(family, await file.arrayBuffer());
+
+  await ff.load();
+  document.fonts.add(ff);
+  registered.set(key, family);
+  return family;
+}
+
+/** Installed families, via the Local Font Access API. Chromium-only and permission-gated, so an
+ *  empty list is a normal answer — the caller falls back to the families the app ships. */
+export async function localFamilies(): Promise<string[]> {
+  const query = (window as unknown as { queryLocalFonts?: () => Promise<{ family: string }[]> })
+    .queryLocalFonts;
+
+  if (!query) return [];
+  try {
+    return [...new Set((await query.call(window)).map((f) => f.family))].sort();
+  } catch {
+    return []; // permission denied — not an error worth showing
+  }
+}
