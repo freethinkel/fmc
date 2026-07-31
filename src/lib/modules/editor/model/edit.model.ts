@@ -51,7 +51,7 @@ import { $doc, committed, docLoaded } from "./doc.model";
 import { $screen, $sel, $selected, screenSet, select, selectionSet } from "./selection.model";
 import { $cache, cachePatched, glyphSpecRemembered } from "./assets.model";
 import { $sim } from "./sim.model";
-import { errored, glyphDialogClosed } from "./ui.model";
+import { errored } from "./ui.model";
 
 /** Figma-style alignment direction. */
 export type AlignDir = "left" | "hcenter" | "right" | "top" | "vcenter" | "bottom";
@@ -467,10 +467,6 @@ sample({
   filter: Boolean,
   fn: ({ spec }) => ({ layer: spec.target, spec }),
   target: glyphSpecRemembered,
-});
-sample({
-  clock: glyphsFx.done,
-  target: glyphDialogClosed,
 });
 
 sample({

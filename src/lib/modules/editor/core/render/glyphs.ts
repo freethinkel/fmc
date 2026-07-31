@@ -102,10 +102,6 @@ export async function glyphSprites(spec: GlyphSpec, cf = GLYPH_CF) {
   );
 }
 
-/** What a set costs in the file: the same LZ4'd payloads buildBin writes, summed. */
-export const glyphBytes = (sprites: OffscreenCanvas[], cf = GLYPH_CF) =>
-  sprites.reduce((n, c) => n + resourceFromCanvas(c, cf).data.length, 0);
-
 // A font file the user picked, registered under a family name of our own so it can't collide with
 // an installed one. Keyed by name+size: re-picking the same file must not register it twice.
 const registered = new Map<string, string>();

@@ -73,6 +73,11 @@ and `frames` sections; `PropsPanel.svelte` is the container and owns the shared 
 - **All logic lives in effector models** (`modules/*/model/*.model.ts`). Components are
   view only: `import { editorModel } from '../model'`, destructure stores/events at the
   top, subscribe via `$store`. Don't put business logic or data loading in components.
+  A component's own `$state` is for view-local, throwaway things only — an element ref, a
+  drag in progress, which row is hovered. Anything an action reads (form fields, a
+  computed preview, a list fetched or derived from somewhere) belongs in a store, even if
+  only one component uses it: a dialog with more than a couple of fields gets its own
+  `<feature>.model.ts` rather than a pile of `$state` (see `font-sprite.model.ts`).
 - Domain types: `Doc`, `Layer`, `Screen`, `ImageAsset`, `NodeId`/`ImageId` — in
   `core/document/doc.ts`; `Sim` — in `core/document/sources.ts`; `LayerHit`, `ImageStore` — in
   `core/render/canvas.ts`; `Face`/`FaceNode`/`Resource` — in `core/format/raw.ts` (file shape only).
@@ -98,7 +103,8 @@ and `frames` sections; `PropsPanel.svelte` is the container and owns the shared 
   so components keep importing a single `editorModel`:
   `doc.model` (the `Doc` + history), `selection.model` (`$sel`/`$more`/`$screen`, by `NodeId`),
   `sim.model`, `ui.model` (panel tab, last error), `assets.model` (assets + the bitmap cache),
-  `edit.model` (every action on the layer tree), `io.model` (open/create/import/export).
+  `edit.model` (every action on the layer tree), `io.model` (open/create/import/export),
+  `font-sprite.model` (the "sprites from a font" generator: dialog, form, preview).
 - **The document is immutable.** Every edit is a pure `Doc -> Doc` function from
   `core/document/edits.ts`, handed to `committed` — which checkpoints and applies in one step, and
   skips both when the edit returns the document unchanged (a rejected move must not eat an undo).

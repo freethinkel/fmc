@@ -158,6 +158,25 @@ test("resizing a generated set re-renders it from the font instead of scaling th
   expect(new Set(sizes(num.id)).size).toBe(1); // still one cell across the set
 });
 
+test("the dialog's own form drives the generator and closes on generate", async () => {
+  await load("glyphs-dialog");
+  const num = firstNumber();
+  const before = framesOf(num);
+
+  editorModel.glyphDialogOpened(num.id);
+  expect(editorModel.$glyphDialog.getState()).toBe(num.id);
+  // the form is seeded from the widget: a plain number wants the ten digits
+  expect(editorModel.$glyphForm.getState().labelsText).toBe(DIGITS.join(" "));
+  await until(() => Boolean(editorModel.$glyphPreview.getState())); // preview follows the form
+
+  editorModel.glyphFormPatched({ family: "monospace", sizePx: 24 });
+  editorModel.glyphsGenerateRequested();
+  await until(() => framesOf(byId(num.id))[0] !== before[0]);
+
+  expect(framesOf(byId(num.id))).toHaveLength(10);
+  expect(editorModel.$glyphDialog.getState()).toBeNull(); // and it closed itself
+});
+
 test("labels of different widths still share one cell", async () => {
   await load("glyphs-labels");
   const num = firstNumber();
