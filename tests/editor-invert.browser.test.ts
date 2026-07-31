@@ -1,12 +1,39 @@
-// invertColors: flips RGB of every image under the current screen, keeps alpha, and clones
-// resources shared with another screen so the AOD invert can't repaint the main screen.
+// invertColors: flips RGB of every image under the current screen, keeps alpha, and copies assets
+// shared with another screen so the AOD invert can't repaint the main screen.
 import { test, expect, vi } from "vitest";
-import { TAG, decodePixels, type FaceNode } from "$lib/modules/editor/lib/wf";
+import { decodePixels } from "$lib/modules/editor/core/format";
+import {
+  framesOf,
+  type ImageAsset,
+  type ImageId,
+  type Layer,
+  type Screen,
+} from "$lib/modules/editor/core/document/doc";
 import { editorModel } from "$lib/modules/editor/model";
 import url from "./__fixtures__/Analog__287__Simple_Dial.bin?url";
 
-const firstImage = (n: FaceNode): number | undefined =>
-  n.images?.[0] ?? n.subs?.map(firstImage).find((v) => v != null);
+const doc = () => editorModel.$doc.getState()!;
+const asset = (id: ImageId) => doc().images.get(id)!;
+const pixels = (a: ImageAsset) => decodePixels({ cf: a.cf, w: a.w, h: a.h, data: a.data })!;
+const screen = (kind: Screen["kind"]) => doc().screens.find((s) => s.kind === kind)!;
+
+/** The first asset anything on this screen draws — re-read after each edit, since inverting a
+ *  shared asset gives the screen its own copy under a new id. */
+function firstImage(kind: Screen["kind"]): ImageId {
+  const walk = (ls: readonly Layer[]): ImageId | undefined => {
+    for (const l of ls) {
+      const own = framesOf(l)[0];
+
+      if (own) return own;
+      const kids = l.kind === "group" ? l.children : l.kind === "raw" ? (l.children ?? []) : [];
+      const hit = walk(kids);
+
+      if (hit) return hit;
+    }
+  };
+
+  return walk(screen(kind).layers)!;
+}
 
 test("invert flips the current screen's pixels without touching the other screen", async () => {
   const buf = await fetch(url).then((r) => r.arrayBuffer());
@@ -19,15 +46,12 @@ test("invert flips the current screen's pixels without touching the other screen
 
     editorModel.loadRequested({ buf, label: "invert-test" });
   });
-  const face = editorModel.$editor.getState().face!;
-  const aod = face.screens.find((s) => s.tag === TAG.aod)!;
-  const main = face.screens.find((s) => s.tag === TAG.main)!;
 
-  expect(aod).toBeTruthy();
-  const aodIdx = firstImage(aod)!;
-  const mainIdx = firstImage(main)!;
-  const before = Uint8ClampedArray.from(decodePixels(face.resources[aodIdx])!);
-  const mainBefore = Uint8ClampedArray.from(decodePixels(face.resources[mainIdx])!);
+  expect(screen("aod")).toBeTruthy();
+  const aodId = firstImage("aod");
+  const mainId = firstImage("main");
+  const before = Uint8ClampedArray.from(pixels(asset(aodId)));
+  const mainBefore = Uint8ClampedArray.from(pixels(asset(mainId)));
 
   // sample opaque pixels only — fully transparent ones carry no meaningful RGB through the encode
   const opaque: number[] = [];
@@ -36,15 +60,15 @@ test("invert flips the current screen's pixels without touching the other screen
     if (before[i + 3] === 255) opaque.push(i);
   expect(opaque.length).toBe(5);
 
-  editorModel.screenTagSet(TAG.aod);
+  editorModel.screenSet("aod");
   editorModel.select(null);
   editorModel.invertColorsRequested();
   // the effect re-encodes asynchronously — wait for the pixels themselves, not the dirty flag
   await vi.waitFor(() =>
-    expect(decodePixels(face.resources[firstImage(aod)!])![opaque[0]]).not.toBe(before[opaque[0]]),
+    expect(pixels(asset(firstImage("aod")))[opaque[0]]).not.toBe(before[opaque[0]]),
   );
 
-  const after = decodePixels(face.resources[firstImage(aod)!])!;
+  const after = pixels(asset(firstImage("aod")));
 
   // RGB565/indexed re-encode is lossy, so compare with tolerance
   for (const i of opaque) {
@@ -53,8 +77,6 @@ test("invert flips the current screen's pixels without touching the other screen
     expect(after[i + 3]).toBe(255); // alpha kept
   }
 
-  // the main screen still sees its original pixels (cloned if the resource was shared)
-  expect(decodePixels(face.resources[firstImage(main)!])!.slice(0, 64)).toEqual(
-    mainBefore.slice(0, 64),
-  );
+  // the main screen still sees its original pixels (copied if the asset was shared)
+  expect(pixels(asset(firstImage("main"))).slice(0, 64)).toEqual(mainBefore.slice(0, 64));
 });

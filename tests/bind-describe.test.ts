@@ -1,30 +1,28 @@
-// describeBind() must say the same thing visible() does — the panel text is the only readable
-// view of a condition, so a wrong word there sends people editing the wrong widget.
-// Runs in the "unit" (node) vitest project.
+// describeConditions() must say the same thing the renderer's visibility check does — the panel
+// text is the only readable view of a condition, so a wrong word there sends people editing the
+// wrong widget. Runs in the "unit" (node) vitest project.
 import { describe, test, expect } from "vitest";
-import { describeBind } from "$lib/modules/editor/lib/sources";
+import { describeConditions } from "$lib/modules/editor/core/document/sources";
+import type { Condition } from "$lib/modules/editor/core/document/doc";
 
-// count u8 ‖ count × (id u8, op u8, val u24 LE)
-const bind = (...entries: [number, number, number][]) =>
-  [
-    entries.length,
-    ...entries.flatMap(([id, op, v]) => [id, op, v & 0xff, (v >> 8) & 0xff, v >> 16]),
-  ]
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+const c = (source: number, op: Condition["op"], value: number): Condition => ({
+  source,
+  op,
+  value,
+});
 
-describe("describeBind", () => {
+describe("describeConditions", () => {
   test("equality, hide, no-data, range and slot ids", () => {
     expect(
-      describeBind(
-        bind(
-          [0x19, 0x01, 1], // steps == 1
-          [0x5f, 0x02, 1000], // hide when temperature == 1000
-          [0x5f, 0x03, 1000], // temperature == no-data marker
-          [0x0b, 0x05, 6], // minute >= 6
-          [0x7a, 0x81, 4], // slot 1's selection == 4 (0x80 bit = plain equality)
-        ),
-      ),
+      describeConditions([
+        c(0x19, "eq", 1), // steps == 1
+        c(0x5f, "ne", 1000), // hide when temperature == 1000
+        c(0x5f, "noData", 1000), // temperature == no-data marker
+        c(0x0b, "gte", 6), // minute >= 6
+        // slot 1's selection == 4. The file marks this variant with the 0x80 op bit, which decodes
+        // to `exclusive` — semantically still equality, so it has to read the same way.
+        { ...c(0x7a, "eq", 4), exclusive: true },
+      ]),
     ).toEqual([
       "show if steps = 1",
       "hide if temperature = 1000",
@@ -32,9 +30,5 @@ describe("describeBind", () => {
       "only if minute ≥ 6",
       "show if slot 1 selection = 4",
     ]);
-  });
-
-  test("unknown op is reported, not silently dropped", () => {
-    expect(describeBind(bind([0x19, 0x04, 3]))).toEqual(["steps op 0x4 3 — unknown, ignored"]);
   });
 });

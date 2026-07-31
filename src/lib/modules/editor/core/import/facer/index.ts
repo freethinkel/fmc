@@ -4,7 +4,7 @@
 // <hash>.png), fonts/<name> (raw TTF). Supported: shapes, static images, literal
 // text, hour/minute/second hands, and digital fields (time/date/battery/steps/…) whose
 // template resolves to known #tag#s. Everything else is skipped and reported.
-import { hex, TAG, type Face, type FaceNode, type Resource } from "../wf";
+import { hex, TAG, type Face, type FaceNode, type Resource } from "../../format";
 import {
   argb,
   cropOpaque,
@@ -16,6 +16,7 @@ import {
   tinted,
   unb64,
 } from "./assets";
+import { SCREEN } from "../../render/screen";
 import {
   classifyText,
   DIGITS,
@@ -27,7 +28,7 @@ import {
   type Part,
 } from "./text";
 
-const W = 466; // CMF Watch Pro 2 screen
+const W = SCREEN;
 
 // Facer layer JSON — the schema isn't documented, fields are what the exports carry
 /* eslint-disable @typescript-eslint/no-explicit-any */

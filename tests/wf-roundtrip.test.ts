@@ -12,7 +12,7 @@ import {
   lz4Decompress,
   type Face,
   type FaceNode,
-} from "$lib/modules/editor/lib/wf";
+} from "$lib/modules/editor/core/format";
 
 const dir = new URL("./__fixtures__/", import.meta.url);
 const files = readdirSync(dir).filter((f) => f.endsWith(".bin"));

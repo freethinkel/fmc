@@ -2,24 +2,53 @@
   // Inspector for the selected node, in three sections: where it sits, what data it shows,
   // and the bitmaps it draws. The shared field chrome lives here so the sections carry only
   // what is theirs.
+  import { Button } from "$lib/shared/components/button";
+  import { Icon } from "$lib/shared/components/icon";
   import Geometry from "./props/geometry.svelte";
   import Source from "./props/source.svelte";
   import Frames from "./props/frames.svelte";
   import { editorModel } from "../model";
-  const { $editor: editor } = editorModel;
+  const { $doc: doc, $selected: selected, invertColorsRequested } = editorModel;
+
+  // the primary selection — the sections are all single-layer
+  const layer = $derived($selected[0] ?? null);
 </script>
 
-{#if $editor.sel}
-  <div class="panel">
-    <Geometry node={$editor.sel} />
-    <Source node={$editor.sel} />
-    <Frames node={$editor.sel} />
-  </div>
-{:else}
-  <p class="hint">Nothing selected.</p>
-{/if}
+<div class="panel">
+  {#if layer}
+    <!-- A locked layer is read-only, and a disabled fieldset is the platform's own way to say
+         so: one attribute switches off every control inside, no per-input plumbing. -->
+    <fieldset class="fields" disabled={Boolean(layer.locked)}>
+      {#if layer.locked}
+        <p class="hint-xs">locked — unlock it in the layer tree to edit</p>
+      {/if}
+      <Geometry {layer} />
+      <Source {layer} />
+      <Frames {layer} />
+    </fieldset>
+  {:else}
+    <p class="hint">Nothing selected.</p>
+  {/if}
+  <!-- scope follows the selection, same as the effect itself — see invertColorsFx -->
+  {#if $doc}
+    <div class="row">
+      <Button kind="secondary" onClick={() => invertColorsRequested()}>
+        <Icon name="contrast" size={14} />
+        invert {layer ? "layer" : "screen"}
+      </Button>
+    </div>
+  {/if}
+</div>
 
 <style>
+  /* display: contents, so the fieldset carries the disabled state and nothing else — the
+     sections keep the panel's own layout */
+  .fields {
+    display: contents;
+    border: none;
+    margin: 0;
+    padding: 0;
+  }
   .panel {
     display: flex;
     flex-direction: column;
@@ -70,6 +99,9 @@
       display: flex;
       gap: 0.25rem;
     }
+    .grow {
+      flex: 1;
+    }
     .icon-btn {
       display: flex;
       align-items: center;
@@ -90,21 +122,6 @@
       &.on {
         border-color: var(--color-accent);
         color: var(--color-accent);
-      }
-    }
-    .text-btn {
-      border: 1px solid oklch(from var(--color-text) l c h / 12%);
-      border-radius: var(--border-radius);
-      background: transparent;
-      padding: 0.25rem 0.5rem;
-      font: inherit;
-      font-size: 0.625rem;
-      color: oklch(from var(--color-text) l c h / 55%);
-      cursor: pointer;
-      text-align: start;
-
-      &:hover {
-        color: var(--color-text);
       }
     }
     .check-row {

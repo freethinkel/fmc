@@ -4,19 +4,23 @@ import { test, expect } from "vitest";
 import { render as mount } from "vitest-browser-svelte";
 import { EditorPage } from "$lib/modules/editor/pages";
 import { editorModel } from "$lib/modules/editor/model";
-import { render } from "$lib/modules/editor/lib/render";
-import { structOf } from "$lib/modules/editor/lib/tree";
-import { TAG } from "$lib/modules/editor/lib/wf";
-import type { Hit } from "$lib/modules/editor/lib/canvas";
+import { renderDoc } from "$lib/modules/editor/core/render/render";
+import { isPlaced } from "$lib/modules/editor/core/document/doc";
+import type { LayerHit } from "$lib/modules/editor/core/render/canvas";
 import { SNAP_THRESHOLD } from "$lib/modules/editor/shared/constants";
 import url from "./__fixtures__/Analog__287__Simple_Dial.bin?url";
 
-const boxes = (): Hit[] => {
-  const s = editorModel.$editor.getState();
+const boxes = (): LayerHit[] => {
   const c = document.createElement("canvas");
 
   c.width = c.height = 466;
-  return render(c.getContext("2d")!, s.face!, TAG.main, s.sim);
+  return renderDoc(
+    c.getContext("2d")!,
+    editorModel.$doc.getState()!,
+    editorModel.$store.getState(),
+    "main",
+    editorModel.$sim.getState(),
+  );
 };
 
 test("dragging a widget snaps its edge onto another widget's edge", async () => {
@@ -44,9 +48,9 @@ test("dragging a widget snaps its edge onto another widget's edge", async () => 
 
   const hits = boxes();
   const me = hits[hits.length - 1]; // topmost — pointerdown picks it wherever they overlap
-  const other = hits.find((h) => h.node.tag === 0x60)!; // the one small widget on this face
+  const other = hits.find((h) => h.layer.kind === "number")!; // the one small widget on this face
 
-  expect(structOf(me.node)?.x).toBeTypeOf("number");
+  expect(isPlaced(me.layer)).toBe(true);
 
   const r = canvas.getBoundingClientRect();
   const k = r.width / 466; // canvas units -> client px
@@ -64,9 +68,9 @@ test("dragging a widget snaps its edge onto another widget's edge", async () => 
   const start = { x: me.x + me.w / 2, y: me.y + me.h / 2 };
 
   canvas.dispatchEvent(new PointerEvent("pointerdown", at(start.x, start.y)));
-  expect(editorModel.$editor.getState().sel).toBe(me.node);
+  expect(editorModel.$sel.getState()).toBe(me.layer.id);
   canvas.dispatchEvent(new PointerEvent("pointermove", at(start.x + dx, start.y)));
-  const moved = boxes().findLast((h) => h.node === me.node)!;
+  const moved = boxes().findLast((h) => h.layer.id === me.layer.id)!;
 
   // x/y are integers, so a fractional box (a rotated hand) lands within a unit of the line
   expect(Math.abs(moved.x - other.x)).toBeLessThan(1);

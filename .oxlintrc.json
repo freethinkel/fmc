@@ -7,10 +7,19 @@
   "jsPlugins": ["./config/oxlint-plugin-effector.js", "./config/oxlint-plugin-style.js"],
   "rules": {
     "effector/sample-multiline": "warn",
+    "effector/no-get-state": "error",
     "style/blank-line-after-vars": "warn",
     "no-implicit-coercion": ["warn", { "string": false }]
   },
   "env": {
     "builtin": true
-  }
+  },
+  "overrides": [
+    {
+      "files": ["tests/**"],
+      "rules": {
+        "effector/no-get-state": "off"
+      }
+    }
+  ]
 }

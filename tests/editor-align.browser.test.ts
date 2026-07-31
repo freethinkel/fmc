@@ -1,16 +1,25 @@
-// alignSelected: nudges the selected node so its rendered bbox lands on the screen
+// alignRequested: nudges the selected layer so its rendered bbox lands on the container's
 // edge/center — checked against a re-render, not raw x/y, since that's the model's contract.
 import { test, expect } from "vitest";
-import { TAG, parseBin, unhex, hex } from "$lib/modules/editor/lib/wf";
-import { render, parseFrame } from "$lib/modules/editor/lib/render";
-import { defaultSim, metaInfo } from "$lib/modules/editor/lib/sources";
+import { parseBin } from "$lib/modules/editor/core/format";
+import { renderDoc } from "$lib/modules/editor/core/render/render";
+import { decodeAssets } from "$lib/modules/editor/core/render/pixels";
+import { defaultSim } from "$lib/modules/editor/core/document/sources";
+import {
+  fromLegacy,
+  type Doc,
+  type GroupLayer,
+  type Layer,
+} from "$lib/modules/editor/core/document/doc";
+import { patchLayer } from "$lib/modules/editor/core/document/edits";
 import { editorModel } from "$lib/modules/editor/model";
-import { bitmapOf } from "$lib/modules/editor/lib/pixels";
 import url from "./__fixtures__/Analog__287__Simple_Dial.bin?url";
 import groupedUrl from "./__fixtures__/Multifunction__368__Function.bin?url";
 
-test("alignSelected lands the rendered bbox on center/bottom", async () => {
-  const buf = await fetch(url).then((r) => r.arrayBuffer());
+const doc = () => editorModel.$doc.getState()!;
+
+const load = async (from: string, label: string) => {
+  const buf = await fetch(from).then((r) => r.arrayBuffer());
 
   await new Promise<void>((resolve) => {
     const unwatch = editorModel.loadDone.watch(() => {
@@ -18,153 +27,133 @@ test("alignSelected lands the rendered bbox on center/bottom", async () => {
       resolve();
     });
 
-    editorModel.loadRequested({ buf, label: "align-test" });
+    editorModel.loadRequested({ buf, label });
   });
-  editorModel.simPatched({
-    live: false,
-    time: new Date("2026-01-09T10:09:30").getTime(),
-  });
-  const s = editorModel.$editor.getState();
+  editorModel.simPatched({ live: false, time: new Date("2026-01-09T10:09:30").getTime() });
+};
 
+const canvas = () => {
   const c = document.createElement("canvas");
 
   c.width = c.height = 466;
-  const hits = render(c.getContext("2d")!, s.face!, TAG.main, s.sim);
-  // a plain widget (not group/hand) with its own struct x/y, smaller than the screen
-  const h0 = hits.find(
-    (h) =>
-      h.w > 0 &&
-      h.w < 400 &&
-      h.node.tag !== TAG.group &&
-      h.node.tag !== TAG.hand &&
-      h.node.subs?.some((k) => k.tag === TAG.struct && k.x != null),
+  return c.getContext("2d")!;
+};
+
+const draw = (ctx: CanvasRenderingContext2D) =>
+  renderDoc(ctx, doc(), editorModel.$store.getState(), "main", editorModel.$sim.getState());
+
+test("align lands the rendered bbox on center/bottom", async () => {
+  await load(url, "align-test");
+  const ctx = canvas();
+  // a plain widget (not group/hand) with its own x/y, smaller than the screen
+  const h0 = draw(ctx).find(
+    (h) => h.w > 0 && h.w < 400 && h.layer.kind !== "group" && h.layer.kind !== "hand",
   )!;
 
   expect(h0).toBeTruthy();
 
-  editorModel.select(h0.node);
-  editorModel.alignSelected("hcenter");
-  editorModel.alignSelected("bottom");
+  editorModel.select(h0.layer.id);
+  editorModel.alignRequested("hcenter");
+  editorModel.alignRequested("bottom");
 
-  const s2 = editorModel.$editor.getState();
-  const hits2 = render(c.getContext("2d")!, s2.face!, TAG.main, s2.sim);
-  const h = hits2.findLast((x) => x.node === h0.node)!;
+  const h = draw(ctx).findLast((x) => x.layer.id === h0.layer.id)!;
 
   expect(h.x).toBe(Math.round((466 - h.w) / 2));
   expect(h.y).toBe(466 - h.h);
 });
 
-// Group frame byte 8 (low 2 bits) is the flex alignment of the AUTO-laid-out children, not a
+// A group frame's main-axis alignment is the flex alignment of the AUTO-laid-out children, not a
 // pixel gap — 0 = START, 2 = CENTER (see drawGroup's header). Community faces write 0 there and
 // the watch left-aligns them (AEGIS_Ground_Force's 200px-wide label frames); every official
 // corpus face writes 2 or 0x0a and centers. Drives the row off one fixture, both ways.
-test("group frame byte 8 picks START vs CENTER for the auto row", async () => {
+test("a group frame's main alignment picks START vs CENTER for the auto row", async () => {
   const buf = await fetch(groupedUrl).then((r) => r.arrayBuffer());
-  const face = parseBin(buf);
-
-  for (const res of face.resources) res.bitmap = await bitmapOf(res);
-  const c = document.createElement("canvas");
-
-  c.width = c.height = 466;
+  const { doc: base } = fromLegacy(parseBin(buf));
+  const cache = await decodeAssets(base.images);
+  const ctx = canvas();
   const sim = { ...defaultSim(), live: false, time: new Date("2026-01-09T10:09:30").getTime() };
-  const draw = () => render(c.getContext("2d")!, face, TAG.main, sim);
+  const drawLocal = (d: Doc) => renderDoc(ctx, d, { assets: d.images, cache }, "main", sim);
 
-  // a rendered group with a rendered 0x8000 (AUTO) child and a frame wider than that row
+  // a rendered group with a rendered AUTO child and a frame wider than that row
   const target = (() => {
-    for (const gh of draw().filter((h) => h.node.tag === TAG.group && h.w > 0)) {
-      const fr = parseFrame(gh.node)!;
-      // everything that packs into the row: 0x8000-marked children plus a NUMBER hugging
-      // them at x=0 (its width is dynamic, so it can't carry the marker — see drawGroup)
-      const kids = (gh.node.subs || []).filter((k) => {
-        const st = k.subs?.find((s) => s.tag === TAG.struct);
+    for (const gh of drawLocal(base).filter((h) => h.layer.kind === "group" && h.w > 0)) {
+      const group = gh.layer as GroupLayer;
+      // everything that packs into the row: auto-marked children plus a number hugging them at
+      // x=0 (its width is dynamic, so it can't carry the marker — see drawGroup)
+      const kids = group.children
+        .filter(
+          (k) =>
+            k.kind !== "group" &&
+            k.kind !== "raw" &&
+            (k.meta.auto || (k.kind === "number" && !k.x)),
+        )
+        .map((k) => k.id);
+      const hits = drawLocal(base).filter((h) => kids.includes(h.layer.id));
 
-        return st != null && (metaInfo(st).w === 0x8000 || (k.tag === TAG.number && !st.x));
-      });
-      const hits = draw().filter((h) => kids.includes(h.node));
-
-      if (hits.length && fr.w > hits.reduce((s, h) => s + h.w, 0)) return { gh, fr, kids };
+      if (hits.length && group.frame.w > hits.reduce((s, h) => s + h.w, 0))
+        return { id: group.id, frame: group.frame, kids };
     }
   })()!;
 
   expect(target).toBeTruthy();
-  const rowLeft = () =>
-    Math.min(
-      ...draw()
-        .filter((h) => target.kids.includes(h.node))
+  const rowLeftWith = (main: number) => {
+    const d = patchLayer(base, target.id, {
+      frame: { ...target.frame, main },
+    } as Partial<Layer>);
+
+    return Math.min(
+      ...drawLocal(d)
+        .filter((h) => target.kids.includes(h.layer.id))
         .map((h) => h.x),
     );
-  const setMain = (main: number) => {
-    const v = unhex(target.fr.node.hex!);
-
-    v[8] = (v[8] & ~3) | main;
-    target.fr.node.hex = hex(v);
   };
 
-  setMain(2);
-  const centered = rowLeft();
+  const centered = rowLeftWith(2);
 
-  setMain(0);
-  expect(rowLeft()).toBe(target.fr.x);
-  expect(centered).toBeGreaterThan(target.fr.x);
+  expect(rowLeftWith(0)).toBe(target.frame.x);
+  expect(centered).toBeGreaterThan(target.frame.x);
 });
 
-test("alignSelected aligns a group child within its parent frame", async () => {
-  const buf = await fetch(groupedUrl).then((r) => r.arrayBuffer());
-
-  await new Promise<void>((resolve) => {
-    const unwatch = editorModel.loadDone.watch(() => {
-      unwatch();
-      resolve();
-    });
-
-    editorModel.loadRequested({ buf, label: "align-test-grouped" });
-  });
-  editorModel.simPatched({
-    live: false,
-    time: new Date("2026-01-09T10:09:30").getTime(),
-  });
-  const s = editorModel.$editor.getState();
-
-  const c = document.createElement("canvas");
-
-  c.width = c.height = 466;
-  const hits = render(c.getContext("2d")!, s.face!, TAG.main, s.sim);
-  // a rendered group with a fixed frame + a rendered non-AUTO, non-ring child of it
+test("align aligns a group child within its parent frame", async () => {
+  await load(groupedUrl, "align-test-grouped");
+  const ctx = canvas();
+  const hits = draw(ctx);
+  // a rendered group with a fixed frame + a rendered non-auto, non-ring child of it
   const pair = (() => {
-    for (const gh of hits.filter((h) => h.node.tag === TAG.group && h.w > 0)) {
+    for (const gh of hits.filter((h) => h.layer.kind === "group" && h.w > 0)) {
+      const group = gh.layer as GroupLayer;
+
       for (const ch of hits) {
-        const st = ch.node.subs?.find((k) => k.tag === TAG.struct);
+        const kid = ch.layer;
 
         if (
-          gh.node.subs?.includes(ch.node) &&
-          ch.node.tag !== TAG.group &&
-          ch.node.tag !== 0x80 &&
-          ch.node.tag !== 0x81 &&
-          st?.x != null &&
-          metaInfo(st).w !== 0x8000 &&
+          group.children.some((k) => k.id === kid.id) &&
+          kid.kind !== "group" &&
+          kid.kind !== "ring" &&
+          kid.kind !== "raw" &&
+          !kid.meta.auto &&
           ch.h > 0 &&
           ch.h < gh.h
         )
-          return { gh, ch };
+          return { group: gh.layer.id, child: kid.id };
       }
     }
   })()!;
 
   expect(pair).toBeTruthy();
 
-  editorModel.select(pair.ch.node);
-  editorModel.alignSelected("bottom");
+  editorModel.select(pair.child);
+  editorModel.alignRequested("bottom");
 
-  const s2 = editorModel.$editor.getState();
-  const hits2 = render(c.getContext("2d")!, s2.face!, TAG.main, s2.sim);
-  const g = hits2.findLast((x) => x.node === pair.gh.node)!;
-  const h = hits2.findLast((x) => x.node === pair.ch.node)!;
+  const after = draw(ctx);
+  const g = after.findLast((x) => x.layer.id === pair.group)!;
+  const h = after.findLast((x) => x.layer.id === pair.child)!;
 
   expect(h.y).toBe(g.y + g.h - h.h);
 });
 
-// A group's frame x/y are int16, same as a struct's: nudging a group off the left edge used
-// to write -3 and read it back as 65533, which parked the whole group off the right instead.
+// A group's frame x/y are int16, same as a widget's: nudging a group off the left edge used to
+// write -3 and read it back as 65533, which parked the whole group off the right instead.
 test("a frame keeps a negative x instead of wrapping to 65533", () => {
   const v = new Uint8Array(21);
 
@@ -173,7 +162,13 @@ test("a frame keeps a negative x instead of wrapping to 65533", () => {
   v[2] = -7;
   v[3] = -7 >> 8;
   v[4] = 100; // w stays unsigned
-  const fr = parseFrame({ tag: TAG.group, subs: [{ tag: TAG.frame, hex: hex(v) }] })!;
+  const hex = [...v].map((b) => b.toString(16).padStart(2, "0")).join("");
+  const { doc: parsed } = fromLegacy({
+    name: "t",
+    screens: [{ tag: 0x21, subs: [{ tag: 0x68, subs: [{ tag: 0x48, hex }] }] }],
+    resources: [],
+  });
+  const group = parsed.screens[0].layers.find((l) => l.kind === "group") as GroupLayer;
 
-  expect([fr.x, fr.y, fr.w]).toEqual([-3, -7, 100]);
+  expect([group.frame.x, group.frame.y, group.frame.w]).toEqual([-3, -7, 100]);
 });

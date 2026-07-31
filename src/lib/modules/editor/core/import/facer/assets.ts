@@ -1,6 +1,6 @@
 // Reading a Facer export directory: files by name, images (base64 or PNG), fonts, colours,
 // and the canvas helpers that turn any of it into a face Resource.
-import { encodePixels, type Resource } from "../wf";
+import { encodePixels, type Resource } from "../../format";
 
 // fileMap/encodeCanvas/encodeJpeg/cropOpaque are shared with ./watchmaker — this was the
 // first importer written; if a third export format shows up, move them to their own module.

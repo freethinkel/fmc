@@ -7,10 +7,12 @@
   import { marketModel } from "$lib/modules/market/model";
   import PublishDialog from "../components/PublishDialog.svelte";
   import { bleModel } from "$lib/modules/device/model";
-  import { TAG, unhex, hex, type FaceNode } from "../lib/wf";
-  import { render, parseFrame } from "../lib/render";
-  import type { Hit } from "../lib/canvas";
-  import { snapAxis, snapTargets, type SnapTargets } from "../lib/snap";
+  import { renderDoc, type ResizePreview } from "../core/render/render";
+  import { CENTER, SCREEN } from "../core/render/screen";
+  import type { ImageStore, LayerHit } from "../core/render/canvas";
+  import { framesOf, isPlaced, type Layer, type NodeId } from "../core/document/doc";
+  import { containerOrigin, findLayer, parentOf } from "../core/document/edits";
+  import { snapAxis, snapTargets, type SnapTargets } from "../core/render/snap";
   import { SNAP_THRESHOLD, GUIDE_WIDTH, GUIDE_COLOR } from "../shared/constants";
   import { editorModel } from "../model";
   import TreePanel from "../components/TreePanel.svelte";
@@ -33,14 +35,30 @@
     publishDialogOpened,
   } = marketModel;
   const {
-    $editor: editor,
+    $doc: doc,
+    $store: store,
+    $sim: sim,
+    $screen: screen,
+    $sel: sel,
+    $selected: selected,
+    $err: err,
+    $undoN: undoN,
+    $redoN: redoN,
     select,
-    screenTagSet,
+    selectToggled,
+    screenSet,
     checkpoint,
     undo,
     redo,
-    patched,
+    layerPatched,
+    aodAdded,
+    copyRequested,
+    cutRequested,
+    pasteRequested,
+    deleteRequested,
     resizeImageRequested,
+    resizeGroupRequested,
+    $lockAspect: lockAspect,
     loadRequested,
     newFaceRequested,
     importFacerRequested,
@@ -55,8 +73,72 @@
   } = editorModel;
 
   let canvas = $state<HTMLCanvasElement | null>(null);
+
   let mobilePanel = $state<"tree" | "props" | "sim" | null>(null); // drawer on mobile
-  let hits: Hit[] = [];
+  let hits: LayerHit[] = [];
+
+  // ---- resizable side panels (desktop only — below 768px both are drawers) ----
+  // Widths live in rem, like every other size here, so they keep following the :root scale knob;
+  // the drag delta is in px and gets divided by the current root font size. Persisted, because a
+  // panel that springs back on every reload isn't really resizable.
+  const PANEL_KEY = "fmc.panel-widths";
+  const SIDE_MIN = 12,
+    SIDE_MAX = 35;
+  const savedWidths: { tree?: number; right?: number } = JSON.parse(
+    localStorage.getItem(PANEL_KEY) || "{}",
+  );
+  let treeW = $state(savedWidths.tree ?? 17.5);
+  let rightW = $state(savedWidths.right ?? 20.625);
+  let gutter = $state.raw<{ side: "tree" | "right"; x: number; from: number } | null>(null);
+
+  const rootRem = () => parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+  const setSide = (side: "tree" | "right", w: number) => {
+    const clamped = Math.min(SIDE_MAX, Math.max(SIDE_MIN, w));
+
+    if (side === "tree") treeW = clamped;
+    else rightW = clamped;
+  };
+
+  $effect(() => {
+    localStorage.setItem(PANEL_KEY, JSON.stringify({ tree: treeW, right: rightW }));
+  });
+
+  // The whole drag lives on the window (see <svelte:window> below) rather than on pointer
+  // capture: capture drops the moves the moment it fails to engage, and it doesn't survive the
+  // pointer being released outside the browser. preventDefault here is what stops the drag from
+  // turning into a text selection, which is the only thing capture was buying.
+  function gutterDown(side: "tree" | "right", e: PointerEvent) {
+    e.preventDefault();
+    gutter = { side, x: e.clientX, from: side === "tree" ? treeW : rightW };
+  }
+
+  function gutterMove(e: PointerEvent) {
+    if (!gutter) return;
+    // the right panel grows leftwards, so its delta is mirrored
+    const dx = gutter.side === "tree" ? e.clientX - gutter.x : gutter.x - e.clientX;
+
+    setSide(gutter.side, gutter.from + dx / rootRem());
+  }
+
+  function gutterKey(side: "tree" | "right", e: KeyboardEvent) {
+    const step = e.key === "ArrowLeft" ? -1 : e.key === "ArrowRight" ? 1 : 0;
+
+    if (!step) return;
+    e.preventDefault();
+    setSide(side, (side === "tree" ? treeW : rightW) + (side === "tree" ? step : -step));
+  }
+
+  // At a clamp the handle can only go one way, so say so with a single-headed cursor. The tree
+  // panel grows to the right and the right panel to the left, hence the mirrored arms.
+  function gutterCursor(side: "tree" | "right") {
+    const w = side === "tree" ? treeW : rightW;
+    const grow = side === "tree" ? "e-resize" : "w-resize";
+    const shrink = side === "tree" ? "w-resize" : "e-resize";
+
+    if (w <= SIDE_MIN) return grow;
+    if (w >= SIDE_MAX) return shrink;
+    return "col-resize";
+  }
 
   function openFile(e: Event) {
     const t = e.target;
@@ -103,7 +185,7 @@
     if (!u) return;
     try {
       saveDraftRequested({
-        name: $editor.face?.name || "Custom",
+        name: $doc?.name || "Custom",
         ownerId: u.id,
         published: $openedWf?.published ?? false,
         bin: await buildCurrentBin(),
@@ -114,7 +196,49 @@
     }
   }
 
+  // ---- dev frame meter ----
+  // The canvas redraws every rAF whether or not anything changed (the clock moves), so this is
+  // the editor's steady-state cost. `draw` is time inside render() alone — that's the number
+  // worth watching, since the gap to 16.7ms is everything else the browser is doing.
+  const perf = import.meta.env.DEV;
+  let fps = $state(0);
+  let drawMs = $state(0);
+  let frames = 0,
+    drawTotal = 0,
+    since = 0;
+
+  function sampleFrame(t0: number) {
+    const now = performance.now();
+
+    frames++;
+    drawTotal += now - t0;
+    since ||= now;
+    if (now - since >= 500) {
+      fps = Math.round((frames * 1000) / (now - since));
+      drawMs = Math.round((drawTotal / frames) * 10) / 10;
+      frames = drawTotal = 0;
+      since = now;
+    }
+  }
+
   // ---- rendering ----
+  // A plain (non-$state) mirror of the stores: the rAF loop reads them every frame, and reading
+  // them inside the render effect would make the effect re-run — tearing down and restarting the
+  // loop — on every update.
+  const snapshot = () => ({
+    doc: $doc,
+    store: $store,
+    sim: $sim,
+    screen: $screen,
+    sel: $sel,
+    selected: $selected,
+  });
+  let scene = snapshot();
+
+  $effect(() => {
+    scene = snapshot();
+  });
+
   $effect(() => {
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
@@ -122,15 +246,19 @@
     if (!ctx) return;
     let raf = 0;
     const loop = () => {
-      const s = editor.getState();
+      const s = scene;
+      const t0 = perf && performance.now();
 
-      if (s.face) {
-        hits = render(ctx, s.face, s.screenTag, s.sim);
+      if (s.doc) {
+        hits = renderDoc(ctx, s.doc, s.store, s.screen, s.sim, resizePreview());
+        // extra picks get a plain box; the primary one carries the handles and the pivot cross
+        for (const l of s.selected.slice(1)) drawBox(ctx, l.id);
         drawSelection(ctx, s.sel);
         drawGuides(ctx);
       } else {
-        ctx.clearRect(0, 0, 466, 466);
+        ctx.clearRect(0, 0, SCREEN, SCREEN);
       }
+      if (perf) sampleFrame(t0 as number);
       raf = requestAnimationFrame(loop);
     };
 
@@ -138,24 +266,61 @@
     return () => cancelAnimationFrame(raf);
   });
 
-  function drawSelection(ctx: CanvasRenderingContext2D, sel: FaceNode | null) {
-    if (!sel) return;
-    const h = hits.findLast((h) => h.node === sel || h.node.subs?.includes(sel));
+  const hitOf = (id: NodeId | null) => (id ? hits.findLast((h) => h.layer.id === id) : undefined);
 
-    if (!h) return;
+  /** Where a layer WOULD sit when the render skipped it: a widget slot with placeholders turned
+   *  off draws nothing at all, and a layer a condition hides this frame is in the same boat — so
+   *  selecting one from the tree left no box anywhere and no way to tell where it is. */
+  function ghostBox(id: NodeId | null) {
+    const l = id && $doc ? findLayer($doc, id) : null;
+
+    if (!l || !isPlaced(l) || !l.meta.w || !l.meta.h) return null;
+    // containerOrigin counts the layer it is given, so ask about the PARENT — a group child's
+    // own x/y is measured from its group's frame
+    const o = containerOrigin($doc!, parentOf($doc!, l.id)?.id ?? null);
+
+    return { x: o.x + l.x, y: o.y + l.y, w: l.meta.w, h: l.meta.h, ghost: true as const };
+  }
+
+  const boxOf = (id: NodeId | null) => hitOf(id) ?? ghostBox(id);
+
+  function outline(
+    ctx: CanvasRenderingContext2D,
+    b: { x: number; y: number; w: number; h: number },
+    ghost = false,
+  ) {
     ctx.save();
     ctx.strokeStyle = "#4af";
     ctx.lineWidth = 2;
-    ctx.setLineDash([6, 4]);
-    ctx.strokeRect(h.x - 1, h.y - 1, h.w + 2, h.h + 2);
-    if (rz) {
-      // resize preview: the resource is only re-encoded on pointerup, so nothing about the
-      // drawn image changes during the drag — this ghost is the whole live feedback
-      ctx.strokeStyle = "#4af";
-      ctx.setLineDash([2, 2]);
-      ctx.strokeRect(rz.gx, rz.gy, rz.gw, rz.gh);
+    // a longer dash for the ghost, so "here, but not drawn" doesn't read as an ordinary selection
+    ctx.setLineDash(ghost ? [2, 5] : [6, 4]);
+    ctx.strokeRect(b.x - 1, b.y - 1, b.w + 2, b.h + 2);
+    ctx.restore();
+  }
+
+  function drawBox(ctx: CanvasRenderingContext2D, id: NodeId) {
+    const b = boxOf(id);
+
+    if (b) outline(ctx, b, "ghost" in b);
+  }
+
+  function drawSelection(ctx: CanvasRenderingContext2D, id: NodeId | null) {
+    const h = hitOf(id);
+
+    if (!h) {
+      const g = ghostBox(id);
+
+      if (g) outline(ctx, g, true);
+      return;
     }
-    if (resizable(h.node)) {
+    outline(ctx, h);
+    ctx.save();
+    // a locked layer gets the outline and nothing else: no handles to grab, no pivot to aim
+    if (h.layer.locked) {
+      ctx.restore();
+      return;
+    }
+    if (resizable(h.layer)) {
       ctx.setLineDash([]);
       ctx.fillStyle = "#4af";
       for (const [cx, cy] of CORNERS) {
@@ -164,12 +329,10 @@
         ctx.fillRect(p.x - HANDLE / 2, p.y - HANDLE / 2, HANDLE, HANDLE);
       }
     }
-    const pv = h.node.subs?.find((s) => s.tag === TAG.pivot);
-    const st = h.node.subs?.find((s) => s.tag === TAG.struct);
-
-    if (pv && st) {
-      const px = st.x! + pv.pivotX!,
-        py = st.y! + pv.pivotY!;
+    // a hand rotates around x+pivot — mark that point, it's what the user aims when centring
+    if (h.layer.kind === "hand") {
+      const px = h.layer.x + h.layer.pivotX,
+        py = h.layer.y + h.layer.pivotY;
 
       ctx.setLineDash([]);
       ctx.beginPath();
@@ -187,7 +350,7 @@
   // always the resource rect (a NUMBER's is the composed digits, a HAND's is the rotated
   // AABB), so the drag works in scale factors: the box is scaled uniformly and the resource
   // follows by the same factor. Groups (frame w/h, not pixels) and procedural arcs are out.
-  const HANDLE = 10; // canvas units (466-space)
+  const HANDLE = 10; // canvas units (SCREEN-space)
   const CORNERS = [
     [0, 0],
     [1, 0],
@@ -197,23 +360,27 @@
   // the canvas frame is a circle (border-radius 50%, see .canvas-frame), so a corner of a
   // full-screen image sits in clipped-away pixels — pull handles onto the visible disc
   const onDisc = (x: number, y: number): XY => {
-    const dx = x - 233,
-      dy = y - 233,
+    const dx = x - CENTER,
+      dy = y - CENTER,
       d = Math.hypot(dx, dy),
-      max = 233 - HANDLE;
+      max = CENTER - HANDLE;
 
-    return d <= max ? { x, y } : { x: 233 + (dx / d) * max, y: 233 + (dy / d) * max };
+    return d <= max ? { x, y } : { x: CENTER + (dx / d) * max, y: CENTER + (dy / d) * max };
   };
-  const firstRes = (n: FaceNode | null) => {
-    const st = n && n.tag !== TAG.group ? n.subs?.find((s) => s.tag === TAG.struct) : null;
+  const firstAsset = (l: Layer | null) => {
+    const ids = l && l.kind !== "group" ? framesOf(l) : [];
 
-    return st?.images?.length ? $editor.face?.resources[st.images[0]] : undefined;
+    return ids.length ? $doc?.images.get(ids[0]) : undefined;
   };
-  const resizable = (n: FaceNode | null): boolean => Boolean(firstRes(n));
+
+  /** Does anything under this layer have pixels to scale? A group has none of its own. */
+  const hasArt = (l: Layer): boolean =>
+    framesOf(l).length > 0 || (l.kind === "group" && l.children.some(hasArt));
+  // locked is editor-only (see doc.ts): the layer still draws, it just stops answering the canvas
+  const resizable = (l: Layer | null): boolean => Boolean(l) && hasArt(l!) && !l!.locked;
 
   type Rz = {
-    node: FaceNode;
-    st: FaceNode;
+    layer: Layer;
     dirX: number;
     dirY: number;
     ax: number;
@@ -228,12 +395,55 @@
     gy: number;
     gw: number;
     gh: number;
+    rw0: number; // the asset's size when the drag started — the target scales off it
+    rh0: number;
+    dx0: number; // anchor -> grab point. The scale is measured against THIS, not against the box:
+    dy0: number; // a handle drawn off the true corner (see onDisc) would otherwise jump on move 1
+    started: boolean; // the pointer actually moved — until then there's nothing to preview
   };
   let rz: Rz | null = null;
 
-  const selHit = () =>
-    resizable($editor.sel) ? hits.findLast((h) => h.node === $editor.sel) || null : null;
-  const handleAt = (p: XY, h: Hit) => {
+  // What the canvas draws mid-drag: the layer scaled around its anchor, no assets touched. The
+  // real rescale happens once, on pointerup — see applyResize.
+  const resizePreview = (): ResizePreview | null =>
+    rz && rz.started
+      ? { id: rz.layer.id, kw: rz.gw / rz.w0, kh: rz.gh / rz.h0, ax: rz.ax, ay: rz.ay }
+      : null;
+
+  // Rescale the assets to the target box (g*) — one call, at the end of the drag.
+  function applyResize(z: Rz) {
+    // the box and the asset scale by the same factors — separately per axis, so a corner drag
+    // can change the aspect ratio
+    const kw = z.gw / z.w0,
+      kh = z.gh / z.h0;
+    // a hand's x/y is owned by the pivot math in resizeImageFx — don't fight it. Everything else
+    // keeps the anchored corner: delta-based, like alignRequested, since a layer's x/y is
+    // container-local while the hit box is screen space.
+    const pinned = z.layer.kind === "hand";
+
+    const at = pinned
+      ? undefined
+      : { x: z.x0 + Math.round(z.gx - z.bx), y: z.y0 + Math.round(z.gy - z.by) };
+
+    // a group has no pixels of its own: resizing it scales everything under it, by factor
+    if (z.layer.kind === "group") {
+      resizeGroupRequested({ layer: z.layer.id, kw, kh, at });
+      return;
+    }
+    resizeImageRequested({
+      layer: z.layer.id,
+      w: Math.round(z.rw0 * kw),
+      h: Math.round(z.rh0 * kh),
+      at,
+    });
+  }
+
+  const selHit = () => {
+    const h = hitOf($sel);
+
+    return h && resizable(h.layer) ? h : null;
+  };
+  const handleAt = (p: XY, h: LayerHit) => {
     for (const [cx, cy] of CORNERS) {
       const c = onDisc(h.x + cx * h.w, h.y + cy * h.h);
 
@@ -247,7 +457,7 @@
   // node's own box would otherwise snap to itself. ⌥ holds the drag off the guides.
   let snapT: SnapTargets | null = null;
   let cvScale = 1; // canvas units per screen px — the thresholds are in screen px
-  let box0: Hit | null = null;
+  let box0: LayerHit | null = null;
   let guides: { x: number[]; y: number[] } = { x: [], y: [] };
 
   function drawGuides(ctx: CanvasRenderingContext2D) {
@@ -270,106 +480,126 @@
 
   // ---- selection and drag ----
   type XY = { x: number; y: number };
-  type Drag =
-    | {
-        p: XY;
-        x0: number;
-        y0: number;
-        moved: boolean;
-        st: FaceNode;
-        fr?: undefined;
-      }
-    | {
-        p: XY;
-        x0: number;
-        y0: number;
-        moved: boolean;
-        fr: FaceNode;
-        st?: undefined;
-      };
-  let drag: Drag | null = null;
+  // one entry per dragged layer — a multi-selection moves as a block. The layer is captured when
+  // the drag starts, so x0/y0 stay the origin the whole gesture measures from.
+  type DragItem = { layer: Layer; x0: number; y0: number };
+  let drag: { p: XY; items: DragItem[]; moved: boolean } | null = null;
   const canvasXY = (e: PointerEvent): XY => {
     const r = canvas!.getBoundingClientRect();
 
     return {
-      x: ((e.clientX - r.left) * 466) / r.width,
-      y: ((e.clientY - r.top) * 466) / r.height,
+      x: ((e.clientX - r.left) * SCREEN) / r.width,
+      y: ((e.clientY - r.top) * SCREEN) / r.height,
     };
   };
-  const selStruct = (n: FaceNode | null) =>
-    n?.tag === TAG.struct ? n : n?.subs?.find((s) => s.tag === TAG.struct);
 
-  function setFrameXY(groupNode: FaceNode, x: number, y: number) {
-    const f = groupNode.subs!.find((s) => s.tag === TAG.frame)!;
-    const v = unhex(f.hex!);
-
-    v[0] = x;
-    v[1] = x >> 8;
-    v[2] = y;
-    v[3] = y >> 8;
-    patched({ node: f, patch: { hex: hex(v) } });
+  /** What a layer moves by: its own x/y, or its frame's when it is a group. */
+  function dragItem(l: Layer): DragItem | null {
+    if (l.locked) return null;
+    if (l.kind === "group") return { layer: l, x0: l.frame.x, y0: l.frame.y };
+    return l.kind === "raw" ? null : { layer: l, x0: l.x, y0: l.y };
   }
 
+  // widget x/y are int16 — negatives are legal (and used by stock faces), so no clamp there;
+  // group frames stay >=0, their x/y round-trip through the file as unsigned
+  const moveItem = (it: DragItem, x: number, y: number) =>
+    layerPatched({
+      id: it.layer.id,
+      patch: (it.layer.kind === "group"
+        ? { frame: { ...it.layer.frame, x: Math.max(0, x), y: Math.max(0, y) } }
+        : { x, y }) as Partial<Layer>,
+    });
+
   function onDown(e: PointerEvent) {
-    if (!$editor.face) return;
+    if (!$doc) return;
     const p = canvasXY(e);
     const sh = selHit();
     const c = sh && handleAt(p, sh);
 
     if (sh && c) {
-      const st = selStruct($editor.sel)!;
+      // a group scales by factor, so its base size is the box itself
+      const r0 = firstAsset(sh.layer) ?? { w: sh.w, h: sh.h };
+      const origin = dragItem(sh.layer);
+      // The point that stays put while the box grows: normally the corner opposite the dragged
+      // one, but a hand scales around its rotation centre — that's the invariant resizeImageFx
+      // keeps, and the preview has to agree with it or the hand jumps on release.
+      // ponytail: a hand's x/y is container-local, so this is off for one nested in a group —
+      // no corpus face does that; read the centre off the hit box if one ever turns up.
+      const hand = sh.layer.kind === "hand" ? sh.layer : null;
+      const ax = hand ? hand.x + hand.pivotX : c.cx ? sh.x : sh.x + sh.w;
+      const ay = hand ? hand.y + hand.pivotY : c.cy ? sh.y : sh.y + sh.h;
 
       rz = {
-        node: $editor.sel!,
-        st,
+        started: false,
+        rw0: r0.w,
+        rh0: r0.h,
+        layer: sh.layer,
         dirX: c.cx,
         dirY: c.cy,
-        // the dragged corner moves, the opposite one stays put — that's the anchor
-        ax: c.cx ? sh.x : sh.x + sh.w,
-        ay: c.cy ? sh.y : sh.y + sh.h,
+        ax,
+        ay,
         w0: sh.w,
         h0: sh.h,
-        x0: st.x ?? 0,
-        y0: st.y ?? 0,
+        x0: origin?.x0 ?? 0,
+        y0: origin?.y0 ?? 0,
         bx: sh.x,
         by: sh.y,
         gx: sh.x,
         gy: sh.y,
         gw: sh.w,
         gh: sh.h,
+        dx0: Math.max(1, Math.abs(p.x - ax)),
+        dy0: Math.max(1, Math.abs(p.y - ay)),
       };
       canvas?.setPointerCapture(e.pointerId);
       return;
     }
-    const h = hits.findLast((h) => p.x >= h.x && p.x < h.x + h.w && p.y >= h.y && p.y < h.y + h.h);
+    const h = hits.findLast(
+      (h) => !h.layer.locked && p.x >= h.x && p.x < h.x + h.w && p.y >= h.y && p.y < h.y + h.h,
+    );
 
-    select(h?.node || null);
-    if (!h?.node) return;
-    const st = selStruct(h.node);
-    const fr = h.node.tag === TAG.group ? parseFrame(h.node) : null;
+    if (!h) {
+      select(null);
+      return;
+    }
+    if (e.shiftKey || e.metaKey || e.ctrlKey) {
+      selectToggled(h.layer.id); // add/remove — no drag, the modifier click is the whole gesture
+      return;
+    }
+    // pressing inside an existing multi-selection keeps it, so the whole block can be dragged
+    const inSelection = $selected.some((l) => l.id === h.layer.id);
+    const layers = inSelection ? $selected : (select(h.layer.id), [h.layer]);
+    const items = layers.map(dragItem).filter((i): i is DragItem => i !== null);
 
-    if (fr) drag = { p, fr: h.node, x0: fr.x, y0: fr.y, moved: false };
-    else if (st && st.x != null) drag = { p, st, x0: st.x, y0: st.y!, moved: false };
-    if (drag) {
-      // the hitbox, not st.x/st.y — a NUMBER's box is its composed digits, a HAND's the
-      // rotated AABB. Both move by the same delta, so snapping the box is enough.
+    if (items.length) {
+      drag = { p, items, moved: false };
+      // the hitbox, not the layer's x/y — a number's box is its composed digits, a hand's the
+      // rotated AABB. Everything in the drag moves by one delta, so snapping this box is enough.
       box0 = h;
-      snapT = snapTargets(hits, h.node);
+      snapT = snapTargets(hits, layers);
       // the canvas doesn't resize mid-drag, so one layout read is enough for the whole gesture
-      cvScale = 466 / (canvas?.getBoundingClientRect().width || 466);
+      cvScale = SCREEN / (canvas?.getBoundingClientRect().width || SCREEN);
     }
     canvas?.setPointerCapture(e.pointerId);
   }
+
   function onMove(e: PointerEvent) {
     if (rz) {
       const p = canvasXY(e);
-      // uniform scale (corner drags keep proportions — free w/h lives in the props panel)
-      const s = Math.max(Math.abs(p.x - rz.ax) / rz.w0, Math.abs(p.y - rz.ay) / rz.h0);
+      // The dragged corner follows the pointer on BOTH axes, each measured against the grab
+      // point (dx0/dy0), so the box starts at 1:1 wherever the handle happened to be drawn.
+      // Free w/h when the aspect lock is off: a uniform scale is driven by the long side, so on a
+      // wide layer pulling the short side barely moved it. Shift inverts the lock, as usual.
+      const rx = Math.abs(p.x - rz.ax) / rz.dx0,
+        ry = Math.abs(p.y - rz.ay) / rz.dy0;
+      const locked = $lockAspect !== e.shiftKey;
+      const [sw, sh] = locked ? [Math.max(rx, ry), Math.max(rx, ry)] : [rx, ry];
 
-      rz.gw = Math.max(1, Math.round(rz.w0 * s));
-      rz.gh = Math.max(1, Math.round(rz.h0 * s));
+      rz.gw = Math.max(1, Math.round(rz.w0 * sw));
+      rz.gh = Math.max(1, Math.round(rz.h0 * sh));
       rz.gx = rz.dirX ? rz.ax : rz.ax - rz.gw;
       rz.gy = rz.dirY ? rz.ay : rz.ay - rz.gh;
+      rz.started = true; // from here the canvas draws the preview (resizePreview)
       return;
     }
     const d = drag;
@@ -404,39 +634,12 @@
         guides.y = [sy.line];
       }
     }
-    // widget x/y are int16 — negatives are legal (and used by stock faces), so no clamp here;
-    // group frames stay >=0, their x/y round-trip through the file as unsigned
-    if (d.st) patched({ node: d.st, patch: { x: d.x0 + dx, y: d.y0 + dy } });
-    else setFrameXY(d.fr, d.x0 + dx, d.y0 + dy); // frame x/y are int16 — a group may hang off
+    // one delta for the whole drag, so a multi-selection keeps its shape while it snaps
+    for (const it of d.items) moveItem(it, it.x0 + dx, it.y0 + dy);
   }
   function onUp() {
     if (rz) {
-      const r0 = firstRes(rz.node);
-      const scale = rz.gw / rz.w0;
-
-      // a hand's x/y is owned by the pivot math in resizeImageFx — don't fight it. Everything
-      // else keeps the anchored corner: delta-based, like alignSelected, since st.x is
-      // widget-local while the hit box is screen space.
-      if (
-        r0 &&
-        !rz.node.subs?.some((s) => s.tag === TAG.pivot) &&
-        (rz.gx !== rz.bx || rz.gy !== rz.by)
-      ) {
-        checkpoint(0);
-        patched({
-          node: rz.st,
-          patch: {
-            x: rz.x0 + Math.round(rz.gx - rz.bx),
-            y: rz.y0 + Math.round(rz.gy - rz.by),
-          },
-        });
-      }
-      if (r0)
-        resizeImageRequested({
-          node: rz.node,
-          w: Math.round(r0.w * scale),
-          h: Math.round(r0.h * scale),
-        });
+      if (rz.started) applyResize(rz); // the whole drag lands as one rescale
       rz = null;
     }
     drag = box0 = snapT = null;
@@ -445,15 +648,23 @@
 
   function onKey(e: KeyboardEvent) {
     if (["INPUT", "TEXTAREA", "SELECT"].includes((e.target as HTMLElement).tagName)) return;
-    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
-      if (e.shiftKey) redo();
-      else undo();
+    if (e.metaKey || e.ctrlKey) {
+      const k = e.key.toLowerCase();
+
+      if (k === "z") (e.shiftKey ? redo : undo)();
+      else if (k === "c") copyRequested();
+      else if (k === "x") cutRequested();
+      else if (k === "v") pasteRequested();
+      else return;
       e.preventDefault();
       return;
     }
-    const sel = $editor.sel;
-
-    if (!sel) return;
+    if (!$selected.length) return;
+    if (e.key === "Backspace" || e.key === "Delete") {
+      deleteRequested();
+      e.preventDefault();
+      return;
+    }
     const d = e.shiftKey ? 10 : 1;
     const moves: Record<string, [number, number]> = {
       ArrowLeft: [-d, 0],
@@ -465,12 +676,11 @@
 
     if (!mv) return;
     checkpoint();
-    const st = selStruct(sel);
-    const fr = sel.tag === TAG.group ? parseFrame(sel) : null;
+    for (const l of $selected) {
+      const it = dragItem(l);
 
-    if (fr) setFrameXY(sel, fr.x + mv[0], fr.y + mv[1]);
-    else if (st && st.x != null)
-      patched({ node: st, patch: { x: st.x + mv[0], y: st.y! + mv[1] } });
+      if (it) moveItem(it, it.x0 + mv[0], it.y0 + mv[1]);
+    }
     e.preventDefault();
   }
 
@@ -479,19 +689,20 @@
     // re-flashing it lands on the slot it already occupies instead of taking another one
     flashRequested({
       bin: await buildCurrentBin(),
-      preview: previewThumb(),
+      preview: await previewThumb(),
       key: $openedWf?.id,
     });
   }
 
-  const hasAOD = $derived($editor.face?.screens.some((s) => s.tag === TAG.aod));
+  const hasAOD = $derived($doc?.screens.some((s) => s.kind === "aod"));
   const screenItems = $derived([
     { value: "main", label: "Main" },
-    { value: "aod", label: "AOD", disabled: !hasAOD },
+    // not disabled when the face has no AOD screen — picking it creates one (see aodAdded)
+    { value: "aod", label: hasAOD ? "AOD" : "AOD +", disabled: !$doc },
   ]);
   const panelItems = $derived([
     { value: "props", label: "Properties" },
-    { value: "sim", label: "Simulator", disabled: !$editor.face },
+    { value: "sim", label: "Simulator", disabled: !$doc },
   ]);
   const mobileTitle = $derived(
     mobilePanel === "tree"
@@ -504,7 +715,17 @@
   );
 </script>
 
-<svelte:window onkeydown={onKey} ondragover={(e) => e.preventDefault()} ondrop={openFile} />
+<!-- the resize drag ends on the WINDOW, not the handle: releasing outside the browser (or losing
+     the pointer to a cancel) otherwise leaves the gutter stuck to the cursor -->
+<svelte:window
+  onkeydown={onKey}
+  ondragover={(e) => e.preventDefault()}
+  ondrop={openFile}
+  onpointermove={gutterMove}
+  onpointerup={() => (gutter = null)}
+  onpointercancel={() => (gutter = null)}
+  onblur={() => (gutter = null)}
+/>
 
 <div class="page">
   <div class="toolbar">
@@ -535,12 +756,12 @@
         <Icon name="file-plus" size={16} /> <span class="btn-label">New</span>
       </Button>
     </span>
-    {#if $editor.face}
+    {#if $doc}
       <!-- commits on blur/Enter, not per keystroke: every rename is one undo step, and the
            header field only holds 15 bytes anyway (see renameFace) -->
       <input
         class="wf-name"
-        value={$editor.face.name}
+        value={$doc.name}
         title="Watchface name — the watch's own list shows the first 15 characters"
         maxlength="63"
         onchange={(e) => renameFace(e.currentTarget.value.trim())}
@@ -548,21 +769,22 @@
       />
       <Tabs
         items={screenItems}
-        value={$editor.screenTag === TAG.aod ? "aod" : "main"}
-        onChange={(v) => screenTagSet(v === "aod" ? TAG.aod : TAG.main)}
+        value={$screen}
+        onChange={(v) =>
+          v === "aod" ? (hasAOD ? screenSet("aod") : aodAdded()) : screenSet("main")}
       />
       <span class="tool-slot" title="Undo (⌘Z)">
-        <Button kind="ghost" disabled={!$editor.undoN} onClick={() => undo()}>
+        <Button kind="ghost" disabled={!$undoN} onClick={() => undo()}>
           <Icon name="undo" size={16} />
         </Button>
       </span>
       <span class="tool-slot" title="Redo (⇧⌘Z)">
-        <Button kind="ghost" disabled={!$editor.redoN} onClick={() => redo()}>
+        <Button kind="ghost" disabled={!$redoN} onClick={() => redo()}>
           <Icon name="redo" size={16} />
         </Button>
       </span>
       <span class="tool-slot" title="Export .bin">
-        <Button kind="primary" onClick={exportBin}>
+        <Button kind="primary" onClick={() => exportBin()}>
           <Icon name="download" size={16} />
           <span class="btn-label">Export .bin</span>
         </Button>
@@ -599,7 +821,7 @@
         {/if}
       {/if}
     {/if}
-    {#if $bleInfo && $editor.face}
+    {#if $bleInfo && $doc}
       <span class="tool-slot" title="Upload to the watch">
         <Button kind="primary" onClick={flashWatch} disabled={$flashing}>
           <Icon name="zap" size={16} />
@@ -609,38 +831,46 @@
     {/if}
   </div>
 
-  {#if $editor.err || ($flashing && $bleStatus) || $bleStatus?.startsWith("error:")}
-    <p class="statusbar" class:error={$editor.err || $bleStatus?.startsWith("error:")}>
-      {$editor.err || $bleStatus}
+  {#if $err || ($flashing && $bleStatus) || $bleStatus?.startsWith("error:")}
+    <p class="statusbar" class:error={$err || $bleStatus?.startsWith("error:")}>
+      {$err || $bleStatus}
     </p>
   {/if}
 
   <div class="layout">
-    <aside class="side-panel tree-panel">
+    <aside class="side-panel tree-panel" style="width: {treeW}rem">
       <TreePanel />
+      {@render gutterHandle("tree")}
     </aside>
 
     <section class="canvas-section">
-      <div class="canvas-frame">
-        <canvas
-          bind:this={canvas}
-          width="466"
-          height="466"
-          class="canvas"
-          onpointerdown={onDown}
-          onpointermove={onMove}
-          onpointerup={onUp}
-        ></canvas>
+      <div class="canvas-scroll">
+        <div class="canvas-frame">
+          <canvas
+            bind:this={canvas}
+            width={SCREEN}
+            height={SCREEN}
+            class="canvas"
+            onpointerdown={onDown}
+            onpointermove={onMove}
+            onpointerup={onUp}
+          ></canvas>
+        </div>
       </div>
+      {#if perf && $doc}
+        <p class="fps" class:slow={fps > 0 && fps < 50}>{fps} fps · {drawMs} ms draw</p>
+      {/if}
       <p class="hint">
-        click — select · drag / arrow keys (⇧ ×10) — move · ⌥ drag — no snap · corners — resize · ⌘Z
-        undo
+        click — select · drag / arrow keys (⇧ ×10) — move · ⌥ drag — no snap · corners — resize (⇧
+        inverts the aspect lock) · ⌘Z undo
       </p>
     </section>
 
-    <aside class="side-panel right-panel">
+    <aside class="side-panel right-panel" style="width: {rightW}rem">
+      {@render gutterHandle("right")}
       <div class="tabs-row">
         <Tabs
+          full
           items={panelItems}
           value={$rightPanel}
           onChange={(v) => rightPanelSet(v as "props" | "sim")}
@@ -655,7 +885,7 @@
       </div>
     </aside>
 
-    {#if $editor.face}
+    {#if $doc}
       <div class="mobile-actions">
         <Button kind="secondary" onClick={() => (mobilePanel = "tree")}>
           <Icon name="list-tree" size={16} /> Tree
@@ -670,6 +900,28 @@
     {/if}
   </div>
 </div>
+
+{#snippet gutterHandle(side: "tree" | "right")}
+  <!-- a FOCUSABLE separator is the ARIA window-splitter widget, so tabindex + arrow keys are
+       exactly right here — svelte's rules only know the static, non-interactive separator -->
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+  <div
+    tabindex="0"
+    class="gutter gutter-{side}"
+    class:active={gutter?.side === side}
+    role="separator"
+    aria-orientation="vertical"
+    aria-label="Resize panel"
+    aria-valuenow={Math.round(side === "tree" ? treeW : rightW)}
+    aria-valuemin={SIDE_MIN}
+    aria-valuemax={SIDE_MAX}
+    style="cursor: {gutterCursor(side)}"
+    onpointerdown={(e) => gutterDown(side, e)}
+    ondblclick={() => setSide(side, side === "tree" ? 17.5 : 20.625)}
+    onkeydown={(e) => gutterKey(side, e)}
+  ></div>
+{/snippet}
 
 <Dialog side open={mobilePanel !== null} title={mobileTitle} onClose={() => (mobilePanel = null)}>
   {#if mobilePanel === "tree"}
@@ -767,6 +1019,7 @@
   }
   .side-panel {
     display: none;
+    position: relative; /* the resize gutter straddles the panel's inner edge */
     min-height: 0;
   }
   @media (min-width: 768px) {
@@ -776,12 +1029,36 @@
     }
   }
   .tree-panel {
-    width: 17.5rem;
     border-inline-end: 1px solid oklch(from var(--color-text) l c h / 12%);
   }
   .right-panel {
-    width: 20.625rem;
     border-inline-start: 1px solid oklch(from var(--color-text) l c h / 12%);
+  }
+  /* invisible until hovered/dragged — the panel border already draws the seam */
+  .gutter {
+    position: absolute;
+    z-index: 1;
+    top: 0;
+    bottom: 0;
+    width: 0.5rem;
+    border: none;
+    padding: 0;
+    background: transparent;
+    /* cursor is set inline — it turns single-headed at a clamp, see gutterCursor */
+    touch-action: none;
+    transition: background-color 0.15s ease;
+
+    &:hover,
+    &:focus-visible,
+    &.active {
+      background: oklch(from var(--color-accent) l c h / 35%);
+    }
+  }
+  .gutter-tree {
+    inset-inline-end: -0.25rem;
+  }
+  .gutter-right {
+    inset-inline-start: -0.25rem;
   }
   .tabs-row {
     padding: 0.5rem;
@@ -792,29 +1069,45 @@
     overflow-y: auto;
     padding: 0 0.75rem 0.75rem;
   }
+  /* The dial stops shrinking at --canvas-min and scrolls instead — otherwise wide side panels
+     (they're resizable) squeeze it down to an unusable disc. The scroller is the whole section,
+     so its scrollbar runs along the section's own bottom edge rather than cutting the hint line
+     off the dial. The tinted background and the hint stay put (the section doesn't scroll), so
+     the hint still wraps to what's visible, not to the scrolled-out canvas width. */
   .canvas-section {
-    display: flex;
+    --canvas-min: 16rem;
+
+    position: relative;
+    min-width: 0;
     min-height: 0;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 0.5rem;
     overflow: hidden;
-    padding: 1rem;
     background: oklch(from var(--color-text) l c h / 4%);
+  }
+  /* no align-items/justify-content centering here: flex centering clips whatever overflows past
+     the start edge, so the dial is centred by its own auto margins, which don't */
+  .canvas-scroll {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    overflow: auto;
+    /* padding on the SCROLLER, not the section: it keeps the dial's ring and glow off the edge
+       without the scrollbar leaving the section's own border edge */
+    padding: 1.5rem;
   }
   .canvas-frame {
     aspect-ratio: 1;
     width: min(70vh, 90%, 35rem);
+    min-width: var(--canvas-min);
+    min-height: var(--canvas-min);
     max-height: 100%;
+    flex-shrink: 0;
     overflow: hidden;
     border-radius: 50%;
     background: oklch(0 0 0);
     box-shadow:
       0 0 0 0.5rem oklch(0.28 0 0),
       0 0 3.125rem oklch(0 0 0 / 60%);
-    margin-top: auto;
-    margin-bottom: auto;
+    margin: auto;
   }
   .canvas {
     display: block;
@@ -822,9 +1115,36 @@
     height: 100%;
     touch-action: none;
   }
+  /* dev only — same overlay treatment as .hint, pinned to the opposite corner */
+  .fps {
+    position: absolute;
+    top: 0.5rem;
+    inset-inline-start: 0.5rem;
+    z-index: 2;
+    margin: 0;
+    padding: 0.125rem 0.375rem;
+    border-radius: calc(var(--border-radius) - 0.25rem);
+    background: oklch(from var(--color-background) l c h / 70%);
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    color: oklch(from var(--color-text) l c h / 55%);
+    pointer-events: none;
+
+    &.slow {
+      color: var(--color-error);
+    }
+  }
+  /* floats over the scroller rather than taking a row of its own, so the scrollbar stays on the
+     section's bottom edge — one layer across the whole width, under the text */
   .hint {
     display: none;
+    position: absolute;
+    inset-inline: 0;
+    bottom: 0.75rem;
     margin: 0;
+    padding-inline: 0.5rem;
+    pointer-events: none;
+    text-align: center;
     font-size: 0.625rem;
     color: oklch(from var(--color-text) l c h / 55%);
   }

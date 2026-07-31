@@ -24,30 +24,47 @@ src/lib/
                   # app chrome: app-header/, bottom-nav.svelte
   modules/<feature>/   # auth, market, editor, device
     model/        # <feature>.model.ts + index.ts (export * as fooModel)
-    lib/          # module domain libraries (see the editor/device maps below)
+    core/         # editor only: the domain, split by concern (see the map below)
+    lib/          # other modules' domain libraries (see the device map below)
     components/   # module components
     pages/        # pages + index.ts (export { default as FooPage })
 src/routes/       # thin: import a page from the module and render it
 ```
 
-Editor libs, one concern each — keep them that way instead of growing one file:
+The editor's domain sits under `editor/core/`, in four folders that answer four different
+questions — keep them that way instead of growing one file:
 
 ```
-editor/lib/
-  wf.ts        # .bin <-> Face tree: TLV parse/build, LZ4, pixel codecs
-  tree.ts      # tree navigation + the node shapes the editor creates (pure)
-  sources.ts   # data sources: id labels, Sim, idValue, meta/bind decoding
-  arc.ts       # progress rings: 0x5a/0x5b spec, fill fraction, both draw paths
-  canvas.ts    # renderer types (Ctx/Point/Size/Hit) + Resource -> drawable bitmap
-  render.ts    # draw a screen: per-tag draw functions + group auto-layout
-  pixels.ts    # Resource pixels: decode, resize/adjust, accent tint, previews
-  facer/       # Facer import — assets.ts (files/images/fonts), text.ts (tags), index.ts
-  watchmaker.ts
+editor/core/
+  format/          # the .bin file, and nothing about editing
+    bin.ts           parseBin/buildBin: TLV tree, header, resource table
+    lz4.ts           the block codec every resource payload is stored under
+    pixels-codec.ts  Resource payload <-> RGBA (cf 4/5/13/24, 1 = JPEG)
+    raw.ts           Face/FaceNode/Resource + TAG + byte primitives
+  document/        # the document the editor edits
+    doc.ts           Doc/Layer/Screen, meta + condition decoding, fromLegacy/toLegacy
+    edits.ts         pure Doc -> Doc edits: add/remove/move/group/patch
+    factory.ts       the layers the editor creates from scratch, and a blank document
+    sources.ts       data sources: id labels, Sim, idValue, slot/condition helpers
+  render/
+    render.ts        draw a screen from a Doc: per-kind draw functions + group auto-layout
+    canvas.ts        renderer types (Ctx/Point/Size/LayerHit/ImageStore)
+    arc.ts           progress rings: 0x5a/0x5b spec, fill fraction, both draw paths
+    pixels.ts        asset pixels: decode, resize/adjust, accent tint, previews
+    screen.ts        screen and panel dimensions
+  import/          # other apps' formats -> Face -> fromLegacy
+    facer/           assets.ts (files/images/fonts), text.ts (tags), index.ts
+    watchmaker.ts
 
 device/lib/
   ble-protocol.ts  # GATT ids, command table, 0xF5 frame codec (AES/CRC)
   ble.ts           # Web Bluetooth session: connect, pair, upload
 ```
+
+`Face`/`FaceNode` are the file's own shape, not the editor's: `parseBin` produces them,
+`fromLegacy` turns them into a `Doc`, `toLegacy` turns one back, and the importers build them
+because that is the cheapest target to convert into. Nothing else should touch them — the editor
+edits a `Doc`.
 
 The editor inspector is split the same way: `components/props/` holds `geometry`, `source`
 and `frames` sections; `PropsPanel.svelte` is the container and owns the shared field CSS
@@ -56,21 +73,44 @@ and `frames` sections; `PropsPanel.svelte` is the container and owns the shared 
 - **All logic lives in effector models** (`modules/*/model/*.model.ts`). Components are
   view only: `import { editorModel } from '../model'`, destructure stores/events at the
   top, subscribe via `$store`. Don't put business logic or data loading in components.
-- Domain types: `Face`, `FaceNode`, `Resource` — in `modules/editor/lib/wf.ts`;
-  `Sim` — in `lib/sources.ts`, `Hit` — in `lib/canvas.ts`.
+- Domain types: `Doc`, `Layer`, `Screen`, `ImageAsset`, `NodeId`/`ImageId` — in
+  `core/document/doc.ts`; `Sim` — in `core/document/sources.ts`; `LayerHit`, `ImageStore` — in
+  `core/render/canvas.ts`; `Face`/`FaceNode`/`Resource` — in `core/format/raw.ts` (file shape only).
 - All Svelte components use `<script lang="ts">` — TypeScript everywhere, no plain-JS `<script>`.
 - Cross-module imports — through barrels: `$lib/modules/auth/model`, `$lib/modules/device/model`.
 
 ## Effector conventions
 
+- **Never `store.getState()`** — anywhere, including inside an effect. State reaches an effect as
+  a parameter: `attach({ source: $doc, effect(doc, params) {…} })` for one that's called, or
+  `sample({ clock, source: $doc, fn, target })` for one that's triggered. Components read the
+  store through `$store`; code that needs a value outside a reactive context (an rAF loop) mirrors
+  `$store` into a plain local, it doesn't reach back into the store. Enforced by the
+  `effector/no-get-state` oxlint rule (tests are exempt — they assert on `$store.getState()`).
+- One-shot user actions (delete layer, group, align, export) are a plain event the component fires
+  - an `attach`ed effect wired with `sample({ clock: event, target: fx })`. Only queries that hand a
+    value back (`buildCurrentBin`, `previewBlob`, `previewThumb`) are exported as callable effects.
 - Busy flags — from `someFx.pending`, don't add manual `$state` flags.
 - Effect errors — via `fail`/`failData` into an error store (`errored` in editor, `marketErr` in market).
 - Fire-and-forget effect calls in components — with `.catch(() => {})`, the error is already
   handled in the model.
-- Editor model: the `face` tree is mutable, but every change goes through an event
-  (`patched`, `treeChanged`) that returns a new store root — that's how the UI updates.
-  The canvas is drawn via rAF and reads `editor.getState()`, not a subscription.
-  Undo/redo stacks live outside the store; the store only holds the `undoN`/`redoN` counters.
+- The editor model is split by concern, one file each, all re-exported through `editor.model.ts`
+  so components keep importing a single `editorModel`:
+  `doc.model` (the `Doc` + history), `selection.model` (`$sel`/`$more`/`$screen`, by `NodeId`),
+  `sim.model`, `ui.model` (panel tab, last error), `assets.model` (assets + the bitmap cache),
+  `edit.model` (every action on the layer tree), `io.model` (open/create/import/export).
+- **The document is immutable.** Every edit is a pure `Doc -> Doc` function from
+  `core/document/edits.ts`, handed to `committed` — which checkpoints and applies in one step, and
+  skips both when the edit returns the document unchanged (a rejected move must not eat an undo).
+  Undo/redo is therefore a stack of `Doc` references, not serialized trees.
+- Layers are addressed by `NodeId`, never by object reference: an immutable edit rebuilds the
+  objects, so a stored reference goes stale while the id doesn't.
+- Decoded pixels are NOT part of the document: `assets.model`'s `$cache` holds `ImageBitmap`s and
+  is merged **field by field**, because the accent pass is async and reports only its own tint —
+  replacing whole entries would drop a `bitmap`/`original` written while it was running.
+  A document and its decoded pixels arrive together, in `docLoaded`.
+- The canvas is drawn via rAF off a plain mirror of the stores (see `snapshot` in editor.svelte),
+  so the render effect isn't re-run — and restarted — by every store update.
 
 ## UI
 

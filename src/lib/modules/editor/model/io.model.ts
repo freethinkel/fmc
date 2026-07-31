@@ -1,0 +1,190 @@
+// Getting documents in and out: opening a .bin, starting a blank face, importing a Facer or
+// WatchMaker export, and building the bytes back. The assets are re-encoded on the way out only
+// (flushAssets), so everything the editor did to the pixels stays non-destructive until export.
+import { attach, createEffect, createEvent, sample } from "effector";
+import { buildBin, parseBin } from "../core/format";
+import { fromLegacy, toLegacy, type Doc, type ImageId } from "../core/document/doc";
+import { blankDoc } from "../core/document/factory";
+import { decodeAssets, flushAssets, opaqueBlack, regenPreviewAssets } from "../core/render/pixels";
+import { renderDoc } from "../core/render/render";
+import { PREVIEW, SCREEN } from "../core/render/screen";
+import type { ImageCache } from "../core/document/doc";
+import { $dirty, $doc, docLoaded } from "./doc.model";
+import { $cache, $store } from "./assets.model";
+import { $sim } from "./sim.model";
+import { errored } from "./ui.model";
+
+// ---- events ----
+export const loadRequested = createEvent<{ buf: ArrayBuffer | Uint8Array; label: string }>();
+export const newFaceRequested = createEvent<string | void>();
+export const importFacerRequested = createEvent<File[]>();
+export const exportBin = createEvent();
+/** Fired on any successful load — pages that need to react (navigate once the face is ready)
+ *  subscribe, others ignore it. */
+export const loadDone = createEvent<{ doc: Doc; label: string }>();
+
+// ---- effects ----
+const loadBufferFx = createEffect(
+  async ({ buf, label }: { buf: ArrayBuffer | Uint8Array; label: string }) => {
+    const { doc } = fromLegacy(parseBin(buf));
+
+    return { doc, label, cache: await decodeAssets(doc.images) };
+  },
+);
+
+export const $loading = loadBufferFx.pending;
+
+const newFaceFx = createEffect(async (name: string = "Custom") => {
+  const doc = blankDoc(
+    name,
+    await opaqueBlack(PREVIEW, PREVIEW),
+    await opaqueBlack(SCREEN, SCREEN),
+  );
+
+  return { doc, label: "new", dirty: true, cache: await decodeAssets(doc.images) };
+});
+
+// Facer and WatchMaker exports are both directories and tell each other apart by their manifest —
+// no need to make the user pick the format they downloaded.
+const importFacerFx = createEffect(async (files: File[]) => {
+  const has = (n: string) => files.some((f) => (f.webkitRelativePath || f.name).endsWith(n));
+  const wm = has("watch.pxml");
+  const toFace = wm
+    ? (await import("../core/import/watchmaker")).watchmakerToFace
+    : (await import("../core/import/facer")).facerToFace;
+
+  if (!wm && !has("watchface.json"))
+    throw new Error("not a watchface export: no watchface.json (Facer) or watch.pxml (WatchMaker)");
+  const { face } = await toFace(files);
+  const { doc } = fromLegacy(face);
+
+  return {
+    doc,
+    label: wm ? "watchmaker" : "facer",
+    dirty: true,
+    cache: await decodeAssets(doc.images),
+  };
+});
+
+/** The bytes, with every resized or adjusted asset re-encoded from its pinned original, and the
+ *  embedded 0x28 thumbnails re-baked when the document was edited. Async for exactly that reason. */
+const binOf = async ({
+  doc,
+  cache,
+  sim,
+  dirty,
+}: {
+  doc: Doc | null;
+  cache: ReadonlyMap<ImageId, ImageCache>;
+  sim: Parameters<typeof regenPreviewAssets>[2];
+  dirty: boolean;
+}) => {
+  const images = await flushAssets(doc!.images, cache);
+  let next: Doc = { ...doc!, images };
+
+  if (dirty) {
+    const fresh = await regenPreviewAssets(next, { assets: images, cache }, sim);
+    const merged = new Map(images);
+
+    fresh.forEach(({ asset }, id) => merged.set(id, asset));
+    next = { ...next, images: merged };
+  }
+  const out = buildBin(toLegacy(next));
+
+  parseBin(out); // self-check: never hand out bytes we can't read back
+  return out;
+};
+
+/** The .bin to upload or download. A query, so it stays a callable effect. */
+export const buildCurrentBin = attach({
+  source: { doc: $doc, cache: $cache, sim: $sim, dirty: $dirty },
+  effect: binOf,
+});
+
+/** PNG snapshot of the main screen, for marketplace cards. */
+export const previewBlob = attach({
+  source: { doc: $doc, store: $store, sim: $sim },
+  effect({ doc, store, sim }): Promise<Blob> {
+    const c = document.createElement("canvas");
+
+    c.width = c.height = SCREEN;
+    renderDoc(c.getContext("2d")!, doc!, store, "main", sim);
+    return new Promise((res) => c.toBlob((b) => res(b!), "image/png"));
+  },
+});
+
+/** Tiny JPEG data URL of the main screen, stored next to the flashed dial id so the watch's
+ *  id-only list can show what each slot holds. 96px keeps it around 5 KB. */
+export const previewThumb = attach({
+  source: { doc: $doc, store: $store, sim: $sim },
+  effect({ doc, store, sim }): string {
+    const full = document.createElement("canvas");
+
+    full.width = full.height = SCREEN;
+    renderDoc(full.getContext("2d")!, doc!, store, "main", sim);
+    const thumb = document.createElement("canvas");
+
+    thumb.width = thumb.height = 96;
+    thumb.getContext("2d")!.drawImage(full, 0, 0, 96, 96);
+    return thumb.toDataURL("image/jpeg", 0.7);
+  },
+});
+
+const exportBinFx = attach({
+  source: { doc: $doc, cache: $cache, sim: $sim, dirty: $dirty },
+  async effect(s) {
+    const out = await binOf(s);
+    const a = document.createElement("a");
+
+    a.href = URL.createObjectURL(new Blob([out as BlobPart]));
+    a.download = `${s.doc!.name || "watchface"}.bin`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  },
+});
+
+// ---- business logic ----
+sample({
+  clock: loadRequested,
+  target: loadBufferFx,
+});
+sample({
+  clock: newFaceRequested,
+  fn: (name) => name ?? undefined,
+  target: newFaceFx,
+});
+sample({
+  clock: importFacerRequested,
+  target: importFacerFx,
+});
+sample({
+  clock: [loadBufferFx.doneData, newFaceFx.doneData, importFacerFx.doneData],
+  target: docLoaded,
+});
+sample({
+  clock: [loadBufferFx.doneData, newFaceFx.doneData, importFacerFx.doneData],
+  fn: ({ doc, label }) => ({ doc, label }),
+  target: loadDone,
+});
+sample({
+  clock: exportBin,
+  source: $doc,
+  filter: Boolean,
+  target: exportBinFx,
+});
+
+sample({
+  clock: loadBufferFx.fail,
+  fn: ({ params, error }) => `${params.label}: ${(error as Error).message}`,
+  target: errored,
+});
+sample({
+  clock: [
+    newFaceFx.failData,
+    importFacerFx.failData,
+    exportBinFx.failData,
+    buildCurrentBin.failData,
+  ],
+  fn: (e: Error) => e.message,
+  target: errored,
+});

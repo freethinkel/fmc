@@ -1,14 +1,10 @@
 <script lang="ts">
   import { Input } from "$lib/shared/components/input";
   import { Switch } from "$lib/shared/components/switch";
-  import { Button } from "$lib/shared/components/button";
-  import { sourceLabel } from "../lib/sources";
+  import { Icon } from "$lib/shared/components/icon";
+  import { ACCENT_PALETTE, pickerLabel } from "../core/document/sources";
   import { editorModel } from "../model";
-  const { $editor: editor, simPatched, overrideSet } = editorModel;
-
-  // default for the baked-in sentinel color (see cmf-format-reference.md "Accent color
-  // sentinel") — just shown in the picker until the user picks their own
-  const ACCENT_DEFAULT = "#ff2c00";
+  const { $sim: sim, $ids: ids, simPatched, overrideSet } = editorModel;
 
   type NumField =
     | "steps"
@@ -46,54 +42,63 @@
 
 <div class="panel">
   <div class="switch-row">
-    <Switch checked={$editor.sim.live} onChange={(v) => simPatched({ live: v })} />
-    <button
-      type="button"
-      class="check-label"
-      onclick={() => simPatched({ live: !$editor.sim.live })}>live time</button
+    <Switch checked={$sim.live} onChange={(v) => simPatched({ live: v })} />
+    <button type="button" class="check-label" onclick={() => simPatched({ live: !$sim.live })}
+      >live time</button
     >
   </div>
-  {#if !$editor.sim.live}
+  {#if !$sim.live}
     <Input
       type="datetime-local"
       step={1}
-      value={localISO($editor.sim.time)}
+      value={localISO($sim.time)}
       onInput={(v) => simPatched({ time: new Date(v).getTime() })}
     />
   {/if}
   <div class="switch-row">
-    <Switch checked={$editor.sim.is24h} onChange={(v) => simPatched({ is24h: v })} />
-    <button
-      type="button"
-      class="check-label"
-      onclick={() => simPatched({ is24h: !$editor.sim.is24h })}>24-hour format</button
+    <Switch checked={$sim.is24h} onChange={(v) => simPatched({ is24h: v })} />
+    <button type="button" class="check-label" onclick={() => simPatched({ is24h: !$sim.is24h })}
+      >24-hour format</button
     >
   </div>
   <div class="switch-row">
     <Switch
-      checked={$editor.sim.showSlotPlaceholders}
+      checked={$sim.showSlotPlaceholders}
       onChange={(v) => simPatched({ showSlotPlaceholders: v })}
     />
     <button
       type="button"
       class="check-label"
-      onclick={() => simPatched({ showSlotPlaceholders: !$editor.sim.showSlotPlaceholders })}
+      onclick={() => simPatched({ showSlotPlaceholders: !$sim.showSlotPlaceholders })}
       >widget-slot placeholders</button
     >
   </div>
   <div>
     <span class="muted-label">Accent color</span>
+    <!-- the watch offers a fixed set, so this mirrors it rather than opening a color wheel;
+         recolors widgets flagged via meta[7]===4, see metaInfo in lib/sources.ts -->
     <div class="accent-row">
-      <input
-        type="color"
-        class="swatch"
-        value={$editor.sim.accentColor || ACCENT_DEFAULT}
-        oninput={(e) => simPatched({ accentColor: e.currentTarget.value })}
-        title="Watch accent color (recolors widgets flagged via meta[7]===4, see metaInfo in lib/sources.ts)"
-      />
-      {#if $editor.sim.accentColor}
-        <Button kind="ghost" onClick={() => simPatched({ accentColor: null })}>Reset</Button>
-      {/if}
+      <button
+        type="button"
+        class="swatch none"
+        class:on={!$sim.accentColor}
+        title="No accent — draw the colors baked into the file"
+        aria-label="No accent"
+        onclick={() => simPatched({ accentColor: null })}
+      >
+        <Icon name="x" size={12} />
+      </button>
+      {#each ACCENT_PALETTE as c}
+        <button
+          type="button"
+          class="swatch"
+          class:on={$sim.accentColor === c}
+          style="background: {c}"
+          title={c}
+          aria-label={c}
+          onclick={() => simPatched({ accentColor: c })}
+        ></button>
+      {/each}
     </div>
   </div>
   <div class="fields-grid">
@@ -102,24 +107,24 @@
         <span class="muted-label" title={hint}>{label}</span>
         <Input
           type="number"
-          value={String($editor.sim[key])}
+          value={String($sim[key])}
           onInput={(v) => simPatched({ [key]: v === "" ? "" : +v })}
         />
       </div>
     {/each}
   </div>
 
-  {#if $editor.ids.length}
+  {#if $ids.length}
     <h3 class="section-heading">Data sources</h3>
     <div class="ids-list">
-      {#each $editor.ids as { id, max }}
+      {#each $ids as { id, max }}
         <div class="id-row">
-          <span class="id-label">0x{id.toString(16)} {sourceLabel(id)}</span>
+          <span class="id-label">{pickerLabel(id)}</span>
           <span class="id-input">
             <Input
               type="number"
               placeholder="auto"
-              value={String($editor.sim.overrides[id] ?? "")}
+              value={String($sim.overrides[id] ?? "")}
               onInput={(v) => overrideSet({ id, value: v })}
             />
           </span>
@@ -158,19 +163,40 @@
     font-size: 0.625rem;
     color: oklch(from var(--color-text) l c h / 55%);
   }
+  /* one row, scrolled — wrapping left a lone swatch stranded on a second line */
   .accent-row {
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    overflow-x: auto;
+    /* room for the selected swatch's outline, which sits outside its box */
+    padding: 0.25rem;
+    margin: -0.25rem;
+    scrollbar-width: thin;
   }
   .swatch {
-    width: 3rem;
-    height: 2rem;
-    padding: 0.125rem;
+    flex-shrink: 0;
+    width: 1.5rem;
+    height: 1.5rem;
+    padding: 0;
     border: 1px solid oklch(from var(--color-text) l c h / 12%);
-    border-radius: var(--border-radius);
+    border-radius: 50%;
     cursor: pointer;
+    /* the ring sits outside the circle, so picking one doesn't nudge the row */
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+    transition: outline-color 0.15s ease;
+
+    &.on {
+      outline-color: var(--color-text);
+    }
+  }
+  .none {
+    display: flex;
+    align-items: center;
+    justify-content: center;
     background: transparent;
+    color: oklch(from var(--color-text) l c h / 55%);
   }
   .fields-grid {
     display: grid;

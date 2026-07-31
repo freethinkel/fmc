@@ -15,13 +15,13 @@
     $publishDialogOpen: open,
     publishDialogClosed,
   } = marketModel;
-  const { $editor: editor, buildCurrentBin, previewBlob } = editorModel;
+  const { $doc: doc, buildCurrentBin, previewBlob } = editorModel;
 
   let name = $state("");
   let description = $state("");
 
   $effect(() => {
-    if ($open) name = $editor.face?.name || "Custom";
+    if ($open) name = $doc?.name || "Custom";
   });
 
   async function publish() {

@@ -1,70 +1,33 @@
 <script lang="ts">
   import { Select } from "$lib/shared/components/select";
   import { Icon } from "$lib/shared/components/icon";
-  import { hex, unhex, type FaceNode, type Resource } from "../../lib/wf";
-  import { FRAME_LABELS, metaInfo, sourceLabel } from "../../lib/sources";
-  import { structOf } from "../../lib/tree";
+  import { framesOf, type ImageId, type Layer } from "../../core/document/doc";
+  import { FRAME_LABELS, pickerLabel } from "../../core/document/sources";
   import { editorModel } from "../../model";
   import { set } from "./patch";
+  import FrameThumb from "./frame-thumb.svelte";
 
-  const { node }: { node: FaceNode } = $props();
-  const { $editor: editor, replaceImageRequested, moveImage } = editorModel;
+  const { layer }: { layer: Layer } = $props();
+  const { $doc: doc, $cache: cache, replaceImageRequested, frameMoved } = editorModel;
 
   // native HTML5 drag & drop over the frame list, same shape as TreePanel's layer reorder
   let dragIdx = $state<number | null>(null);
   let dropIdx = $state<number | null>(null);
 
-  const st = $derived(structOf(node));
-  // see the snapshot note in geometry.svelte
-  const images = $derived.by(() => {
-    void $editor;
-    return st?.images;
-  });
-  const frameLabels = $derived.by(() => {
-    void $editor;
-    return st?.meta ? FRAME_LABELS[metaInfo(st).id] : null;
-  });
-
-  // 0x5f: [slotIndex][count][activeIdx][count × metric id][padding] — see 0x85 "Widget slot"
-  const slotNode = $derived(node.tag === 0x85 ? node.subs?.find((s) => s.tag === 0x5f) : null);
-  const slotInfo = $derived.by(() => {
-    void $editor;
-    const v = slotNode?.hex ? unhex(slotNode.hex) : null;
-
-    if (!v || v.length < 3) return null;
-    return { activeIdx: v[2], ids: [...v.subarray(3, 3 + v[1])] };
-  });
+  // a fresh layer object arrives on every edit, so plain deriveds are enough here
+  const images = $derived(framesOf(layer));
+  const frameLabels = $derived(
+    layer.kind !== "group" && layer.kind !== "raw" ? FRAME_LABELS[layer.meta.source] : null,
+  );
+  // the 0x5f body is already decoded on a SlotLayer — no hex to pick apart
+  const slotInfo = $derived(
+    layer.kind === "slot" ? { activeIdx: layer.active, ids: layer.metrics } : null,
+  );
   const slotOptions = $derived(
-    slotInfo?.ids.map((id, i) => ({
-      value: String(i),
-      label: `0x${id.toString(16)} — ${sourceLabel(id)}`,
-    })) ?? [],
+    slotInfo?.ids.map((id, i) => ({ value: String(i), label: pickerLabel(id) })) ?? [],
   );
 
-  function setSlotActive(idx: number) {
-    if (!slotNode) return;
-    const v = unhex(slotNode.hex || "");
-
-    v[2] = idx;
-    set(slotNode, { hex: hex(v) });
-  }
-
-  function thumbURL(r: Resource) {
-    const c = document.createElement("canvas");
-
-    c.width = r.w;
-    c.height = r.h;
-    if (r.bitmap) c.getContext("2d")?.drawImage(r.bitmap, 0, 0);
-    return c.toDataURL();
-  }
-  function downloadRes(ri: number) {
-    if (!$editor.face) return;
-    const a = document.createElement("a");
-
-    a.href = thumbURL($editor.face.resources[ri]);
-    a.download = `res${ri}.png`;
-    a.click();
-  }
+  const setSlotActive = (active: number) => set(layer.id, { active } as Partial<Layer>);
 </script>
 
 {#if slotInfo}
@@ -85,19 +48,6 @@
     <span class="muted-label">placeholder (widget-edit screen only)</span>
     <div class="images">{@render thumb(images[0])}</div>
   </div>
-  {#if images.length > 1}
-    <div>
-      <span class="muted-label">companion-app menu icons</span>
-      <div class="images">
-        {#each images.slice(1) as ri, i}
-          <div class="thumb-col" class:active={i === slotInfo.activeIdx}>
-            {@render thumb(ri)}
-            <span class="thumb-cap">{sourceLabel(slotInfo.ids[i])}</span>
-          </div>
-        {/each}
-      </div>
-    </div>
-  {/if}
 {:else if images && images.length > 1}
   <!-- A multi-frame widget is indexed BY VALUE (images[value % count]), so the order is
        data, not decoration — a set imported in the wrong order shows the wrong day/month
@@ -124,7 +74,8 @@
           }}
           ondrop={(e) => {
             e.preventDefault();
-            if (dragIdx !== null && dropIdx === i && st) moveImage(st, dragIdx, i);
+            if (dragIdx !== null && dropIdx === i)
+              frameMoved({ id: layer.id, from: dragIdx, to: i });
             dragIdx = dropIdx = null;
           }}
           ondragend={() => (dragIdx = dropIdx = null)}
@@ -147,26 +98,8 @@
   </div>
 {/if}
 
-{#snippet thumb(ri: number)}
-  {@const r = $editor.face!.resources[ri]}
-  <div class="thumb-wrap">
-    <label title="res{ri} · {r.w}×{r.h} · cf{r.cf} — click to replace" class="thumb">
-      <img src={thumbURL(r)} alt="res{ri}" />
-      <input
-        type="file"
-        accept="image/*"
-        hidden
-        onchange={(e) => {
-          const file = e.currentTarget.files?.[0];
-
-          if (file) replaceImageRequested({ resIdx: ri, file });
-        }}
-      />
-    </label>
-    <button title="Download PNG" onclick={() => downloadRes(ri)} class="dl-btn">
-      <Icon name="download" size={14} />
-    </button>
-  </div>
+{#snippet thumb(id: ImageId)}
+  <FrameThumb {id} />
 {/snippet}
 
 <style>
@@ -221,59 +154,9 @@
     flex-wrap: wrap;
     gap: 0.5rem;
   }
-  .thumb-wrap {
-    position: relative;
-  }
-  .thumb-col {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.125rem;
-    max-width: 4rem;
-  }
   .thumb-cap {
     font-size: 0.625rem;
     text-align: center;
     color: oklch(from var(--color-text) l c h / 55%);
-  }
-  .thumb-col.active .thumb-cap {
-    color: var(--color-accent);
-  }
-  .thumb {
-    display: block;
-    cursor: pointer;
-    border-radius: 0.375rem;
-    overflow: hidden;
-    background: repeating-conic-gradient(
-        oklch(from var(--color-text) l c h / 15%) 0 25%,
-        oklch(from var(--color-text) l c h / 8%) 0 50%
-      )
-      0 0 / 0.75rem 0.75rem;
-
-    img {
-      display: block;
-      max-width: 3.5rem;
-      max-height: 3.5rem;
-    }
-  }
-  .dl-btn {
-    position: absolute;
-    top: 0.125rem;
-    inset-inline-end: 0.125rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0.125rem;
-    border: none;
-    border-radius: 0.25rem;
-    background: oklch(from var(--color-background) l c h / 80%);
-    color: var(--color-text);
-    cursor: pointer;
-    opacity: 0;
-    transition: opacity 0.15s ease;
-  }
-  .thumb-wrap:hover .dl-btn,
-  .dl-btn:focus-visible {
-    opacity: 1;
   }
 </style>
