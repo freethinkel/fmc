@@ -3,6 +3,7 @@
 import { describe, test, expect } from "vitest";
 import { snapAxis, snapTargets } from "$lib/modules/editor/core/render/snap";
 import { SNAP_THRESHOLD } from "$lib/modules/editor/shared/constants";
+import { CENTER, SCREEN } from "$lib/modules/editor/core/render/screen";
 import type { LayerHit } from "$lib/modules/editor/core/render/canvas";
 import type { GroupLayer, Layer, NodeId } from "$lib/modules/editor/core/document/doc";
 
@@ -58,7 +59,7 @@ describe("snapTargets", () => {
       [dragged],
     );
 
-    expect(t.xs).toEqual([0, 233, 466, 200, 230, 260]);
-    expect(t.ys).toEqual([0, 233, 466, 300, 320, 340]);
+    expect(t.xs).toEqual([0, CENTER, SCREEN, 200, 230, 260]);
+    expect(t.ys).toEqual([0, CENTER, SCREEN, 300, 320, 340]);
   });
 });

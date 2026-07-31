@@ -18,10 +18,10 @@ import {
 } from "./doc";
 import { SLOT_SEL_ID, isSlotSel } from "./sources";
 
-const childrenOf = (l: Layer): readonly Layer[] =>
+export const childrenOf = (l: Layer): readonly Layer[] =>
   l.kind === "group" ? l.children : l.kind === "raw" ? (l.children ?? []) : [];
 
-const withChildren = (l: Layer, children: readonly Layer[]): Layer =>
+export const withChildren = (l: Layer, children: readonly Layer[]): Layer =>
   l.kind === "group" ? { ...l, children } : l.kind === "raw" ? { ...l, children } : l;
 
 export function findLayer(doc: Doc, id: NodeId): Layer | null {

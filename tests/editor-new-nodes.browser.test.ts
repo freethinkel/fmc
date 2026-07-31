@@ -15,6 +15,7 @@ import {
   type SlotLayer,
 } from "$lib/modules/editor/core/document/doc";
 import { editorModel } from "$lib/modules/editor/model";
+import { SCREEN } from "$lib/modules/editor/core/render/screen";
 import url from "./__fixtures__/Analog__287__Simple_Dial.bin?url";
 
 const doc = () => editorModel.$doc.getState()!;
@@ -42,7 +43,7 @@ const load = async (label: string) => {
 function boxOf(id: NodeId) {
   const c = document.createElement("canvas");
 
-  c.width = c.height = 466;
+  c.width = c.height = SCREEN;
   const hits = renderDoc(
     c.getContext("2d")!,
     doc(),
@@ -112,7 +113,7 @@ test("a widget slot is created with one icon per metric and a numbered 0x5f", as
 
   expect(written).toHaveLength(2);
   // the 0x5f body is a fixed width across the corpus
-  expect(unhex(written[0].subs!.find((n) => n.tag === 0x5f)!.hex!)).toHaveLength(33);
+  expect(unhex(written[0].subs!.find((n) => n.tag === TAG.slot)!.hex!)).toHaveLength(33);
 });
 
 test("dropping a widget into a group keeps it where it was, and ungroup puts it back", async () => {

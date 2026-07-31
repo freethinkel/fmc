@@ -8,12 +8,13 @@ import { renderDoc } from "$lib/modules/editor/core/render/render";
 import { isPlaced } from "$lib/modules/editor/core/document/doc";
 import type { LayerHit } from "$lib/modules/editor/core/render/canvas";
 import { SNAP_THRESHOLD } from "$lib/modules/editor/shared/constants";
+import { SCREEN } from "$lib/modules/editor/core/render/screen";
 import url from "./__fixtures__/Analog__287__Simple_Dial.bin?url";
 
 const boxes = (): LayerHit[] => {
   const c = document.createElement("canvas");
 
-  c.width = c.height = 466;
+  c.width = c.height = SCREEN;
   return renderDoc(
     c.getContext("2d")!,
     editorModel.$doc.getState()!,
@@ -53,8 +54,8 @@ test("dragging a widget snaps its edge onto another widget's edge", async () => 
   expect(isPlaced(me.layer)).toBe(true);
 
   const r = canvas.getBoundingClientRect();
-  const k = r.width / 466; // canvas units -> client px
-  const tol = (SNAP_THRESHOLD * 466) / r.width;
+  const k = r.width / SCREEN; // canvas units -> client px
+  const tol = (SNAP_THRESHOLD * SCREEN) / r.width;
   const off = 3; // inside the snap window, so the drag must land flush instead
 
   expect(off).toBeLessThan(tol);
@@ -77,7 +78,7 @@ test("dragging a widget snaps its edge onto another widget's edge", async () => 
 
   // …and the guide is on screen while the pointer is still down
   await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-  const px = canvas.getContext("2d")!.getImageData(Math.round(other.x), 0, 1, 466).data;
+  const px = canvas.getContext("2d")!.getImageData(Math.round(other.x), 0, 1, SCREEN).data;
   // magenta-ish rather than exactly GUIDE_COLOR: the guide is drawn over the face and may carry
   // alpha, so what identifies it is red+blue far above green
   let magenta = false;

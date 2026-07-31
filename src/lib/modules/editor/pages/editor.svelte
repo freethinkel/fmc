@@ -477,11 +477,11 @@
     ctx.beginPath();
     for (const x of guides.x) {
       ctx.moveTo(x + 0.5, 0);
-      ctx.lineTo(x + 0.5, 466);
+      ctx.lineTo(x + 0.5, SCREEN);
     }
     for (const y of guides.y) {
       ctx.moveTo(0, y + 0.5);
-      ctx.lineTo(466, y + 0.5);
+      ctx.lineTo(SCREEN, y + 0.5);
     }
     ctx.stroke();
     ctx.restore();

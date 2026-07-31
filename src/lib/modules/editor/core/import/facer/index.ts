@@ -16,7 +16,8 @@ import {
   tinted,
   unb64,
 } from "./assets";
-import { SCREEN } from "../../render/screen";
+import { PREVIEW, SCREEN } from "../../render/screen";
+import { encodeMeta, type WidgetMeta } from "../../document/doc";
 import {
   classifyText,
   DIGITS,
@@ -71,8 +72,21 @@ const handRole = (l: Layer): string | null => {
   return m ? (ROT[m[1]] ?? null) : null;
 };
 
-const META0 = "0000000000000000000000000000";
-const BG_META = "d201d20100000000000000000000"; // 466,466 LE + zeros
+// The 14 struct meta bytes: everything an imported widget leaves alone, and the full-screen
+// background, which is the same thing with the panel size in it.
+const ZERO_META: WidgetMeta = {
+  w: 0,
+  h: 0,
+  auto: false,
+  source: 0,
+  sub: 0,
+  max: 0,
+  rgb: [0, 0, 0],
+  flags: 0,
+  reserved: 0,
+};
+const META0 = encodeMeta(ZERO_META);
+const BG_META = encodeMeta({ ...ZERO_META, w: SCREEN, h: SCREEN });
 
 // Facer stores the same image under several hashes; round faces sometimes only
 // fill hash_square (or a cropped variant). Pick whichever is present.
@@ -562,7 +576,7 @@ export async function facerToFace(files: File[]): Promise<{ face: Face; skipped:
   async function screen(tag: number, sh: Sheet, pick: (f: Field) => boolean, ambient: boolean) {
     const subs: FaceNode[] = tag === TAG.main ? [{ tag: TAG.name, text: name }] : [];
 
-    subs.push(preview(await addRes(scaled(sh.base, 270, 270), 4)));
+    subs.push(preview(await addRes(scaled(sh.base, PREVIEW, PREVIEW), 4)));
     subs.push(imgWidget(0, 0, BG_META, await addRes(sh.base, 4)));
     for (const f of fields) if (pick(f)) subs.push(await buildField(f, ambient));
     for (const sel of sels.values())

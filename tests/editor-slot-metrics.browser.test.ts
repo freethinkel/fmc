@@ -1,7 +1,7 @@
 // A slot's 0x5f list is the menu the companion app shows. Adding a metric needs an icon frame
 // beside it; removing one takes that frame with it, and the file has to stay valid either way.
 import { test, expect, vi } from "vitest";
-import { parseBin, unhex } from "$lib/modules/editor/core/format";
+import { TAG, parseBin, unhex } from "$lib/modules/editor/core/format";
 import { findLayer } from "$lib/modules/editor/core/document/edits";
 import { SLOT_METRIC_CHOICES } from "$lib/modules/editor/core/document/factory";
 import type { NodeId, SlotLayer } from "$lib/modules/editor/core/document/doc";
@@ -40,7 +40,7 @@ test("a metric can be added and removed, icon frame and all", async () => {
   // the 0x5f body must agree: [index][count][active][ids…]
   const built = parseBin(await editorModel.buildCurrentBin());
   const body = unhex(
-    built.screens[0].subs!.find((n) => n.tag === 0x85)!.subs!.find((n) => n.tag === 0x5f)!.hex!,
+    built.screens[0].subs!.find((n) => n.tag === 0x85)!.subs!.find((n) => n.tag === TAG.slot)!.hex!,
   );
 
   expect(body[1]).toBe(added.metrics.length);

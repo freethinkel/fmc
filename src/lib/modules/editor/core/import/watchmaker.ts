@@ -6,7 +6,7 @@
 // hour/minute/second/battery hands. Anything driven by a WatchMaker tag or a Lua expression
 // is skipped and reported.
 import { cropOpaque, encodeCanvas, fileMap } from "./facer/assets";
-import { SCREEN } from "../render/screen";
+import { PREVIEW, SCREEN } from "../render/screen";
 import { hex, TAG, type Face, type FaceNode, type Resource } from "../format";
 
 const W = SCREEN;
@@ -527,7 +527,7 @@ export async function watchmakerToFace(files: File[]): Promise<{ face: Face; ski
           tag: TAG.pvStruct,
           prefix: "0000000000",
           refType: 0x61,
-          images: [await addRes(scaled(sh.base, 270, 270), 4)],
+          images: [await addRes(scaled(sh.base, PREVIEW, PREVIEW), 4)],
         },
       ],
     });

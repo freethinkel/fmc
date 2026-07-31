@@ -101,7 +101,7 @@ export const newGroup = (): GroupLayer => ({
 export function newRing(): RingLayer {
   const d = 200;
   const spec: ArcSpec = {
-    kind: 0x5a,
+    kind: TAG.arc,
     min: 0,
     max: 100,
     start: 0,

@@ -59,6 +59,7 @@
     [TAG.pvStruct]: "preview",
   };
 
+  /** The derived label — what a layer is called until it is renamed. */
   export function layerLabel(l: Layer) {
     let s = l.kind === "raw" ? (rawNames[l.tag] ?? `0x${l.tag.toString(16)}`) : kindNames[l.kind];
 
@@ -137,6 +138,17 @@
       ids: $selected.map((l) => l.id),
       patch: { [key]: !$selected[0]?.[key] },
     });
+
+  // Renaming: the row swaps for an input. The name is editor-only — the .bin has no string node
+  // for a layer — so it lives as long as the document does and is lost on reload.
+  let renaming = $state.raw<NodeId | null>(null);
+
+  function commitRename(l: Layer, value: string) {
+    const name = value.trim();
+
+    renaming = null;
+    if (name !== (l.name ?? "")) layerFlagsSet({ ids: [l.id], patch: { name: name || undefined } });
+  }
 
   // accordion: closed by default, keyed by layer id — ids survive an immutable edit, object
   // references don't
@@ -312,6 +324,11 @@
 />
 
 {#snippet layerActions()}
+  {#if $sel && $selected.length === 1}
+    <MenuItem onClick={() => (renaming = $sel)}>
+      <Icon name="pencil" size={14} /> Rename
+    </MenuItem>
+  {/if}
   <MenuItem keys={capsFor("mod+d")} onClick={duplicateRequested}>
     <Icon name="copy" size={14} /> Duplicate
   </MenuItem>
@@ -383,52 +400,75 @@
 {#snippet treeNode(l: Layer, depth: number)}
   <!-- reversed: layer order is draw order, so the last one is topmost and goes first -->
   {@const kids = [...childrenOf(l)].reverse()}
-  <button
-    type="button"
-    class="node-row"
-    class:selected={isPicked(l.id)}
-    class:primary={$sel === l.id && $selected.length > 1}
-    class:dragging={drag === l.id}
-    class:drop-into={dropAt?.id === l.id && dropAt.into}
-    class:drop-before={dropAt?.id === l.id && !dropAt.into && !dropAt.after}
-    class:drop-after={dropAt?.id === l.id && !dropAt.into && dropAt.after}
-    style="padding-inline-start: {0.5 + depth * 0.75}rem"
-    draggable="true"
-    onclick={(e) => onRowClick(l.id, e)}
-    oncontextmenu={(e) => onRowMenu(l.id, e)}
-    ondragstart={(e) => onDragStart(l.id, e)}
-    ondragover={(e) => onDragOver(l, e)}
-    ondrop={(e) => onDrop(l, e)}
-    ondragend={() => (drag = dropAt = null)}
-  >
-    {#if kids.length}
-      <Icon
-        name="chevron-right"
-        size={12}
-        class={openNodes.has(l.id) ? "chevron open" : "chevron"}
-        onclick={(e: MouseEvent) => toggleOpen(l.id, e)}
-      />
-    {:else}
+  {#if renaming === l.id}
+    <!-- an <input> can't live inside the row's own <button>, so the whole row swaps -->
+    <div class="node-row" style="padding-inline-start: {0.5 + depth * 0.75}rem">
       <span class="chevron-spacer"></span>
-    {/if}
-    <Icon name={kindIcons[l.kind]} size={14} class="node-icon" />
-    <span class="label">{layerLabel(l)}</span>
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <span class="flags">
-      <Icon
-        name={l.hidden ? "eye-off" : "eye"}
-        size={12}
-        class={l.hidden ? "flag on" : "flag"}
-        onclick={(e: MouseEvent) => toggleFlag(e, l, "hidden")}
+      <Icon name={kindIcons[l.kind]} size={14} class="node-icon" />
+      <input
+        class="rename"
+        value={l.name ?? ""}
+        placeholder={layerLabel(l)}
+        onblur={(e) => commitRename(l, e.currentTarget.value)}
+        onkeydown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+          else if (e.key === "Escape") renaming = null;
+        }}
+        {@attach (el: HTMLInputElement) => {
+          el.focus();
+          el.select();
+        }}
       />
-      <Icon
-        name={l.locked ? "lock" : "lock-open"}
-        size={12}
-        class={l.locked ? "flag on" : "flag"}
-        onclick={(e: MouseEvent) => toggleFlag(e, l, "locked")}
-      />
-    </span>
-  </button>
+    </div>
+  {:else}
+    <button
+      type="button"
+      class="node-row"
+      class:selected={isPicked(l.id)}
+      class:primary={$sel === l.id && $selected.length > 1}
+      class:dragging={drag === l.id}
+      class:drop-into={dropAt?.id === l.id && dropAt.into}
+      class:drop-before={dropAt?.id === l.id && !dropAt.into && !dropAt.after}
+      class:drop-after={dropAt?.id === l.id && !dropAt.into && dropAt.after}
+      style="padding-inline-start: {0.5 + depth * 0.75}rem"
+      draggable="true"
+      onclick={(e) => onRowClick(l.id, e)}
+      ondblclick={() => (renaming = l.id)}
+      oncontextmenu={(e) => onRowMenu(l.id, e)}
+      ondragstart={(e) => onDragStart(l.id, e)}
+      ondragover={(e) => onDragOver(l, e)}
+      ondrop={(e) => onDrop(l, e)}
+      ondragend={() => (drag = dropAt = null)}
+    >
+      {#if kids.length}
+        <Icon
+          name="chevron-right"
+          size={12}
+          class={openNodes.has(l.id) ? "chevron open" : "chevron"}
+          onclick={(e: MouseEvent) => toggleOpen(l.id, e)}
+        />
+      {:else}
+        <span class="chevron-spacer"></span>
+      {/if}
+      <Icon name={kindIcons[l.kind]} size={14} class="node-icon" />
+      <span class="label">{l.name || layerLabel(l)}</span>
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <span class="flags">
+        <Icon
+          name={l.hidden ? "eye-off" : "eye"}
+          size={12}
+          class={l.hidden ? "flag on" : "flag"}
+          onclick={(e: MouseEvent) => toggleFlag(e, l, "hidden")}
+        />
+        <Icon
+          name={l.locked ? "lock" : "lock-open"}
+          size={12}
+          class={l.locked ? "flag on" : "flag"}
+          onclick={(e: MouseEvent) => toggleFlag(e, l, "locked")}
+        />
+      </span>
+    </button>
+  {/if}
   {#if kids.length && openNodes.has(l.id)}
     {#each kids as c (c.id)}
       {@render treeNode(c, depth + 1)}
@@ -543,6 +583,16 @@
   :global(.flag.on),
   .node-row:hover :global(.flag) {
     opacity: 0.75;
+  }
+  .rename {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    background: transparent;
+    padding: 0;
+    font: inherit;
+    color: var(--color-text);
+    outline: none;
   }
   .label {
     overflow: hidden;
