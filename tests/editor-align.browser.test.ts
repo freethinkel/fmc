@@ -13,6 +13,7 @@ import {
 } from "$lib/modules/editor/core/document/doc";
 import { patchLayer } from "$lib/modules/editor/core/document/edits";
 import { editorModel } from "$lib/modules/editor/model";
+import { SCREEN } from "$lib/modules/editor/core/render/screen";
 import url from "./__fixtures__/Analog__287__Simple_Dial.bin?url";
 import groupedUrl from "./__fixtures__/Multifunction__368__Function.bin?url";
 
@@ -35,7 +36,7 @@ const load = async (from: string, label: string) => {
 const canvas = () => {
   const c = document.createElement("canvas");
 
-  c.width = c.height = 466;
+  c.width = c.height = SCREEN;
   return c.getContext("2d")!;
 };
 
@@ -58,8 +59,8 @@ test("align lands the rendered bbox on center/bottom", async () => {
 
   const h = draw(ctx).findLast((x) => x.layer.id === h0.layer.id)!;
 
-  expect(h.x).toBe(Math.round((466 - h.w) / 2));
-  expect(h.y).toBe(466 - h.h);
+  expect(h.x).toBe(Math.round((SCREEN - h.w) / 2));
+  expect(h.y).toBe(SCREEN - h.h);
 });
 
 // A group frame's main-axis alignment is the flex alignment of the AUTO-laid-out children, not a

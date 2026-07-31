@@ -5,6 +5,10 @@ import { test, expect } from "vitest";
 import { facerToFace } from "$lib/modules/editor/core/import/facer";
 import { TAG, decodePixels, unhex, type FaceNode } from "$lib/modules/editor/core/format";
 import { metaInfo } from "$lib/modules/editor/core/document/sources";
+import { CENTER, SCREEN } from "$lib/modules/editor/core/render/screen";
+
+/** Facer authors against its own canvas; the fixture uses the default one. */
+const FACER_CANVAS = 320;
 
 const LAYERS = [
   { type: "shape", shape_type: 1, x: 0, y: 0, width: 320, height: 320, color: -16777216 },
@@ -213,13 +217,13 @@ test("facerToFace maps tags, hands and alignment", async () => {
   expect(asc(hands.map(idOf))).toEqual([0x0a, 0x0e, 0x12]);
 
   // ...and are cropped to their ink: a full-canvas 466×466 cf 5 hand costs 650 KB of RAM on
-  // the watch and reboots it. x + pivot must still land on the layer centre (160 scaled by
-  // 466/320 = 233), otherwise the hand rotates around the wrong point.
+  // the watch and reboots it. x + pivot must still land on the layer centre (Facer's own 160,
+  // scaled from its 320 canvas to ours), otherwise the hand rotates around the wrong point.
   const hst = hands[0].subs!.find((s) => s.tag === TAG.struct)!;
   const hres = face.resources[hst.images![0]];
 
-  expect(hres.w).toBeLessThan(Math.round((100 * 466) / 320));
-  expect(hst.x! + hands[0].subs!.find((s) => s.tag === TAG.pivot)!.pivotX!).toBe(233);
+  expect(hres.w).toBeLessThan(Math.round((100 * SCREEN) / FACER_CANVAS));
+  expect(hst.x! + hands[0].subs!.find((s) => s.tag === TAG.pivot)!.pivotX!).toBe(CENTER);
 
   // conditional opacity can't be expressed on the watch, so that layer is dropped, not baked
   expect(all(main, (n) => n.tag === TAG.number).some((n) => idOf(n) === 0x1a)).toBe(false);
@@ -229,7 +233,7 @@ test("facerToFace maps tags, hands and alignment", async () => {
   expect(all(aod, (n) => n.tag === TAG.number).map(idOf)).toEqual([0x19]);
 
   // a full-screen JPEG (cf 1) background reboots the watch when it leaves AOD — cf 4 only
-  const bgs = face.resources.filter((r) => r.w === 466 && r.h === 466);
+  const bgs = face.resources.filter((r) => r.w === SCREEN && r.h === SCREEN);
 
   expect(bgs).toHaveLength(2); // one per screen
   expect(bgs.map((r) => r.cf)).toEqual([4, 4]);

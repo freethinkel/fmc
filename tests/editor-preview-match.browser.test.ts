@@ -11,6 +11,7 @@ import { renderDoc } from "$lib/modules/editor/core/render/render";
 import { fromLegacy, framesOf } from "$lib/modules/editor/core/document/doc";
 import { defaultSim } from "$lib/modules/editor/core/document/sources";
 import { decodeAssets } from "$lib/modules/editor/core/render/pixels";
+import { SCREEN } from "$lib/modules/editor/core/render/screen";
 
 import analogUrl from "./__fixtures__/Analog__287__Simple_Dial.bin?url";
 import digitalUrl from "./__fixtures__/Digital__281__Metaball.bin?url";
@@ -213,8 +214,8 @@ describe("renderDoc() output matches embedded preview", () => {
 
       const canvas = document.createElement("canvas");
 
-      canvas.width = 466;
-      canvas.height = 466;
+      canvas.width = SCREEN;
+      canvas.height = SCREEN;
       const sim = {
         ...defaultSim(),
         live: false,

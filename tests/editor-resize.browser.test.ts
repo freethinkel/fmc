@@ -12,6 +12,7 @@ import {
   type NodeId,
 } from "$lib/modules/editor/core/document/doc";
 import { editorModel } from "$lib/modules/editor/model";
+import { SCREEN } from "$lib/modules/editor/core/render/screen";
 import url from "./__fixtures__/Analog__287__Simple_Dial.bin?url";
 
 const doc = () => editorModel.$doc.getState()!;
@@ -36,7 +37,7 @@ async function load(label: string) {
 const draw = (preview?: ResizePreview) => {
   const c = document.createElement("canvas");
 
-  c.width = c.height = 466;
+  c.width = c.height = SCREEN;
   return renderDoc(
     c.getContext("2d")!,
     doc(),

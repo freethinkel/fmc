@@ -4,6 +4,7 @@
 import { test, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { parseBin, buildBin } from "../src/lib/modules/editor/core/format";
+import { SCREEN } from "../src/lib/modules/editor/core/render/screen";
 import {
   fromLegacy,
   toLegacy,
@@ -51,7 +52,7 @@ const emptyGroup = (): GroupLayer => ({
   tag: 0x68,
   kind: "group",
   conditions: [],
-  frame: { x: 0, y: 0, w: 466, h: 466, main: 0, track: 0, rest: "" },
+  frame: { x: 0, y: 0, w: SCREEN, h: SCREEN, main: 0, track: 0, rest: "" },
   children: [],
 });
 

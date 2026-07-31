@@ -8,6 +8,7 @@ import { renderDoc } from "$lib/modules/editor/core/render/render";
 import { decodeAssets } from "$lib/modules/editor/core/render/pixels";
 import { fromLegacy } from "$lib/modules/editor/core/document/doc";
 import { defaultSim } from "$lib/modules/editor/core/document/sources";
+import { SCREEN } from "$lib/modules/editor/core/render/screen";
 
 const FIXTURES = import.meta.glob("./__fixtures__/*.bin", {
   query: "?url",
@@ -25,11 +26,12 @@ const sim = () => ({
 function canvas() {
   const c = document.createElement("canvas");
 
-  c.width = c.height = 466;
+  c.width = c.height = SCREEN;
   return c;
 }
 
-const pixels = (c: HTMLCanvasElement) => c.getContext("2d")!.getImageData(0, 0, 466, 466).data;
+const pixels = (c: HTMLCanvasElement) =>
+  c.getContext("2d")!.getImageData(0, 0, SCREEN, SCREEN).data;
 
 const docOf = async (url: string) => {
   const { doc } = fromLegacy(parseBin(await fetch(url).then((r) => r.arrayBuffer())));
