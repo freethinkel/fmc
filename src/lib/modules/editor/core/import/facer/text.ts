@@ -1,7 +1,8 @@
 // Facer's text templates: the tag language ("#DmZ#", "$#DMM#=01?JAN:$", digit-splitting
-// expressions) mapped onto CMF widgets, plus the glyph rasterizer that bakes each value of a
-// field into an equal-sized sprite.
-export const DIGITS = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
+// expressions) mapped onto CMF widgets. The glyph rasterizer that bakes each value of a field
+// into an equal-sized sprite moved to ../../render/glyphs — the editor generates the same sets
+// from a font now, and re-exported here so the importer's own imports stay in one place.
+export { DIGITS, fontOf, glyphCell, renderGlyphs, type Cell } from "../../render/glyphs";
 // Sunday-first — device order, read off the stock Combo/Elaborate_2 weekday sprite lists
 // (frame 0 = "Sun"), i.e. the watch indexes with JS getDay().
 export const WEEKDAYS = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
@@ -19,56 +20,6 @@ export const MONTHS = [
   "OCT",
   "NOV",
 ];
-
-// renderGlyphs: rasterize each label into an equal-size sprite (widest cell across all),
-// so a digit font or a weekday selector never shifts when the value changes. `base` is the
-// text baseline inside the cell — Facer positions text by its baseline, so a field's y is
-// the layer's y minus this.
-export interface Cell {
-  w: number;
-  h: number;
-  base: number;
-}
-
-export function glyphCell(labels: string[], family: string, sizePx: number): Cell {
-  const meas = new OffscreenCanvas(4, 4).getContext("2d")!;
-
-  meas.font = `${sizePx}px ${family}`;
-  let w = 1,
-    asc = 0,
-    desc = 0;
-
-  for (const s of labels) {
-    const m = meas.measureText(s);
-
-    w = Math.max(w, Math.ceil(m.width));
-    asc = Math.max(asc, m.actualBoundingBoxAscent || sizePx * 0.75);
-    desc = Math.max(desc, m.actualBoundingBoxDescent || sizePx * 0.25);
-  }
-  const base = Math.ceil(asc) + 2;
-
-  return { w: w + 4, h: base + Math.ceil(desc) + 2, base }; // +4: room for antialiasing
-}
-
-export function renderGlyphs(
-  labels: string[],
-  family: string,
-  sizePx: number,
-  color: string,
-  cell: Cell,
-) {
-  return labels.map((s) => {
-    const c = new OffscreenCanvas(cell.w, cell.h);
-    const cx = c.getContext("2d")!;
-
-    cx.font = `${sizePx}px ${family}`;
-    cx.fillStyle = color;
-    cx.textAlign = "center";
-    cx.textBaseline = "alphabetic";
-    cx.fillText(s, cell.w / 2, cell.base);
-    return c;
-  });
-}
 
 // Facer spells a per-value thing out as one layer (or one conditional) per value: seven
 // weekday sprites stacked at one spot, twelve month names chained in a template. That's

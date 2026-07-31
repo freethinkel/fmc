@@ -52,11 +52,13 @@
 />
 
 <style>
+  /* same box as Button's default size, so a field and the button beside it line up */
   input {
     width: 100%;
-    height: 2.5rem;
-    padding: 0 0.75rem;
+    height: 1.875rem;
+    padding: 0 0.625rem;
     font: inherit;
+    font-size: 0.75rem;
     color: var(--color-text);
     background: oklch(from var(--color-text) l c h / 5%);
     border: 1px solid transparent;

@@ -1,6 +1,7 @@
 // Reading a Facer export directory: files by name, images (base64 or PNG), fonts, colours,
 // and the canvas helpers that turn any of it into a face Resource.
-import { encodePixels, type Resource } from "../../format";
+import { type Resource } from "../../format";
+import { resourceFromCanvas } from "../../render/pixels";
 
 // fileMap/encodeCanvas/encodeJpeg/cropOpaque are shared with ./watchmaker — this was the
 // first importer written; if a third export format shows up, move them to their own module.
@@ -73,9 +74,7 @@ export function tinted(
 }
 
 export function encodeCanvas(canvas: OffscreenCanvas, cf: number): Promise<Resource> {
-  const cx = canvas.getContext("2d")!;
-  const { width: w, height: h } = canvas;
-  const r = encodePixels(cx.getImageData(0, 0, w, h).data, w, h, cf);
+  const r = resourceFromCanvas(canvas, cf);
 
   return createImageBitmap(canvas).then((b) => ((r.bitmap = b), r));
 }
@@ -117,13 +116,13 @@ export function cropOpaque(
 export const fontCache = new Map<string, string>();
 
 export async function loadFont(map: Map<string, File>, name?: string): Promise<string> {
-  if (!name) return "bold sans-serif";
+  if (!name) return "sans-serif";
   if (fontCache.has(name)) return fontCache.get(name)!;
   const f = map.get(`fonts/${name}`) || map.get(name);
 
   if (!f) {
-    fontCache.set(name, "bold sans-serif");
-    return "bold sans-serif";
+    fontCache.set(name, "sans-serif");
+    return "sans-serif";
   }
   const family = `facer_${name.replace(/\W/g, "_")}`;
 
@@ -135,7 +134,7 @@ export async function loadFont(map: Map<string, File>, name?: string): Promise<s
     fontCache.set(name, family);
     return family;
   } catch {
-    fontCache.set(name, "bold sans-serif");
-    return "bold sans-serif";
+    fontCache.set(name, "sans-serif");
+    return "sans-serif";
   }
 }

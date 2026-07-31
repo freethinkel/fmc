@@ -8,6 +8,7 @@
 //   assets.model     image assets, the decoded-bitmap cache, and pixel operations
 //   edit.model       every action on the layer tree
 //   io.model         open, create, import, export
+//   font-sprite.model  the "sprites from a font" generator: its dialog, form and preview
 //
 // Importing this module is what wires them up — the sample() calls in each file run on import.
 export * from "./doc.model";
@@ -17,3 +18,4 @@ export * from "./ui.model";
 export * from "./assets.model";
 export * from "./edit.model";
 export * from "./io.model";
+export * from "./font-sprite.model";

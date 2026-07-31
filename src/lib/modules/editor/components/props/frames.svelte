@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Select } from "$lib/shared/components/select";
+  import { Button } from "$lib/shared/components/button";
   import { Icon } from "$lib/shared/components/icon";
   import { framesOf, type ImageId, type Layer } from "../../core/document/doc";
   import { FRAME_LABELS, pickerLabel } from "../../core/document/sources";
@@ -8,7 +9,13 @@
   import FrameThumb from "./frame-thumb.svelte";
 
   const { layer }: { layer: Layer } = $props();
-  const { $doc: doc, $cache: cache, replaceImageRequested, frameMoved } = editorModel;
+  const {
+    $doc: doc,
+    $cache: cache,
+    replaceImageRequested,
+    frameMoved,
+    glyphDialogOpened,
+  } = editorModel;
 
   // native HTML5 drag & drop over the frame list, same shape as TreePanel's layer reorder
   let dragIdx = $state<number | null>(null);
@@ -95,6 +102,17 @@
 {:else if images}
   <div class="images">
     {#each images as ri}{@render thumb(ri)}{/each}
+  </div>
+{/if}
+
+<!-- A set whose contents are spelled out by the format — the ten digits of a number, the labels
+     of a value-indexed source — can be rasterized from a font instead of drawn by hand. -->
+{#if layer.kind === "number" || frameLabels}
+  <div class="row">
+    <Button kind="secondary" onClick={() => glyphDialogOpened(layer.id)}>
+      <Icon name="type" size={14} />
+      regenerate from a font
+    </Button>
   </div>
 {/if}
 

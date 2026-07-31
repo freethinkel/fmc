@@ -66,6 +66,8 @@
   import IconLink from "@tabler/icons-svelte/icons/link";
   import IconUnlink from "@tabler/icons-svelte/icons/unlink";
   import IconGripVertical from "@tabler/icons-svelte/icons/grip-vertical";
+  import IconUpload from "@tabler/icons-svelte/icons/upload";
+  import IconAbc from "@tabler/icons-svelte/icons/abc";
 
   // Central icon registry — the single place to retune an icon app-wide.
   // Keys are OUR semantic names (used at call sites); values are Tabler components.
@@ -139,6 +141,8 @@
     link: IconLink, // aspect-ratio lock: chain link, like Figma's constrain-proportions toggle
     unlink: IconUnlink,
     grip: IconGripVertical,
+    upload: IconUpload,
+    abc: IconAbc, // letters, not a generic list — the installed-fonts picker
   } as const;
 
   export type IconName = keyof typeof ICONS;

@@ -21,6 +21,7 @@ import { encodeMeta, type WidgetMeta } from "../../document/doc";
 import {
   classifyText,
   DIGITS,
+  fontOf,
   glyphCell,
   isLive,
   renderGlyphs,
@@ -473,21 +474,21 @@ export async function facerToFace(files: File[]): Promise<{ face: Face; skipped:
     if (cls.type !== "row") throw new Error("unreachable");
     const family = await loadFont(map, l.new_font_name);
     const sizePx = Math.round(num(l.size) * s) || 20;
+    const font = fontOf(family, sizePx);
     const color = rgba(argb(ambient ? (l.low_power_color ?? l.color) : l.color));
     const labelsOf = (p: Part) => (!isLive(p) ? [p.text] : p.type === "select" ? p.labels : DIGITS);
     // one vertical metric across every part so the whole row shares a baseline
-    const tall = glyphCell(cls.parts.flatMap(labelsOf), family, sizePx);
+    const tall = glyphCell(cls.parts.flatMap(labelsOf), font, sizePx);
     const sprites = new Map<string, number[]>(); // hour and minute share one digit set
     const cellOf = async (p: Part) => {
       const labels = labelsOf(p);
-      const cell = { ...glyphCell(labels, family, sizePx), h: tall.h, base: tall.base };
+      const cell = { ...glyphCell(labels, font, sizePx), h: tall.h, base: tall.base };
       const key = labels.join("|");
 
       if (!sprites.has(key)) {
         const res: number[] = [];
 
-        for (const sp of renderGlyphs(labels, family, sizePx, color, cell))
-          res.push(await addRes(sp, 5));
+        for (const sp of renderGlyphs(labels, font, color, cell)) res.push(await addRes(sp, 5));
         sprites.set(key, res);
       }
       return { cell, images: sprites.get(key)! };

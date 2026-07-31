@@ -15,11 +15,13 @@
 </select>
 
 <style>
+  /* same box as Button's default size — see input/ */
   select {
     width: 100%;
-    height: 2.5rem;
-    padding: 0 2rem 0 0.75rem;
+    height: 1.875rem;
+    padding: 0 1.75rem 0 0.625rem;
     font: inherit;
+    font-size: 0.75rem;
     color: var(--color-text);
     background:
       no-repeat right 0.625rem center / 0.875rem

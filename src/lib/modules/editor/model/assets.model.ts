@@ -14,6 +14,7 @@ import {
   invertAsset,
   resourceFromFile,
 } from "../core/render/pixels";
+import { CELL_PAD, glyphSprites, type GlyphSpec } from "../core/render/glyphs";
 import {
   framesOf,
   type Doc,
@@ -35,6 +36,13 @@ import { errored } from "./ui.model";
  *  resize keeps the pinned original. Move it into ImageCache if that ever bites. */
 let pivot0 = new Map<NodeId, { x: number; y: number }>();
 
+/** How each font-generated widget was rasterized, so a resize can re-render at the new size
+ *  instead of scaling the pixels — the whole reason to generate sprites rather than draw them.
+ *  Per-session like the cache: after a reload (or for art that never came from a font) there is
+ *  no spec and a resize rescales, as before. Also stale after an undo across a regeneration —
+ *  ponytail: the next resize then re-renders the newer spec, which is a redo, not corruption. */
+let glyphSpecs = new Map<NodeId, GlyphSpec>();
+
 const asResource = (a: ImageAsset): Resource => ({ cf: a.cf, w: a.w, h: a.h, data: a.data });
 
 // ---- stores ----
@@ -50,6 +58,8 @@ export const $store = combine(
 /** Merge decoded bitmaps into the cache — the one way $cache changes. */
 export const cachePatched = createEvent<ReadonlyMap<ImageId, ImageCache>>();
 export const replaceImageRequested = createEvent<{ id: ImageId; file: File }>();
+/** "These frames came out of this font" — fired by the generator, read by the resize. */
+export const glyphSpecRemembered = createEvent<{ layer: NodeId; spec: GlyphSpec }>();
 /** w/h: target size of the layer's FIRST frame; `at`: the origin it must end up at, so a corner
  *  drag can anchor the opposite corner in the same update. */
 export const resizeImageRequested = createEvent<{
@@ -194,6 +204,30 @@ const resizeImageFx = attach({
     if (tw === first.w && th === first.h && !at) return null;
     const assets = new Map<ImageId, ImageAsset>();
     const cached = new Map<ImageId, ImageCache>();
+    // Generated sprites re-render instead of rescaling: the font has the shape at any size, the
+    // bitmap only has it at the one it was drawn. The point size follows the height (the width is
+    // the font's own business), and the fresh spec is kept so the next drag scales from it.
+    const spec = glyphSpecs.get(l.id);
+
+    if (spec && spec.labels.length === frames.length) {
+      // the cell's padding doesn't scale, so it comes off both heights before the ratio
+      const k = Math.max(0.05, (th - CELL_PAD) / Math.max(1, first.h - CELL_PAD));
+      const next = { ...spec, sizePx: spec.sizePx * k, spacing: spec.spacing * k };
+      const sprites = await glyphSprites(next);
+
+      frames.forEach((id, i) => {
+        const a = doc.images.get(id);
+        const { resource: r, bitmap } = sprites[i];
+
+        if (!a) return;
+        assets.set(id, { ...a, cf: r.cf, w: r.w, h: r.h, data: r.data });
+        // no `original`: these pixels ARE the source now, and flushAssets must not re-encode
+        // them from a stale bitmap of the old size
+        cached.set(id, { bitmap, original: undefined, accent: undefined });
+      });
+      glyphSpecs.set(l.id, next);
+      return { assets, cache: cached, layer: l.id, patch: at ? { x: at.x, y: at.y } : {} };
+    }
     const scaled = await rescaleFrames(doc, cache, frames, tw, th, assets, cached);
 
     if (!scaled) return null;
@@ -586,13 +620,24 @@ sample({
   target: errored,
 });
 
-// the pinned pivots and decoded bitmaps belong to the document that was open — dropped before
-// decodeAllFx refills the cache for the new one
+// the pinned pivots, glyph specs and decoded bitmaps belong to the document that was open —
+// dropped before decodeAllFx refills the cache for the new one
 const resetSessionFx = createEffect(() => {
   pivot0 = new Map();
+  glyphSpecs = new Map();
 });
 
 sample({
   clock: docLoaded,
   target: resetSessionFx,
+});
+
+// Module state, so writing it is an effect — same shape as the frame stash in edit.model.
+const rememberGlyphSpecFx = createEffect(({ layer, spec }: { layer: NodeId; spec: GlyphSpec }) => {
+  glyphSpecs.set(layer, spec);
+});
+
+sample({
+  clock: glyphSpecRemembered,
+  target: rememberGlyphSpecFx,
 });
