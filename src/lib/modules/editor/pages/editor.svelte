@@ -14,10 +14,12 @@
   import { containerOrigin, findLayer, parentOf } from "../core/document/edits";
   import { snapAxis, snapTargets, type SnapTargets } from "../core/render/snap";
   import { SNAP_THRESHOLD, GUIDE_WIDTH, GUIDE_COLOR } from "../shared/constants";
+  import { inField, isRoving, matchShortcut, type ShortcutActions } from "../shared/shortcuts";
   import { editorModel } from "../model";
   import TreePanel from "../components/TreePanel.svelte";
   import PropsPanel from "../components/PropsPanel.svelte";
   import SimPanel from "../components/SimPanel.svelte";
+  import ShortcutsDialog from "../components/ShortcutsDialog.svelte";
 
   const { $user: user } = authModel;
   const {
@@ -46,6 +48,9 @@
     $redoN: redoN,
     select,
     selectToggled,
+    selectAllRequested,
+    siblingSelected,
+    nestSelected,
     screenSet,
     checkpoint,
     undo,
@@ -55,7 +60,9 @@
     copyRequested,
     cutRequested,
     pasteRequested,
+    duplicateRequested,
     deleteRequested,
+    orderMoved,
     resizeImageRequested,
     resizeGroupRequested,
     $lockAspect: lockAspect,
@@ -75,6 +82,7 @@
   let canvas = $state<HTMLCanvasElement | null>(null);
 
   let mobilePanel = $state<"tree" | "props" | "sim" | null>(null); // drawer on mobile
+  let helpOpen = $state(false); // the `?` overlay
   let hits: LayerHit[] = [];
 
   // ---- resizable side panels (desktop only — below 768px both are drawers) ----
@@ -125,6 +133,7 @@
 
     if (!step) return;
     e.preventDefault();
+    e.stopPropagation(); // the window handler would also read this as "move the selection"
     setSide(side, (side === "tree" ? treeW : rightW) + (side === "tree" ? step : -step));
   }
 
@@ -500,13 +509,14 @@
     return l.kind === "raw" ? null : { layer: l, x0: l.x, y0: l.y };
   }
 
-  // widget x/y are int16 — negatives are legal (and used by stock faces), so no clamp there;
-  // group frames stay >=0, their x/y round-trip through the file as unsigned
+  // No clamp on either kind: x/y is int16 for a widget and for a group's frame alike, so a layer
+  // may hang off the left or top edge — stock faces do it, and the inspector has always let you
+  // type it. See shiftLayer, which is the same move by a delta.
   const moveItem = (it: DragItem, x: number, y: number) =>
     layerPatched({
       id: it.layer.id,
       patch: (it.layer.kind === "group"
-        ? { frame: { ...it.layer.frame, x: Math.max(0, x), y: Math.max(0, y) } }
+        ? { frame: { ...it.layer.frame, x, y } }
         : { x, y }) as Partial<Layer>,
     });
 
@@ -646,42 +656,80 @@
     guides = { x: [], y: [] };
   }
 
-  function onKey(e: KeyboardEvent) {
-    if (["INPUT", "TEXTAREA", "SELECT"].includes((e.target as HTMLElement).tagName)) return;
-    if (e.metaKey || e.ctrlKey) {
-      const k = e.key.toLowerCase();
-
-      if (k === "z") (e.shiftKey ? redo : undo)();
-      else if (k === "c") copyRequested();
-      else if (k === "x") cutRequested();
-      else if (k === "v") pasteRequested();
-      else return;
-      e.preventDefault();
-      return;
-    }
-    if (!$selected.length) return;
-    if (e.key === "Backspace" || e.key === "Delete") {
-      deleteRequested();
-      e.preventDefault();
-      return;
-    }
-    const d = e.shiftKey ? 10 : 1;
-    const moves: Record<string, [number, number]> = {
-      ArrowLeft: [-d, 0],
-      ArrowRight: [d, 0],
-      ArrowUp: [0, -d],
-      ArrowDown: [0, d],
-    };
-    const mv = moves[e.key];
-
-    if (!mv) return;
+  // ---- keyboard ----
+  // The whole keymap lives in shared/shortcuts.ts; this file only says what each action means.
+  function nudgeMove(dx: number, dy: number) {
     checkpoint();
     for (const l of $selected) {
       const it = dragItem(l);
 
-      if (it) moveItem(it, it.x0 + mv[0], it.y0 + mv[1]);
+      if (it) moveItem(it, it.x0 + dx, it.y0 + dy);
     }
+  }
+
+  // The keyboard twin of applyResize: the box grows from its top-left, so unlike a corner drag
+  // there is no anchor to correct for and the layer's x/y are left alone.
+  // ponytail: the primary selection only — resizing N layers by 1px each needs N async rescales
+  // and a way to keep them in one undo step. Nobody has asked for it yet.
+  function nudgeResize(dw: number, dh: number) {
+    const l = $selected[0];
+
+    if (!resizable(l)) return;
+    const b = boxOf(l.id);
+
+    if (!b || b.w < 1 || b.h < 1) return;
+    const kw = Math.max(1, b.w + dw) / b.w,
+      kh = Math.max(1, b.h + dh) / b.h;
+
+    if (l.kind === "group") {
+      resizeGroupRequested({ layer: l.id, kw, kh });
+      return;
+    }
+    const r0 = firstAsset(l);
+
+    if (!r0) return;
+    resizeImageRequested({
+      layer: l.id,
+      w: Math.max(1, Math.round(r0.w * kw)),
+      h: Math.max(1, Math.round(r0.h * kh)),
+    });
+  }
+
+  const actions: ShortcutActions = {
+    undo: () => undo(),
+    redo: () => redo(),
+    copy: () => copyRequested(),
+    cut: () => cutRequested(),
+    paste: () => pasteRequested(),
+    duplicate: () => duplicateRequested(),
+    remove: () => deleteRequested(),
+    order: (dir) => orderMoved(dir),
+    clearSelection: () => select(null),
+    selectAll: () => selectAllRequested(),
+    sibling: (dir) => siblingSelected(dir),
+    nest: (dir) => nestSelected(dir),
+    move: nudgeMove,
+    resize: nudgeResize,
+    save: () => void saveDraft(),
+    exportBin: () => exportBin(),
+    flash: () => void flashWatch(),
+    panel: (tab) => rightPanelSet(tab),
+    // picking AOD with no AOD screen creates one — the same thing the tab does
+    screen: (kind) => (kind === "aod" && !hasAOD ? aodAdded() : screenSet(kind)),
+    help: () => (helpOpen = true),
+  };
+
+  function onKey(e: KeyboardEvent) {
+    const hit = matchShortcut(e, {
+      doc: Boolean($doc),
+      selection: $selected.length > 0,
+      field: inField(e.target),
+      roving: isRoving(e.target),
+    });
+
+    if (!hit) return;
     e.preventDefault();
+    hit.run(actions, e);
   }
 
   async function flashWatch() {
@@ -862,7 +910,8 @@
       {/if}
       <p class="hint">
         click — select · drag / arrow keys (⇧ ×10) — move · ⌥ drag — no snap · corners — resize (⇧
-        inverts the aspect lock) · ⌘Z undo
+        inverts the aspect lock) ·
+        <button class="hint-key" onclick={() => (helpOpen = true)}>? — all shortcuts</button>
       </p>
     </section>
 
@@ -934,6 +983,8 @@
 </Dialog>
 
 <PublishDialog />
+
+<ShortcutsDialog open={helpOpen} onClose={() => (helpOpen = false)} />
 
 <style>
   .page {
@@ -1147,6 +1198,19 @@
     text-align: center;
     font-size: 0.625rem;
     color: oklch(from var(--color-text) l c h / 55%);
+  }
+  /* the hint itself ignores the pointer so it can't shadow the canvas — the one clickable word
+     in it has to opt back in */
+  .hint-key {
+    padding: 0;
+    border: none;
+    background: none;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+    pointer-events: auto;
+    text-decoration: underline dotted;
+    text-underline-offset: 0.125rem;
   }
   @media (min-width: 768px) {
     .hint {

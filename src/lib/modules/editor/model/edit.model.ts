@@ -19,6 +19,7 @@ import {
   repointFrames,
   setSlotBinding,
   shiftLayer,
+  siblingsOf,
   ungroup,
   wrapInGroup,
 } from "../core/document/edits";
@@ -95,6 +96,9 @@ export const moveRequested = createEvent<{
   after: boolean;
   into?: boolean;
 }>();
+/** ⌘] / ⌘[ — one step up or down the draw order, among the primary selection's own siblings.
+ *  `moveRequested` is the tree's drag-and-drop, which needs an explicit target; this doesn't. */
+export const orderMoved = createEvent<1 | -1>();
 export const conditionToggled = createEvent<NodeId>();
 export const slotBindSet = createEvent<{ id: NodeId; slot: number | null; metric?: number }>();
 /** The metrics a slot offers the wearer — its own 0x5f list, which the companion app shows as a
@@ -672,6 +676,24 @@ sample({
       return l
         ? patchLayer(moved, id, shiftLayer(l, a.x - b.x, a.y - b.y) as Partial<Layer>)
         : moved;
+    },
+  }),
+  target: committed,
+});
+
+// One step along the row, staying inside the same container. At either end there is nowhere to
+// go and the edit hands the document straight back, so `committed` drops it and no undo is spent.
+sample({
+  clock: orderMoved,
+  source: $sel,
+  filter: Boolean,
+  fn: (id, dir) => ({
+    edit: (d: Doc) => {
+      const row = siblingsOf(d, id);
+      const i = row.findIndex((l) => l.id === id);
+      const j = i + dir;
+
+      return i < 0 || j < 0 || j >= row.length ? d : moveLayer(d, id, row[j].id, dir > 0);
     },
   }),
   target: committed,

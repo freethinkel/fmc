@@ -7,6 +7,7 @@
   import { pickerLabel, describeConditions } from "../core/document/sources";
   import { contains, parentOf } from "../core/document/edits";
   import { framesOf, type Layer, type NodeId, type Screen } from "../core/document/doc";
+  import { capsFor } from "../shared/shortcuts";
   import { editorModel } from "../model";
   const {
     $doc: doc,
@@ -328,17 +329,17 @@
       <Icon name="pencil" size={14} /> Rename
     </MenuItem>
   {/if}
-  <MenuItem onClick={duplicateRequested}>
+  <MenuItem keys={capsFor("mod+d")} onClick={duplicateRequested}>
     <Icon name="copy" size={14} /> Duplicate
   </MenuItem>
-  <MenuItem onClick={copyRequested}>
+  <MenuItem keys={capsFor("mod+c")} onClick={copyRequested}>
     <Icon name="clipboard" size={14} /> Copy
   </MenuItem>
-  <MenuItem onClick={cutRequested}>
+  <MenuItem keys={capsFor("mod+x")} onClick={cutRequested}>
     <Icon name="scissors" size={14} /> Cut
   </MenuItem>
   {#if $clipboard}
-    <MenuItem onClick={pasteRequested}>
+    <MenuItem keys={capsFor("mod+v")} onClick={pasteRequested}>
       <Icon name="clipboard-check" size={14} /> Paste
     </MenuItem>
   {/if}
@@ -359,7 +360,7 @@
     <Icon name={$selected[0]?.locked ? "lock-open" : "lock"} size={14} />
     {$selected[0]?.locked ? "Unlock" : "Lock"}
   </MenuItem>
-  <MenuItem danger onClick={deleteRequested}>
+  <MenuItem danger keys={capsFor("delete")} onClick={deleteRequested}>
     <Icon name="trash" size={14} /> Delete
   </MenuItem>
 {/snippet}
