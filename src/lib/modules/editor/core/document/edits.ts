@@ -64,6 +64,15 @@ export function parentOf(doc: Doc, id: NodeId): Layer | null {
   return null;
 }
 
+/** The row `id` sits in — its group's children, or the screen's own layer list. Empty when the
+ *  document doesn't hold it. */
+export function siblingsOf(doc: Doc, id: NodeId): readonly Layer[] {
+  const parent = parentOf(doc, id);
+
+  if (parent) return childrenOf(parent);
+  return doc.screens.find((s) => s.layers.some((l) => l.id === id))?.layers ?? [];
+}
+
 export const contains = (l: Layer, id: NodeId): boolean =>
   l.id === id || childrenOf(l).some((c) => contains(c, id));
 
@@ -151,14 +160,12 @@ export const originOf = (l: Layer): { x: number; y: number } =>
       ? { x: l.x, y: l.y }
       : { x: 0, y: 0 };
 
-/** Move a layer by a delta. Group frames stay clamped to >=0 — their x/y is unsigned in the file,
- *  unlike a widget's int16 x/y, which may legitimately hang off the left/top edge. */
+/** Move a layer by a delta. Nothing is clamped: a group's frame x/y is int16 in the file, same as
+ *  a widget's, so hanging off the left or top edge round-trips (see the 0x48 frame in doc.ts —
+ *  it is read with i16 and written back as two's complement). */
 export const shiftLayer = (l: Layer, dx: number, dy: number): Layer =>
   l.kind === "group"
-    ? {
-        ...l,
-        frame: { ...l.frame, x: Math.max(0, l.frame.x + dx), y: Math.max(0, l.frame.y + dy) },
-      }
+    ? { ...l, frame: { ...l.frame, x: l.frame.x + dx, y: l.frame.y + dy } }
     : isPlaced(l)
       ? { ...l, x: l.x + dx, y: l.y + dy }
       : l;
