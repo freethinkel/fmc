@@ -4,7 +4,8 @@
   // playwright pulls the chromium the browser test project mounts components in
   // the node_modules volume comes up root-owned, so hand it over before the first install
   "postCreateCommand": "sudo chown node:node node_modules && corepack enable && pnpm install && pnpm exec playwright install --with-deps chromium",
-  "forwardPorts": [5173],
+  // no forwardPorts: publishing 5173 collides with whatever vite is already on it,
+  // and the editor tunnels the dev server on its own once it starts listening
   // a reviewed branch installs its own deps into a volume, never over the host's node_modules
   "mounts": [
     {
