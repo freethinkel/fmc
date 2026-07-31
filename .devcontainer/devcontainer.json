@@ -1,0 +1,21 @@
+{
+  "name": "fmc_frontend",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:24-bookworm",
+  // playwright pulls the chromium the browser test project mounts components in
+  // the node_modules volume comes up root-owned, so hand it over before the first install
+  "postCreateCommand": "sudo chown node:node node_modules && corepack enable && pnpm install && pnpm exec playwright install --with-deps chromium",
+  // no forwardPorts: publishing 5173 collides with whatever vite is already on it,
+  // and the editor tunnels the dev server on its own once it starts listening
+  // a reviewed branch installs its own deps into a volume, never over the host's node_modules
+  "mounts": [
+    {
+      "source": "fmc-node-modules",
+      "target": "${containerWorkspaceFolder}/node_modules",
+      "type": "volume"
+    }
+  ],
+  "remoteEnv": {
+    // no .env inside the container: point at whatever PocketBase you run
+    "VITE_PB_URL": "${localEnv:VITE_PB_URL}"
+  }
+}

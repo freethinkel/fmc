@@ -160,4 +160,6 @@ and `frames` sections; `PropsPanel.svelte` is the container and owns the shared 
 - Ponytail: minimal solutions, stdlib/platform before dependencies, short diffs.
   Mark deliberate simplifications with a `ponytail:` comment stating the ceiling and the
   upgrade path.
-- Code comments — in English, matching the surrounding file.
+- **English everywhere in the repo and around it**: code, identifiers, comments, docs,
+  commit messages, PR titles and descriptions, issue text, CI/workflow files. Chat with the
+  user can be in any language — anything that lands in git or on GitHub is English.
