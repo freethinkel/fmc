@@ -145,7 +145,7 @@ sample({
 sample({
   clock: faceDetached,
   fn: () => null,
-  target: [$openedWf, $loadedWf],
+  target: [$openedWf, $loadedWf, editorModel.faceKeySet],
 });
 
 sample({
@@ -169,9 +169,10 @@ sample({
   fn: ({ wf }) => wf,
   target: $loadedWf,
 });
+// the record id doubles as the key the editor stores this face's layer names under
 sample({
   clock: openInEditorFx.doneData,
-  fn: ({ wf, buf }) => ({ buf, label: wf.name }),
+  fn: ({ wf, buf }) => ({ buf, label: wf.name, key: wf.id }),
   target: editorModel.loadRequested,
 });
 
@@ -199,6 +200,12 @@ sample({
 sample({
   clock: saveFx.doneData,
   target: $loadedWf,
+});
+// the first save mints the record — from here on the names have somewhere to live
+sample({
+  clock: saveFx.doneData,
+  fn: (wf) => wf.id,
+  target: editorModel.faceKeySet,
 });
 // Saving replaces the record's bin AND its preview file, so the cached catalog lists would
 // keep showing the old art (and old name) until a full page reload — $items is only fetched

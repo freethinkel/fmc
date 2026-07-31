@@ -76,11 +76,12 @@ export const aodAdded = createEvent();
 /** Drop it again — deleting the AOD root row in the tree. The main screen has no such option:
  *  a face without one has nothing to draw. */
 export const aodRemoved = createEvent();
-/** The editor-only per-layer flags. One event for both: they behave identically — a toggle over
- *  whatever is selected, or over one layer when the tree's own buttons fire it. */
+/** The editor-only per-layer fields. One event for all of them: they behave identically — a patch
+ *  over whatever is selected, or over one layer when the tree's own buttons fire it. `name` is a
+ *  label the tree shows instead of the derived one; like the flags it never reaches the file. */
 export const layerFlagsSet = createEvent<{
   ids: readonly NodeId[];
-  patch: { hidden?: boolean; locked?: boolean };
+  patch: { hidden?: boolean; locked?: boolean; name?: string };
 }>();
 export const duplicateRequested = createEvent();
 export const copyRequested = createEvent();

@@ -1,9 +1,10 @@
 // Getting documents in and out: opening a .bin, starting a blank face, importing a Facer or
 // WatchMaker export, and building the bytes back. The assets are re-encoded on the way out only
 // (flushAssets), so everything the editor did to the pixels stays non-destructive until export.
-import { attach, createEffect, createEvent, sample } from "effector";
+import { attach, createEffect, createEvent, createStore, sample } from "effector";
 import { buildBin, parseBin } from "../core/format";
 import { fromLegacy, toLegacy, type Doc, type ImageId } from "../core/document/doc";
+import { saveNames, withNames } from "../core/document/names";
 import { blankDoc } from "../core/document/factory";
 import { decodeAssets, flushAssets, opaqueBlack, regenPreviewAssets } from "../core/render/pixels";
 import { renderDoc } from "../core/render/render";
@@ -15,7 +16,16 @@ import { $sim } from "./sim.model";
 import { errored } from "./ui.model";
 
 // ---- events ----
-export const loadRequested = createEvent<{ buf: ArrayBuffer | Uint8Array; label: string }>();
+/** `key` is the marketplace record the bytes came from — what the layer names are stored under.
+ *  A face with no record (New, a dropped .bin, an import) keeps its names for the session only. */
+export const loadRequested = createEvent<{
+  buf: ArrayBuffer | Uint8Array;
+  label: string;
+  key?: string;
+}>();
+/** Fired by the market model when the open face gains or loses its record — saving a draft mints
+ *  one, New/drag-drop detaches it. */
+export const faceKeySet = createEvent<string | null>();
 export const newFaceRequested = createEvent<string | void>();
 export const importFacerRequested = createEvent<File[]>();
 export const exportBin = createEvent();
@@ -23,14 +33,20 @@ export const exportBin = createEvent();
  *  subscribe, others ignore it. */
 export const loadDone = createEvent<{ doc: Doc; label: string }>();
 
+// ---- stores ----
+export const $faceKey = createStore<string | null>(null);
+
 // ---- effects ----
 const loadBufferFx = createEffect(
-  async ({ buf, label }: { buf: ArrayBuffer | Uint8Array; label: string }) => {
-    const { doc } = fromLegacy(parseBin(buf));
+  async ({ buf, label, key }: { buf: ArrayBuffer | Uint8Array; label: string; key?: string }) => {
+    const { doc: parsed } = fromLegacy(parseBin(buf));
+    const doc = key ? withNames(parsed, key) : parsed;
 
     return { doc, label, cache: await decodeAssets(doc.images) };
   },
 );
+
+const saveNamesFx = createEffect(({ key, doc }: { key: string; doc: Doc }) => saveNames(key, doc));
 
 export const $loading = loadBufferFx.pending;
 
@@ -147,6 +163,25 @@ const exportBinFx = attach({
 sample({
   clock: loadRequested,
   target: loadBufferFx,
+});
+sample({
+  clock: loadRequested,
+  fn: ({ key }) => key ?? null,
+  target: $faceKey,
+});
+sample({
+  clock: faceKeySet,
+  target: $faceKey,
+});
+// Every document change rewrites the name map — it is a handful of strings, and this way a rename
+// is stored whether it came from the tree, an undo or a paste. Without a record to key on there
+// is nowhere to put it, so the names stay in memory.
+sample({
+  clock: [$doc.updates, faceKeySet],
+  source: { key: $faceKey, doc: $doc },
+  filter: ({ key, doc }) => Boolean(key && doc),
+  fn: ({ key, doc }) => ({ key: key!, doc: doc! }),
+  target: saveNamesFx,
 });
 sample({
   clock: newFaceRequested,
