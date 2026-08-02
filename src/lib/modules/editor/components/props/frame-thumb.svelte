@@ -11,7 +11,7 @@
   }
 
   const { id, size = 3.5 }: Props = $props();
-  const { $doc: doc, $cache: cache, replaceImageRequested } = editorModel;
+  const { $doc: doc, $cache: cache, replaceImageRequested, clearImageRequested } = editorModel;
 
   const asset = $derived($doc?.images.get(id));
 
@@ -44,6 +44,10 @@
   </label>
   <button title="Download PNG" onclick={download} class="dl-btn">
     <Icon name="download" size={14} />
+  </button>
+  <!-- a transparent frame in a value-indexed set = the widget blinks off on that value -->
+  <button title="Clear — transparent frame" onclick={() => clearImageRequested({ id })} class="dl-btn clear">
+    <Icon name="eraser" size={14} />
   </button>
 </div>
 
@@ -85,6 +89,10 @@
     cursor: pointer;
     opacity: 0;
     transition: opacity 0.15s ease;
+  }
+  .dl-btn.clear {
+    top: auto;
+    bottom: 0.125rem;
   }
   .thumb-wrap:hover .dl-btn,
   .dl-btn:focus-visible {

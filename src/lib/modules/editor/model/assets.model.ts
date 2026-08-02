@@ -11,6 +11,7 @@ import {
   accentBitmapForAsset,
   accentFlaggedAssets,
   bitmapOf,
+  blankFrame,
   invertAsset,
   resourceFromFile,
 } from "../core/render/pixels";
@@ -58,6 +59,9 @@ export const $store = combine(
 /** Merge decoded bitmaps into the cache — the one way $cache changes. */
 export const cachePatched = createEvent<ReadonlyMap<ImageId, ImageCache>>();
 export const replaceImageRequested = createEvent<{ id: ImageId; file: File }>();
+/** Blank one frame out, keeping its size: a transparent slot in a value-indexed set is how
+ *  blinking is done — the value lands on the empty frame and the widget disappears for a beat. */
+export const clearImageRequested = createEvent<{ id: ImageId }>();
 /** "These frames came out of this font" — fired by the generator, read by the resize. */
 export const glyphSpecRemembered = createEvent<{ layer: NodeId; spec: GlyphSpec }>();
 /** w/h: target size of the layer's FIRST frame; `at`: the origin it must end up at, so a corner
@@ -135,6 +139,23 @@ const replaceImageFx = attach({
     return {
       asset: { ...a, cf: fresh.cf, w: fresh.w, h: fresh.h, data: fresh.data },
       cache: { bitmap: fresh.bitmap ?? (await bitmapOf(fresh)), original: undefined },
+    };
+  },
+});
+
+// Same shape as a replace, with a transparent blank standing in for the file. cf 5 whatever the
+// frame was — a cleared JPEG can't stay JPEG, that format has no alpha to be blank with.
+const clearImageFx = attach({
+  source: $doc,
+  async effect(doc, { id }: { id: ImageId }) {
+    const a = doc?.images.get(id);
+
+    if (!a) return null;
+    const fresh = await blankFrame(a.w, a.h);
+
+    return {
+      asset: { ...a, cf: fresh.cf, data: fresh.data },
+      cache: { bitmap: fresh.bitmap, original: undefined, accent: undefined },
     };
   },
 });
@@ -469,7 +490,11 @@ sample({
   target: replaceImageFx,
 });
 sample({
-  clock: replaceImageFx.doneData,
+  clock: clearImageRequested,
+  target: clearImageFx,
+});
+sample({
+  clock: [replaceImageFx.doneData, clearImageFx.doneData],
   filter: Boolean,
   fn: ({ asset }) => ({
     edit: (doc: Doc) => ({ ...doc, images: new Map(doc.images).set(asset.id, asset) }),
@@ -477,7 +502,7 @@ sample({
   target: committed,
 });
 sample({
-  clock: replaceImageFx.doneData,
+  clock: [replaceImageFx.doneData, clearImageFx.doneData],
   filter: Boolean,
   fn: ({ asset, cache }) => new Map([[asset.id, cache]]),
   target: cachePatched,
@@ -612,6 +637,7 @@ sample({
 sample({
   clock: [
     replaceImageFx.failData,
+    clearImageFx.failData,
     resizeImageFx.failData,
     adjustImageFx.failData,
     invertColorsFx.failData,
