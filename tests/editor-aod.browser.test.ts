@@ -2,6 +2,7 @@
 // added. The added screen has to survive a build/parse round trip as a real 0x22 screen.
 import { test, expect, vi } from "vitest";
 import { parseBin, TAG } from "$lib/modules/editor/core/format";
+import { framesOf } from "$lib/modules/editor/core/document/doc";
 import { editorModel } from "$lib/modules/editor/model";
 
 const doc = () => editorModel.$doc.getState()!;
@@ -28,8 +29,13 @@ test("a new face can be given an AOD screen, and it round trips", async () => {
 
   // editing it is the point, so the editor switches to it
   expect(editorModel.$screen.getState()).toBe("aod");
-  // same shape every corpus screen has: a preview thumbnail over a background
+  // the dial is copied wholesale (here: just its background), under the screen's own preview
   expect(aod()!.layers.map((l) => l.kind)).toEqual(["raw", "image"]);
+  const mainBg = doc().screens.find((s) => s.kind === "main")!.layers[1];
+  const aodBg = aod()!.layers[1];
+
+  expect(aodBg.id).not.toBe(mainBg.id); // fresh ids, like any duplicate
+  expect(framesOf(aodBg)).toEqual(framesOf(mainBg)); // sharing the dial's assets
   // its own preview asset, not the main screen's — regen would otherwise overwrite one with the other
   const previewOf = (kind: "main" | "aod") => {
     const pv = doc().screens.find((s) => s.kind === kind)!.layers[0];

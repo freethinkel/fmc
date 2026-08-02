@@ -2,6 +2,7 @@
 // pure `Doc -> Doc` edit handed to `committed`, so the history and the "what changed" logic stay
 // in one place — this file only decides which edit runs and what ends up selected.
 import { attach, createEffect, createEvent, createStore, sample } from "effector";
+import { TAG } from "../core/format";
 import { PREVIEW, SCREEN } from "../core/render/screen";
 import { renderDoc } from "../core/render/render";
 import { blankFrame, opaqueBlack, resourceFromFile } from "../core/render/pixels";
@@ -222,9 +223,10 @@ const addSlotFx = attach({
   },
 });
 
-// The AOD screen starts out the way every screen in the corpus does: its own preview thumbnail
-// (regenPreviewAssets refreshes it on save) over a black background. Async because both are
-// encoded images, same as adding a widget.
+// The AOD screen starts as a copy of the main dial, so dimming the face is editing down, not
+// rebuilding from black. It still gets its own preview thumbnail (regenPreviewAssets refreshes
+// it on save — sharing main's would overwrite one with the other); the copied layers get fresh
+// ids but share the dial's assets, same as duplicating a layer.
 const addAodFx = attach({
   source: $doc,
   async effect(doc) {
@@ -239,9 +241,19 @@ const addAodFx = attach({
       return id;
     };
     const preview = await add(await opaqueBlack(PREVIEW, PREVIEW));
-    const background = await add(await opaqueBlack(SCREEN, SCREEN));
+    const dial = (doc.screens.find((s) => s.kind === "main")?.layers ?? [])
+      .filter((l) => !(l.kind === "raw" && l.tag === TAG.preview))
+      .map(cloneLayer);
+    // a copied dial brings its own background, so the corpus-shape black one (and its asset) is
+    // only built for a face with nothing to copy — the bg id is a dummy when the layer is dropped
+    let screen = blankScreen(
+      "aod",
+      preview,
+      dial.length ? preview : await add(await opaqueBlack(SCREEN, SCREEN)),
+    );
 
-    return { assets, cache, screen: blankScreen("aod", preview, background) };
+    if (dial.length) screen = { ...screen, layers: [screen.layers[0], ...dial] };
+    return { assets, cache, screen };
   },
 });
 
