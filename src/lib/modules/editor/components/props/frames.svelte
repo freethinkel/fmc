@@ -106,8 +106,10 @@
 {/if}
 
 <!-- A set whose contents are spelled out by the format — the ten digits of a number, the labels
-     of a value-indexed source — can be rasterized from a font instead of drawn by hand. -->
-{#if layer.kind === "number" || frameLabels}
+     of a value-indexed source — can be rasterized from a font instead of drawn by hand. A plain
+     image qualifies too: one label makes a static text sprite (the only way to put a string the
+     watch has no source for, like a year, on the dial). -->
+{#if layer.kind === "number" || layer.kind === "image" || frameLabels}
   <div class="row">
     <Button kind="secondary" onClick={() => glyphDialogOpened(layer.id)}>
       <Icon name="type" size={14} />

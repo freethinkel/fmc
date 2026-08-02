@@ -35,7 +35,12 @@ test("a new face can be given an AOD screen, and it round trips", async () => {
   const aodBg = aod()!.layers[1];
 
   expect(aodBg.id).not.toBe(mainBg.id); // fresh ids, like any duplicate
-  expect(framesOf(aodBg)).toEqual(framesOf(mainBg)); // sharing the dial's assets
+  // copied assets, not shared ones — editing the AOD art must not touch the main screen's
+  const [mf] = framesOf(mainBg);
+  const [af] = framesOf(aodBg);
+
+  expect(af).not.toBe(mf);
+  expect(doc().images.get(af)!.data).toEqual(doc().images.get(mf)!.data);
   // its own preview asset, not the main screen's — regen would otherwise overwrite one with the other
   const previewOf = (kind: "main" | "aod") => {
     const pv = doc().screens.find((s) => s.kind === kind)!.layers[0];

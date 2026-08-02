@@ -22,6 +22,7 @@
     layerFlagsSet,
     widgetAdded,
     numberAdded,
+    imageAdded,
     deleteRequested,
     duplicateRequested,
     copyRequested,
@@ -253,6 +254,11 @@
       {/snippet}
       <MenuItem onClick={() => fileInput.image?.click()}>
         <Icon name="image" size={14} /> Image…
+      </MenuItem>
+      <!-- one transparent frame: the art comes later, from the inspector — a dropped file
+           or the font generator -->
+      <MenuItem onClick={() => imageAdded()}>
+        <Icon name="image" size={14} /> Empty image
       </MenuItem>
       <!-- ten blank frames: the art comes from the inspector, either "regenerate from a font"
            or a PNG dropped on a single frame — no ten-file picker any more -->

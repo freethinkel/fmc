@@ -81,6 +81,9 @@ export const glyphsRequested = createEvent<GlyphRequest>();
 /** A number widget. Always created empty — ten blank frames, filled from a font afterwards; the
  *  ten-PNG picker this used to open is what the font generator replaces. */
 export const numberAdded = createEvent();
+/** An image widget with no art yet: one transparent frame, replaced later by a dropped file or
+ *  the font generator — for when the picture doesn't exist at add time. */
+export const imageAdded = createEvent();
 export const slotAdded = createEvent();
 /** Give the face an always-on screen. A new document starts with the main screen only, and until
  *  this runs the AOD tab has nothing to show. */
@@ -172,6 +175,22 @@ const glyphsFx = attach({
   },
 });
 
+// One transparent frame: an image widget whose art comes later, same deal as the number below.
+const addImageFx = attach({
+  source: $screen,
+  async effect(screen) {
+    const r = await blankFrame(96, 96);
+    const id = newImageId();
+
+    return {
+      screen,
+      assets: new Map<ImageId, ImageAsset>([[id, { id, cf: r.cf, w: r.w, h: r.h, data: r.data }]]),
+      cache: new Map<ImageId, ImageCache>([[id, { bitmap: r.bitmap }]]),
+      layer: newImage([id]),
+    };
+  },
+});
+
 // Ten transparent frames, one per digit: a number widget whose art comes later, from a font or
 // from PNGs dropped on the frames one at a time. The size is a placeholder — both paths bring
 // their own (replaceImageFx takes the file's, the generator the font cell's).
@@ -225,11 +244,12 @@ const addSlotFx = attach({
 
 // The AOD screen starts as a copy of the main dial, so dimming the face is editing down, not
 // rebuilding from black. It still gets its own preview thumbnail (regenPreviewAssets refreshes
-// it on save — sharing main's would overwrite one with the other); the copied layers get fresh
-// ids but share the dial's assets, same as duplicating a layer.
+// it on save — sharing main's would overwrite one with the other), and the copied layers get
+// fresh ids AND copied assets, same as paste: editing the AOD art must not reach back into the
+// main screen's.
 const addAodFx = attach({
-  source: $doc,
-  async effect(doc) {
+  source: { doc: $doc, cache: $cache },
+  async effect({ doc, cache: docCache }) {
     if (!doc || doc.screens.some((s) => s.kind === "aod")) return null;
     const assets = new Map<ImageId, ImageAsset>();
     const cache = new Map<ImageId, ImageCache>();
@@ -241,9 +261,25 @@ const addAodFx = attach({
       return id;
     };
     const preview = await add(await opaqueBlack(PREVIEW, PREVIEW));
-    const dial = (doc.screens.find((s) => s.kind === "main")?.layers ?? [])
-      .filter((l) => !(l.kind === "raw" && l.tag === TAG.preview))
-      .map(cloneLayer);
+    const src = (doc.screens.find((s) => s.kind === "main")?.layers ?? []).filter(
+      (l) => !(l.kind === "raw" && l.tag === TAG.preview),
+    );
+    const remap = new Map<ImageId, ImageId>();
+
+    for (const l of src)
+      for (const old of assetsOf(l)) {
+        const a = doc.images.get(old);
+
+        if (remap.has(old) || !a) continue;
+        const fresh = newImageId();
+
+        remap.set(old, fresh);
+        assets.set(fresh, { ...a, id: fresh });
+        const c = docCache.get(old);
+
+        if (c) cache.set(fresh, c);
+      }
+    const dial = src.map((l) => repointFrames(cloneLayer(l), remap));
     // a copied dial brings its own background, so the corpus-shape black one (and its asset) is
     // only built for a face with nothing to copy — the bg id is a dummy when the layer is dropped
     let screen = blankScreen(
@@ -421,11 +457,15 @@ sample({
   target: addNumberFx,
 });
 sample({
+  clock: imageAdded,
+  target: addImageFx,
+});
+sample({
   clock: slotAdded,
   target: addSlotFx,
 });
 sample({
-  clock: [addWidgetFx.doneData, addNumberFx.doneData, addSlotFx.doneData],
+  clock: [addWidgetFx.doneData, addImageFx.doneData, addNumberFx.doneData, addSlotFx.doneData],
   filter: Boolean,
   fn: ({ screen, assets, layer }) => ({
     edit: (doc: Doc) => addLayer(withAssets(doc, assets), screen, layer),
@@ -433,13 +473,13 @@ sample({
   target: committed,
 });
 sample({
-  clock: [addWidgetFx.doneData, addNumberFx.doneData, addSlotFx.doneData],
+  clock: [addWidgetFx.doneData, addImageFx.doneData, addNumberFx.doneData, addSlotFx.doneData],
   filter: Boolean,
   fn: ({ cache }) => cache,
   target: cachePatched,
 });
 sample({
-  clock: [addWidgetFx.doneData, addNumberFx.doneData, addSlotFx.doneData],
+  clock: [addWidgetFx.doneData, addImageFx.doneData, addNumberFx.doneData, addSlotFx.doneData],
   filter: Boolean,
   fn: ({ layer }) => layer.id,
   target: select,
@@ -933,6 +973,7 @@ sample({
 sample({
   clock: [
     addWidgetFx.failData,
+    addImageFx.failData,
     addNumberFx.failData,
     glyphsFx.failData,
     addSlotFx.failData,

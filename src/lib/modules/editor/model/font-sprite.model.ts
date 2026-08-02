@@ -95,16 +95,15 @@ sample({
   target: $glyphDialog,
 });
 /** What the widget being replaced has to hold: a value-indexed source fixes both the labels and
- *  their order (index = value), anything else gets the ten digits. */
+ *  their order (index = value), a number gets the ten digits, and a plain image whose source
+ *  fixes nothing gets a single placeholder — one label, one static text sprite. */
 sample({
   clock: glyphDialogOpened,
   source: $doc,
   fn: (doc, id) => {
     const l = doc ? findLayer(doc, id) : null;
-    const labels =
-      l && l.kind !== "group" && l.kind !== "raw"
-        ? (FRAME_LABELS[l.meta.source] ?? DIGITS)
-        : DIGITS;
+    const fixed = l && l.kind !== "group" && l.kind !== "raw" ? FRAME_LABELS[l.meta.source] : null;
+    const labels = fixed ?? (l?.kind === "image" ? ["Text"] : DIGITS);
 
     return { labelsText: labels.join(" ") };
   },

@@ -132,6 +132,30 @@ test("an empty number widget can be created and then filled from a font", async 
   expect(new Set(sizes(id)).size).toBe(1);
 });
 
+test("an empty image widget starts as one blank frame and takes a static text sprite", async () => {
+  await load("image-empty");
+  const before = doc().screens[0].layers.length;
+
+  editorModel.imageAdded();
+  await until(() => doc().screens[0].layers.length === before + 1);
+  const id = editorModel.$sel.getState()!;
+
+  expect(byId(id).kind).toBe("image");
+  expect(framesOf(byId(id))).toHaveLength(1); // no file picked — art comes later
+  const blank = framesOf(byId(id))[0];
+
+  // a plain image seeds the dialog with a single label, not the ten digits
+  editorModel.glyphDialogOpened(id);
+  expect(editorModel.$glyphForm.getState().labelsText).toBe("Text");
+  editorModel.glyphDialogClosed();
+
+  // one label -> one static sprite, e.g. a year the watch has no live source for
+  editorModel.glyphsRequested(spec(id, { labels: ["2026"] }));
+  await until(() => framesOf(byId(id))[0] !== blank);
+  expect(framesOf(byId(id))).toHaveLength(1);
+  expect(doc().images.get(framesOf(byId(id))[0])!.data.length).toBeGreaterThan(0);
+});
+
 test("resizing a generated set re-renders it from the font instead of scaling the pixels", async () => {
   await load("glyphs-resize");
   const num = firstNumber();
