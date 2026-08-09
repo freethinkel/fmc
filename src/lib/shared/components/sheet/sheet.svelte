@@ -20,12 +20,20 @@
   }
   const { open = false, onClose, children }: Props = $props();
 
+  /** Keep in step with the sheet's transition below. */
+  const ENTRANCE_MS = 400;
+
   let el = $state<HTMLDialogElement>();
   let scroller = $state<HTMLDivElement>();
   let travel = $state(0);
   // "scrolled to the top" only means dismissal once the sheet has landed at the bottom —
   // before that it would close itself on its first frame
   let armed = false;
+  // The entrance slides the sheet with `translate`, and a translation counts toward the
+  // scrollable overflow — so while it plays, the scroll range reads a sheet-height too long and
+  // the travel measured off it is nonsense. Wait it out instead.
+  let entering = false;
+  let enteringTimer: ReturnType<typeof setTimeout>;
 
   $effect(() => {
     if (!el || !scroller) return;
@@ -34,6 +42,13 @@
       // park it at the bottom snap point right away and let CSS play the entrance: scrolling
       // there by hand can't be animated, because snapping rounds every step to a snap point
       scroller.scrollTop = scroller.scrollHeight;
+      // it is up and dismissable by definition; the entrance is what we wait out before
+      // trusting a measurement again
+      travel = 1;
+      armed = true;
+      entering = true;
+      clearTimeout(enteringTimer);
+      enteringTimer = setTimeout(() => (entering = false), ENTRANCE_MS);
     } else if (!open && el.open) dismiss();
   });
 
@@ -45,13 +60,13 @@
 
   function onScroll() {
     if (!scroller) return;
-    // the travel is one screen — spacer to sheet — not the whole scroll range, which also
-    // holds the tail that covers the sheet's underside when it's dragged past the bottom
-    const max = scroller.clientHeight;
+    if (!entering) {
+      // the whole scroll range is the travel: it is exactly the sheet's height, nothing beyond
+      const max = scroller.scrollHeight - scroller.clientHeight;
 
-    travel = max > 0 ? Math.min(Math.max(scroller.scrollTop / max, 0), 1) : 0;
-    if (!armed) armed = travel > 0.99;
-    else if (scroller.scrollTop <= 0) el?.close();
+      travel = max > 0 ? Math.min(Math.max(scroller.scrollTop / max, 0), 1) : 0;
+    }
+    if (armed && scroller.scrollTop <= 0) el?.close();
   }
 </script>
 
@@ -60,6 +75,8 @@
   style:--travel={travel}
   onclose={() => {
     armed = false;
+    entering = false;
+    clearTimeout(enteringTimer);
     travel = 0;
     onClose?.();
   }}
@@ -75,7 +92,7 @@
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <div class="scroll" bind:this={scroller} onscroll={onScroll} onclick={dismiss}>
     <div class="spacer"></div>
-    <div class="row">
+    <div class="dock">
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <!-- svelte-ignore a11y_click_events_have_key_events -->
       <div class="sheet" onclick={(e) => e.stopPropagation()}>
@@ -127,24 +144,28 @@
       display: none;
     }
   }
+  /* the closed position: one screen of nothing, with the sheet below the fold */
   .spacer {
     height: 100%;
     scroll-snap-align: start;
   }
-  /* second snap point: a full screen with the sheet parked at its bottom */
-  .row {
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-end;
-    height: 100%;
-    scroll-snap-align: start;
+  /* the open position. It is exactly as tall as the sheet, so the scroll runs out the moment
+     the sheet is up — dragging further is a bounce, not more scrolling. Aligning to its end
+     parks the sheet against the bottom of the screen. */
+  .dock {
+    scroll-snap-align: end;
   }
   .sheet {
-    position: relative;
+    /* sticky, not static: a bounce past the end of the scroll would otherwise lift the sheet
+       and leave the page showing under its cut-off edge. Stuck to the bottom of the scrollport
+       it stays put through the bounce, and still rides down with .dock on the way out, since
+       sticky never leaves its own box. */
+    position: sticky;
+    bottom: 0;
     display: flex;
     flex-direction: column;
     width: min(30rem, 100%);
-    max-height: 100%;
+    max-height: 100svh;
     margin-inline: auto;
     border-radius: calc(3 * var(--border-radius, 0.5rem)) calc(3 * var(--border-radius, 0.5rem))
       0 0;
@@ -162,20 +183,6 @@
       translate: 0 100%;
     }
 
-    /* Dragging past the bottom lifts the sheet; this tail is what sits under it so the underside
-       isn't a cut-off edge with the page showing through.
-       It is in the flow, and there is no way around that: an out-of-flow tail can't move with a
-       bounce (fixed) and clip + clip-margin still counts toward scrollHeight in Chrome. So it is
-       short — the drag runs out after a couple of centimetres and snaps back, which reads as
-       stretch rather than as scrolling into a second screen. */
-    &::after {
-      content: "";
-      position: absolute;
-      inset-inline: 0;
-      top: 100%;
-      height: 4rem;
-      background: inherit;
-    }
   }
   .grabber {
     width: 2.25rem;
