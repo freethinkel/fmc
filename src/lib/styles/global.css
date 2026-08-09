@@ -1,6 +1,7 @@
 /* Minimal global base — replaces what Tailwind preflight / app.css @layer base used to do. */
 
-/* Geist Mono self-hosted (OFL); Instrument Serif comes from Google Fonts in app.html. */
+/* Geist Mono self-hosted (OFL), used only where --font-mono is asked for; Inter (body) and
+   Instrument Serif (headings) come from Google Fonts in app.html. */
 @font-face {
   font-family: "Geist Mono";
   src: url(/fonts/geistmono.ttf) format("truetype");

@@ -16,9 +16,11 @@
 
   --border-radius: 0.5rem;
 
-  --font-family: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-family: "Inter", system-ui, -apple-system, sans-serif;
   --font-display: "Instrument Serif", Georgia, serif;
-  --font-mono: var(--font-family);
+  /* its own stack now that the body text isn't mono — the places that ask for --font-mono
+     (sim panel, shortcuts, frame numbers) mean it literally */
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 
   /* spring easing shared by all micro-interactions (from friendzone) */
   --spring-transition: 0.5s
