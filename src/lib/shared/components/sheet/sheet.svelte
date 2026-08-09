@@ -150,6 +150,8 @@
     display: flex;
     flex-direction: column;
     width: min(30rem, 100%);
+    /* a sheet shorter than this reads as a toast — content-sized above it */
+    min-height: 40svh;
     max-height: 100svh;
     margin-inline: auto;
     padding-bottom: env(safe-area-inset-bottom);
