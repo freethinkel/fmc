@@ -26,13 +26,9 @@
     if (!el || !scroller) return;
     if (open && !el.open) {
       el.showModal();
-      // start off screen and scroll up into place — same motion as the dismissal, backwards,
-      // and the overlay fades with it since its opacity is the scroll progress. One frame's
-      // wait: a <dialog> has no layout until it's shown, so there is nothing to scroll yet.
-      scroller.scrollTop = 0;
-      requestAnimationFrame(() =>
-        scroller?.scrollTo({ top: scroller.scrollHeight, behavior: "smooth" }),
-      );
+      // park it at the bottom snap point right away and let CSS play the entrance: scrolling
+      // there by hand can't be animated, because snapping rounds every step to a snap point
+      scroller.scrollTop = scroller.scrollHeight;
     } else if (!open && el.open) dismiss();
   });
 
@@ -44,7 +40,9 @@
 
   function onScroll() {
     if (!scroller) return;
-    const max = scroller.scrollHeight - scroller.clientHeight;
+    // the travel is one screen — spacer to sheet — not the whole scroll range, which also
+    // holds the tail that covers the sheet's underside when it's dragged past the bottom
+    const max = scroller.clientHeight;
 
     progress = max > 0 ? Math.min(Math.max(scroller.scrollTop / max, 0), 1) : 0;
     if (!armed) armed = progress > 0.99;
@@ -110,6 +108,9 @@
     inset: 0;
     background: oklch(0 0 0 / 40%);
     pointer-events: none;
+    /* opacity is set from the scroll progress, which jumps straight to 1 on open — short
+       enough that a drag still looks like it's driving the fade */
+    transition: opacity 0.2s ease-out;
   }
   .scroll {
     position: relative; /* above .overlay, which is positioned and would paint over it */
@@ -117,6 +118,7 @@
     overflow-y: scroll;
     scroll-snap-type: y mandatory;
     overscroll-behavior-y: contain;
+    overflow-x: hidden;
     scrollbar-width: none;
 
     &::-webkit-scrollbar {
@@ -136,6 +138,7 @@
     scroll-snap-align: start;
   }
   .sheet {
+    position: relative;
     display: flex;
     flex-direction: column;
     width: min(30rem, 100%);
@@ -144,6 +147,25 @@
     border-radius: calc(3 * var(--border-radius)) calc(3 * var(--border-radius)) 0 0;
     padding-bottom: env(safe-area-inset-bottom);
     background: var(--color-background);
+    translate: 0 0;
+    transition: translate var(--spring-transition);
+
+    /* the entrance: the scroll can't animate it (snapping rounds every step to a snap point),
+       so the sheet slides in on its own while sitting at the bottom snap point */
+    @starting-style {
+      translate: 0 100%;
+    }
+
+    /* overscroll past the bottom drags the sheet up; this is the tail that keeps its underside
+       from being a cut-off edge with the page showing through */
+    &::after {
+      content: "";
+      position: absolute;
+      inset-inline: 0;
+      top: 100%;
+      height: 50vh;
+      background: inherit;
+    }
   }
   .grabber {
     width: 2.25rem;
