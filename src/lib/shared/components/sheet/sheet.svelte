@@ -26,7 +26,13 @@
     if (!el || !scroller) return;
     if (open && !el.open) {
       el.showModal();
-      scroller.scrollTop = scroller.scrollHeight;
+      // start off screen and scroll up into place — same motion as the dismissal, backwards,
+      // and the overlay fades with it since its opacity is the scroll progress. One frame's
+      // wait: a <dialog> has no layout until it's shown, so there is nothing to scroll yet.
+      scroller.scrollTop = 0;
+      requestAnimationFrame(() =>
+        scroller?.scrollTo({ top: scroller.scrollHeight, behavior: "smooth" }),
+      );
     } else if (!open && el.open) dismiss();
   });
 
