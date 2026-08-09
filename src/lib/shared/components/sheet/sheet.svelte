@@ -20,35 +20,25 @@
   }
   const { open = false, onClose, children }: Props = $props();
 
-  /** Keep in step with the sheet's transition below. */
-  const ENTRANCE_MS = 400;
-
   let el = $state<HTMLDialogElement>();
   let scroller = $state<HTMLDivElement>();
+  let dock = $state<HTMLDivElement>();
   let travel = $state(0);
   // "scrolled to the top" only means dismissal once the sheet has landed at the bottom —
   // before that it would close itself on its first frame
   let armed = false;
-  // The entrance slides the sheet with `translate`, and a translation counts toward the
-  // scrollable overflow — so while it plays, the scroll range reads a sheet-height too long and
-  // the travel measured off it is nonsense. Wait it out instead.
-  let entering = false;
-  let enteringTimer: ReturnType<typeof setTimeout>;
 
   $effect(() => {
-    if (!el || !scroller) return;
+    if (!el || !scroller || !dock) return;
     if (open && !el.open) {
       el.showModal();
-      // park it at the bottom snap point right away and let CSS play the entrance: scrolling
-      // there by hand can't be animated, because snapping rounds every step to a snap point
-      scroller.scrollTop = scroller.scrollHeight;
-      // it is up and dismissable by definition; the entrance is what we wait out before
-      // trusting a measurement again
+      // Park it at the OPEN SNAP POINT — one dock height of scroll, since the spacer is one
+      // screen — and let CSS play the entrance. Not scrollHeight: the bleed extends that past
+      // the snap point, and a programmatic scroll is allowed to rest off-snap, which parked
+      // the sheet over-stretched until the first touch jolted it back.
+      scroller.scrollTop = dock.offsetHeight;
       travel = 1;
       armed = true;
-      entering = true;
-      clearTimeout(enteringTimer);
-      enteringTimer = setTimeout(() => (entering = false), ENTRANCE_MS);
     } else if (!open && el.open) dismiss();
   });
 
@@ -59,13 +49,13 @@
   }
 
   function onScroll() {
-    if (!scroller) return;
-    if (!entering) {
-      // the whole scroll range is the travel: it is exactly the sheet's height, nothing beyond
-      const max = scroller.scrollHeight - scroller.clientHeight;
+    if (!scroller || !dock) return;
+    // The travel runs from closed to the open snap point — one dock height. Not the scroll
+    // range: the bleed (and, mid-entrance, the translate) stretch that further, and dividing
+    // by it left the overlay dimmer than the sheet's real position.
+    const max = dock.offsetHeight;
 
-      travel = max > 0 ? Math.min(Math.max(scroller.scrollTop / max, 0), 1) : 0;
-    }
+    travel = max > 0 ? Math.min(Math.max(scroller.scrollTop / max, 0), 1) : 0;
     if (armed && scroller.scrollTop <= 0) el?.close();
   }
 </script>
@@ -75,8 +65,6 @@
   style:--travel={travel}
   onclose={() => {
     armed = false;
-    entering = false;
-    clearTimeout(enteringTimer);
     travel = 0;
     onClose?.();
   }}
@@ -92,7 +80,7 @@
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <div class="scroll" bind:this={scroller} onscroll={onScroll} onclick={dismiss}>
     <div class="spacer"></div>
-    <div class="dock">
+    <div class="dock" bind:this={dock}>
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <!-- svelte-ignore a11y_click_events_have_key_events -->
       <div class="sheet" onclick={(e) => e.stopPropagation()}>
