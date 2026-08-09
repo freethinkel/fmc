@@ -1,7 +1,7 @@
 <script lang="ts">
   import { page } from "$app/state";
   import { authModel } from "$lib/modules/auth/model";
-  import WatchPopover from "$lib/modules/device/components/watch-popover.svelte";
+  import WatchSheet from "$lib/modules/device/components/watch-sheet.svelte";
   import { Icon, type IconName } from "$lib/shared/components/icon";
 
   const { $user: user } = authModel;
@@ -20,19 +20,17 @@
       {item.title}
     </a>
   {/each}
-  <div class="watch-slot">
-    <WatchPopover placement="top">
-      {#snippet trigger({ open, toggle, connected })}
-        <button class:active={open} onclick={toggle}>
-          <span class="icon-wrap">
-            <Icon name="watch" size={20} />
-            {#if connected}<span class="dot"></span>{/if}
-          </span>
-          Watch
-        </button>
-      {/snippet}
-    </WatchPopover>
-  </div>
+  <WatchSheet>
+    {#snippet trigger({ open, toggle, connected })}
+      <button class:active={open} onclick={toggle}>
+        <span class="icon-wrap">
+          <Icon name="watch" size={20} />
+          {#if connected}<span class="dot"></span>{/if}
+        </span>
+        Watch
+      </button>
+    {/snippet}
+  </WatchSheet>
 </nav>
 
 <style>
@@ -59,14 +57,6 @@
     height: 0.375rem;
     border-radius: 50%;
     background: var(--color-accent);
-  }
-  .watch-slot {
-    flex: 1;
-    display: flex;
-    /* stretch the popover root (unscoped, lives in watch-popover.svelte) */
-    > :global(div) {
-      flex: 1;
-    }
   }
   a,
   button {
