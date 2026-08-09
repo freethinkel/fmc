@@ -154,10 +154,10 @@
     margin-inline: auto;
     padding-bottom: env(safe-area-inset-bottom);
     translate: 0 0;
-    /* the sheet's own curve, not the app's: this is the iOS sheet ease Silk and friends use —
+    /* the sheet's own curve, not the app's: the iOS sheet ease Silk and friends use —
        fast off the mark, settling without overshoot, so nothing bounces past the edge it just
        came from */
-    transition: translate 0.4s cubic-bezier(0.32, 0.72, 0, 1);
+    transition: translate 1.6s cubic-bezier(0.32, 0.72, 0, 1);
 
     /* the entrance: the scroll can't animate it (snapping rounds every step to a snap point),
        so the sheet slides in on its own while sitting at the bottom snap point */
