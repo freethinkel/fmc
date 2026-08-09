@@ -1,25 +1,30 @@
 <script lang="ts">
   // A bottom sheet that swipes away without a single pointer handler: the overlay is a scroll
   // container with two snap points — an empty screen, then the sheet — so dragging it down is
-  // ordinary scrolling with native inertia, and arriving back at the top means "dismissed".
-  // (The trick is lifted from friendzone's drawer.) <dialog> hosts it, so the top layer,
-  // Esc and the focus trap come for free.
+  // ordinary scrolling, with native inertia and the same gesture from a touch screen, a
+  // trackpad or a wheel. Arriving back at the top means "dismissed". <dialog> hosts it, so the
+  // top layer, Esc and the focus trap come for free.
+  //
+  // Self-contained on purpose — no imports beyond Svelte, and every token it reads has a
+  // fallback, so the file can be copied into another project as it is.
+  //
+  // How far the sheet has travelled (0 off screen, 1 fully up) is published as --travel on the
+  // dialog and handed to the children snippet, so effects elsewhere can ride the same gesture:
+  //   opacity: var(--travel);  scale: calc(0.96 + 0.04 * var(--travel));
   import type { Snippet } from "svelte";
-  import { Icon } from "$lib/shared/components/icon";
 
   interface Props {
     open?: boolean;
-    title?: string;
     onClose?: () => void;
-    children?: Snippet;
+    children?: Snippet<[{ travel: number }]>;
   }
-  const { open = false, title, onClose, children }: Props = $props();
+  const { open = false, onClose, children }: Props = $props();
 
   let el = $state<HTMLDialogElement>();
   let scroller = $state<HTMLDivElement>();
-  let progress = $state(0);
-  // "scrolled to the top" only means dismissal once the opening scroll has landed at the
-  // bottom — before that the sheet would close itself on its first frame
+  let travel = $state(0);
+  // "scrolled to the top" only means dismissal once the sheet has landed at the bottom —
+  // before that it would close itself on its first frame
   let armed = false;
 
   $effect(() => {
@@ -44,17 +49,18 @@
     // holds the tail that covers the sheet's underside when it's dragged past the bottom
     const max = scroller.clientHeight;
 
-    progress = max > 0 ? Math.min(Math.max(scroller.scrollTop / max, 0), 1) : 0;
-    if (!armed) armed = progress > 0.99;
+    travel = max > 0 ? Math.min(Math.max(scroller.scrollTop / max, 0), 1) : 0;
+    if (!armed) armed = travel > 0.99;
     else if (scroller.scrollTop <= 0) el?.close();
   }
 </script>
 
 <dialog
   bind:this={el}
+  style:--travel={travel}
   onclose={() => {
     armed = false;
-    progress = 0;
+    travel = 0;
     onClose?.();
   }}
   oncancel={(e) => {
@@ -62,8 +68,9 @@
     dismiss();
   }}
 >
-  <div class="overlay" style:opacity={progress}></div>
-  <!-- the backdrop is a click target only; Esc and the close button are what keyboard users get -->
+  <div class="overlay"></div>
+  <!-- the backdrop is a click target only; Esc and whatever close button the content carries
+       are what keyboard users get -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <div class="scroll" bind:this={scroller} onscroll={onScroll} onclick={dismiss}>
@@ -73,13 +80,7 @@
       <!-- svelte-ignore a11y_click_events_have_key_events -->
       <div class="sheet" onclick={(e) => e.stopPropagation()}>
         <div class="grabber"></div>
-        <header>
-          {#if title}<h2>{title}</h2>{/if}
-          <button class="close" aria-label="Close" onclick={dismiss}>
-            <Icon name="x" size={18} />
-          </button>
-        </header>
-        <div class="body">{@render children?.()}</div>
+        <div class="body">{@render children?.({ travel })}</div>
       </div>
     </div>
   </div>
@@ -96,9 +97,9 @@
     max-height: 100svh;
     overflow: hidden;
     background: transparent;
-    color: var(--color-text);
+    color: var(--color-text, CanvasText);
 
-    /* the overlay div fades with the scroll instead — the backdrop can't be driven by it */
+    /* the overlay div fades with the travel instead — the backdrop can't be driven by it */
     &::backdrop {
       background: transparent;
     }
@@ -108,18 +109,19 @@
     inset: 0;
     background: oklch(0 0 0 / 40%);
     pointer-events: none;
-    /* opacity is set from the scroll progress, which jumps straight to 1 on open — short
-       enough that a drag still looks like it's driving the fade */
+    opacity: var(--travel);
+    /* --travel jumps straight to 1 on open; short enough that a drag still looks like it's
+       driving the fade itself */
     transition: opacity 0.2s ease-out;
   }
   .scroll {
     position: relative; /* above .overlay, which is positioned and would paint over it */
     height: 100%;
     overflow-y: scroll;
-    scroll-snap-type: y mandatory;
     overscroll-behavior-y: contain;
     overflow-x: hidden;
     scrollbar-width: none;
+    scroll-snap-type: y mandatory;
 
     &::-webkit-scrollbar {
       display: none;
@@ -144,11 +146,12 @@
     width: min(30rem, 100%);
     max-height: 100%;
     margin-inline: auto;
-    border-radius: calc(3 * var(--border-radius)) calc(3 * var(--border-radius)) 0 0;
+    border-radius: calc(3 * var(--border-radius, 0.5rem)) calc(3 * var(--border-radius, 0.5rem))
+      0 0;
     padding-bottom: env(safe-area-inset-bottom);
-    background: var(--color-background);
+    background: var(--color-background, Canvas);
     translate: 0 0;
-    transition: translate var(--spring-transition);
+    transition: translate var(--spring-transition, 0.35s cubic-bezier(0.32, 0.72, 0, 1));
 
     /* the entrance: the scroll can't animate it (snapping rounds every step to a snap point),
        so the sheet slides in on its own while sitting at the bottom snap point */
@@ -172,31 +175,7 @@
     height: 0.25rem;
     margin: 0.5rem auto 0;
     border-radius: 625rem;
-    background: oklch(from var(--color-text) l c h / 20%);
-  }
-  header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0.5rem 1rem 0;
-
-    h2 {
-      margin: 0;
-      font-size: 1.75rem;
-    }
-  }
-  .close {
-    margin-inline-start: auto;
-    border: none;
-    border-radius: 0.375rem;
-    padding: 0.25rem;
-    background: transparent;
-    color: oklch(from var(--color-text) l c h / 55%);
-    cursor: pointer;
-
-    &:hover {
-      background: oklch(from var(--color-text) l c h / 8%);
-    }
+    background: oklch(from var(--color-text, CanvasText) l c h / 20%);
   }
   .body {
     flex: 1;

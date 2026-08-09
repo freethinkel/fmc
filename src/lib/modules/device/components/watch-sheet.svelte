@@ -37,11 +37,13 @@
   connected: !!$bleInfo,
 })}
 
-<Sheet
-  {open}
-  title={$bleInfo ? "CMF Watch Pro 2" : "Connect your watch"}
-  onClose={() => (open = false)}
->
+<Sheet {open} onClose={() => (open = false)}>
+  <header>
+    <h2>{$bleInfo ? "CMF Watch Pro 2" : "Connect your watch"}</h2>
+    <button class="close" aria-label="Close" onclick={() => (open = false)}>
+      <Icon name="x" size={18} />
+    </button>
+  </header>
   <!-- ponytail: don't gate on navigator.bluetooth at render time — the Safari polyfill injects later; the real check is in ble.ts on click -->
   {#if !$bleInfo}
     <div class="section">
@@ -97,6 +99,29 @@
 </Sheet>
 
 <style>
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.75rem;
+
+    h2 {
+      margin: 0;
+      font-size: 1.75rem;
+    }
+  }
+  .close {
+    border: none;
+    border-radius: 0.375rem;
+    padding: 0.25rem;
+    background: transparent;
+    color: oklch(from var(--color-text) l c h / 55%);
+    cursor: pointer;
+
+    &:hover {
+      background: oklch(from var(--color-text) l c h / 8%);
+    }
+  }
   .section {
     display: flex;
     flex-direction: column;
