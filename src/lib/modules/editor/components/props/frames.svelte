@@ -15,6 +15,7 @@
     replaceImageRequested,
     frameMoved,
     glyphDialogOpened,
+    ringImageAdded,
   } = editorModel;
 
   // native HTML5 drag & drop over the frame list, same shape as TreePanel's layer reorder
@@ -105,6 +106,30 @@
   </div>
 {/if}
 
+<!-- A ring is the one widget that draws with no art at all (the stroked 0x5a fallback), so it is
+     also the one that has nothing to click to give it some. Once it has a bitmap it clips to the
+     filled sector like any 0x5b ring, and the thumbnail above takes over. -->
+{#if layer.kind === "ring" && !images.length}
+  <div>
+    <span class="muted-label">ring art</span>
+    <label class="pick">
+      <Icon name="image-plus" size={14} />
+      use a ring bitmap
+      <input
+        type="file"
+        accept="image/*"
+        hidden
+        onchange={(e) => {
+          const file = e.currentTarget.files?.[0];
+
+          if (file) ringImageAdded({ id: layer.id, file });
+        }}
+      />
+    </label>
+    <p class="hint-xs">a full ring, drawn at 100% — the watch clips it to the filled sector</p>
+  </div>
+{/if}
+
 <!-- A set whose contents are spelled out by the format — the ten digits of a number, the labels
      of a value-indexed source — can be rasterized from a font instead of drawn by hand. A plain
      image qualifies too: one label makes a static text sprite (the only way to put a string the
@@ -173,6 +198,20 @@
     display: flex;
     flex-wrap: wrap;
     gap: 0.5rem;
+  }
+  /* a file input has to be a label, so it can't be the shared Button — same chrome, by hand */
+  .pick {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.375rem 0.625rem;
+    border: 1px solid oklch(from var(--color-text) l c h / 12%);
+    border-radius: var(--border-radius);
+    cursor: pointer;
+
+    &:hover {
+      background: oklch(from var(--color-text) l c h / 6%);
+    }
   }
   .thumb-cap {
     font-size: 0.625rem;

@@ -271,6 +271,15 @@ const resizeImageFx = attach({
 
       patch = { pivotX, pivotY, x: cx - pivotX, y: cy - pivotY };
     }
+    // A ring's meta.w/h is the circle its filled sector pivots around, NOT the bitmap (which may
+    // be cropped to the arc's bounding box) — scaled by the same factors, or the sector swings
+    // around the old centre and the ring tears as soon as it is resized. `auto` is the group's
+    // "size me from my content" sentinel, not a diameter.
+    if (l.kind === "ring" && l.meta.w && l.meta.h && !l.meta.auto)
+      patch = {
+        ...patch,
+        meta: { ...l.meta, w: dim(l.meta.w * sx), h: dim(l.meta.h * sy) },
+      } as Partial<Layer>;
     return { assets, cache: cached, layer: l.id, patch };
   },
 });
