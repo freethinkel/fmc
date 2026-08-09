@@ -84,8 +84,6 @@
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <!-- svelte-ignore a11y_click_events_have_key_events -->
       <div class="sheet" onclick={(e) => e.stopPropagation()}>
-        <!-- the sheet's surface, bleeding past its bottom edge — see the CSS -->
-        <div class="bleed"></div>
         <div class="grabber"></div>
         <div class="body">{@render children?.({ travel })}</div>
       </div>
@@ -146,13 +144,21 @@
     scroll-snap-align: end;
   }
   .sheet {
-    position: relative; /* the bleed below is positioned against it */
     display: flex;
     flex-direction: column;
     width: min(30rem, 100%);
     max-height: 100svh;
     margin-inline: auto;
+    border-radius: calc(3 * var(--border-radius, 0.5rem)) calc(3 * var(--border-radius, 0.5rem))
+      0 0;
     padding-bottom: env(safe-area-inset-bottom);
+    background: var(--color-background, Canvas);
+    /* The surface continuing below the sheet, so a stretch past the open position reveals more
+       of it instead of a cut-off edge. A shadow rather than an element or ::after on purpose:
+       ink overflow doesn't count toward the scrollable overflow, so unlike every in-flow or
+       absolutely-positioned variant it adds NO scroll range past the open snap point — pulling
+       further is the browser's own elastic overscroll, exactly like Silk. */
+    box-shadow: 0 6rem 0 var(--color-background, Canvas);
     translate: 0 0;
     /* the sheet's own curve, not the app's: this is the iOS sheet ease Silk and friends use —
        fast off the mark, settling without overshoot, so nothing bounces past the edge it just
@@ -165,18 +171,6 @@
       translate: 0 100%;
     }
 
-  }
-  /* The surface, as a layer of its own rather than the sheet's own background — that is how
-     Silk does it, and the reason is the negative bottom: it bleeds past the sheet's edge, so a
-     bounce reveals more of the same surface instead of a cut-off edge. Being out of flow, the
-     bleed doesn't lengthen the scroll. */
-  .bleed {
-    position: absolute;
-    inset: 0 0 -6rem;
-    z-index: -1;
-    border-radius: calc(3 * var(--border-radius, 0.5rem)) calc(3 * var(--border-radius, 0.5rem))
-      0 0;
-    background: var(--color-background, Canvas);
   }
   .grabber {
     width: 2.25rem;
