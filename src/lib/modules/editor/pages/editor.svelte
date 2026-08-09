@@ -2,6 +2,7 @@
   import { Button } from "$lib/shared/components/button";
   import { Tabs } from "$lib/shared/components/tabs";
   import { Dialog } from "$lib/shared/components/dialog";
+  import { Loader } from "$lib/shared/components/loader";
   import { Icon } from "$lib/shared/components/icon";
   import { authModel } from "$lib/modules/auth/model";
   import { marketModel } from "$lib/modules/market/model";
@@ -78,6 +79,7 @@
     previewThumb,
     $rightPanel: rightPanel,
     rightPanelSet,
+    $loading: loading,
   } = editorModel;
 
   let canvas = $state<HTMLCanvasElement | null>(null);
@@ -904,6 +906,11 @@
             onpointermove={onMove}
             onpointerup={onUp}
           ></canvas>
+          <!-- the market opens the editor before the .bin has even arrived (see editRequested) —
+               this is what the user watches while it does -->
+          {#if $loading}
+            <div class="canvas-loading"><Loader /></div>
+          {/if}
         </div>
       </div>
       {#if perf && $doc}
@@ -1148,6 +1155,7 @@
     padding: 1.5rem;
   }
   .canvas-frame {
+    position: relative; /* the loading overlay sits on the dial */
     aspect-ratio: 1;
     width: min(70vh, 90%, 35rem);
     min-width: var(--canvas-min);
@@ -1167,6 +1175,13 @@
     width: 100%;
     height: 100%;
     touch-action: none;
+  }
+  .canvas-loading {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    color: oklch(1 0 0 / 70%);
   }
   /* dev only — same overlay treatment as .hint, pinned to the opposite corner */
   .fps {

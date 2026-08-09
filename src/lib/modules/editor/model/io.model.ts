@@ -1,7 +1,8 @@
 // Getting documents in and out: opening a .bin, starting a blank face, importing a Facer or
 // WatchMaker export, and building the bytes back. The assets are re-encoded on the way out only
 // (flushAssets), so everything the editor did to the pixels stays non-destructive until export.
-import { attach, createEffect, createEvent, createStore, sample } from "effector";
+import { attach, combine, createEffect, createEvent, createStore, sample } from "effector";
+import { reset } from "patronum";
 import { buildBin, parseBin } from "../core/format";
 import { fromLegacy, toLegacy, type Doc, type ImageId } from "../core/document/doc";
 import { saveNames, withNames } from "../core/document/names";
@@ -32,9 +33,16 @@ export const exportBin = createEvent();
 /** Fired on any successful load — pages that need to react (navigate once the face is ready)
  *  subscribe, others ignore it. */
 export const loadDone = createEvent<{ doc: Doc; label: string }>();
+/** "Bytes are on their way" — a marketplace open fetches the .bin before it can call
+ *  loadRequested, and the editor is already on screen by then. Without this the page looked
+ *  idle for the whole download. */
+export const bytesAwaited = createEvent();
 
 // ---- stores ----
 export const $faceKey = createStore<string | null>(null);
+// bytesAwaited until the load they belong to settles — or until the fetch that promised them
+// fails, which the caller reports by way of its own error
+const $awaitingBytes = createStore(false);
 
 // ---- effects ----
 const loadBufferFx = createEffect(
@@ -48,7 +56,12 @@ const loadBufferFx = createEffect(
 
 const saveNamesFx = createEffect(({ key, doc }: { key: string; doc: Doc }) => saveNames(key, doc));
 
-export const $loading = loadBufferFx.pending;
+/** Covers the whole wait, not just the parse: the fetch that precedes it counts too. */
+export const $loading = combine(
+  loadBufferFx.pending,
+  $awaitingBytes,
+  (parsing, awaiting) => parsing || awaiting,
+);
 
 const newFaceFx = createEffect(async (name: string = "Custom") => {
   const doc = blankDoc(
@@ -160,6 +173,14 @@ const exportBinFx = attach({
 });
 
 // ---- business logic ----
+sample({
+  clock: bytesAwaited,
+  fn: () => true,
+  target: $awaitingBytes,
+});
+// the load itself takes over from here; errored covers the fetch that never got to call it
+reset({ clock: [loadRequested, errored], target: $awaitingBytes });
+
 sample({
   clock: loadRequested,
   target: loadBufferFx,

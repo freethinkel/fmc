@@ -20,6 +20,12 @@ export const loadMarketFx = createEffect(async () => {
   return { items, likes };
 });
 
+// one record for its own page (/market/[id]) — a deep link has no catalog list to read from,
+// and $items only ever holds published faces
+export const loadWfFx = createEffect((id: string) =>
+  pb.collection("watchfaces").getOne(id, { expand: "owner" }),
+);
+
 export const loadMyFx = createEffect((userId: string) =>
   pb.collection("watchfaces").getFullList({ sort: "-updated", filter: `owner = '${userId}'` }),
 );
