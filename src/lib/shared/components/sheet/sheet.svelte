@@ -151,7 +151,10 @@
     padding-bottom: env(safe-area-inset-bottom);
     background: var(--color-background, Canvas);
     translate: 0 0;
-    transition: translate var(--spring-transition, 0.35s cubic-bezier(0.32, 0.72, 0, 1));
+    /* the sheet's own curve, not the app's: this is the iOS sheet ease Silk and friends use —
+       fast off the mark, settling without overshoot, so nothing bounces past the edge it just
+       came from */
+    transition: translate 0.4s cubic-bezier(0.32, 0.72, 0, 1);
 
     /* the entrance: the scroll can't animate it (snapping rounds every step to a snap point),
        so the sheet slides in on its own while sitting at the bottom snap point */
@@ -159,14 +162,18 @@
       translate: 0 100%;
     }
 
-    /* overscroll past the bottom drags the sheet up; this is the tail that keeps its underside
-       from being a cut-off edge with the page showing through */
+    /* Dragging past the bottom lifts the sheet; this tail is what sits under it so the underside
+       isn't a cut-off edge with the page showing through.
+       It is in the flow, and there is no way around that: an out-of-flow tail can't move with a
+       bounce (fixed) and clip + clip-margin still counts toward scrollHeight in Chrome. So it is
+       short — the drag runs out after a couple of centimetres and snaps back, which reads as
+       stretch rather than as scrolling into a second screen. */
     &::after {
       content: "";
       position: absolute;
       inset-inline: 0;
       top: 100%;
-      height: 50vh;
+      height: 4rem;
       background: inherit;
     }
   }
