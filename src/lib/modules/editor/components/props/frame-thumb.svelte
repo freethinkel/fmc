@@ -46,7 +46,11 @@
     <Icon name="download" size={14} />
   </button>
   <!-- a transparent frame in a value-indexed set = the widget blinks off on that value -->
-  <button title="Clear — transparent frame" onclick={() => clearImageRequested({ id })} class="dl-btn clear">
+  <button
+    title="Clear — transparent frame"
+    onclick={() => clearImageRequested({ id })}
+    class="dl-btn clear"
+  >
     <Icon name="eraser" size={14} />
   </button>
 </div>
