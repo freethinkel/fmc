@@ -2,38 +2,36 @@
   import { Input } from "$lib/shared/components/input";
   import { Switch } from "$lib/shared/components/switch";
   import { Icon } from "$lib/shared/components/icon";
-  import { ACCENT_PALETTE, pickerLabel } from "../core/document/sources";
+  import {
+    ACCENT_PALETTE,
+    ID_METRIC,
+    METRIC_GOAL,
+    pickerLabel,
+    type SimMetric,
+  } from "../core/document/sources";
   import { editorModel } from "../model";
   const { $sim: sim, $ids: ids, simPatched, overrideSet } = editorModel;
 
-  type NumField =
-    | "steps"
-    | "hr"
-    | "battery"
-    | "calories"
-    | "distance"
-    | "temp"
-    | "aqi"
-    | "stands"
-    | "stepsGoal"
-    | "calGoal"
-    | "standsGoal";
-
-  // label + the data-source ids the field feeds (see ID_LABELS/idValue in lib/sources.ts);
-  // goal fields feed no id of their own, they're the denominator of the matching ring
-  const fields: [NumField, string, string][] = [
-    ["steps", "Steps", "0x19, 0x26, 0x49, 0x6a, 0x6c"],
-    ["hr", "Heart rate, bpm", "0x1a"],
-    ["battery", "Battery, %", "0x24, 0x30"],
-    ["calories", "Calories, kcal", "0x1c, 0x1e"],
-    ["distance", "Distance, m", "0x22, 0x23, 0x74, 0x75, 0x76"],
-    ["temp", "Temperature, °", "0x36, 0x5f"],
-    ["aqi", "AQI", "0x8b"],
-    ["stands", "Stand hours", "0x48"],
-    ["stepsGoal", "Steps goal", "ring denominator for steps"],
-    ["calGoal", "Calories goal, kcal", "ring denominator for calories"],
-    ["standsGoal", "Stand goal, hours", "ring denominator for stand hours"],
+  // One input per METRIC, not per id: the firmware answers eight different ids out of `steps`
+  // alone, so a row each would be eight inputs for one number — and the last one typed would
+  // silently win. Only the metrics this document actually reads are offered; the raw per-id
+  // escape hatch is still there, below, for driving two widgets apart.
+  const METRICS: [SimMetric, string, string][] = [
+    ["steps", "Steps", "Steps goal"],
+    ["hr", "Heart rate, bpm", ""],
+    ["battery", "Battery, %", ""],
+    ["calories", "Calories, kcal", "Calories goal, kcal"],
+    ["distance", "Distance, m", ""],
+    ["temp", "Temperature, °", ""],
+    ["aqi", "AQI", ""],
+    ["stands", "Stand hours", "Stand goal, hours"],
   ];
+
+  const used = $derived(new Set($ids.map(({ id }) => ID_METRIC[id]).filter(Boolean)));
+  const shown = $derived(METRICS.filter(([m]) => used.has(m)));
+  const overrides = $derived(
+    $ids.filter(({ id }) => $sim.overrides[id] !== undefined && $sim.overrides[id] !== "").length,
+  );
 
   function localISO(t: number) {
     return new Date(t - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 19);
@@ -101,37 +99,64 @@
       {/each}
     </div>
   </div>
-  <div class="fields-grid">
-    {#each fields as [key, label, hint]}
-      <div>
-        <span class="muted-label" title={hint}>{label}</span>
-        <Input
-          type="number"
-          value={String($sim[key])}
-          onInput={(v) => simPatched({ [key]: v === "" ? "" : +v })}
-        />
-      </div>
-    {/each}
-  </div>
-
-  {#if $ids.length}
-    <h3 class="section-heading">Data sources</h3>
-    <div class="ids-list">
-      {#each $ids as { id, max }}
-        <div class="id-row">
-          <span class="id-label">{pickerLabel(id)}</span>
-          <span class="id-input">
+  {#if shown.length}
+    <div class="fields-grid">
+      {#each shown as [key, label, goalLabel]}
+        <div>
+          <span class="muted-label">{label}</span>
+          <Input
+            type="number"
+            value={String($sim[key])}
+            onInput={(v) => simPatched({ [key]: v === "" ? "" : +v })}
+          />
+        </div>
+        {#if goalLabel}
+          {@const goal = METRIC_GOAL[key]!}
+          <div>
+            <span class="muted-label" title="what a percentage ring on this metric divides by"
+              >{goalLabel}</span
+            >
             <Input
               type="number"
-              placeholder="auto"
-              value={String($sim.overrides[id] ?? "")}
-              onInput={(v) => overrideSet({ id, value: v })}
+              value={String($sim[goal])}
+              onInput={(v) => simPatched({ [goal]: v === "" ? "" : +v })}
             />
-          </span>
-          {#if max}<span class="max-hint">/{max}</span>{/if}
-        </div>
+          </div>
+        {/if}
       {/each}
     </div>
+  {/if}
+
+  <!-- The escape hatch, folded away: every source the face reads, addressable one by one, for
+       pinning a hand or driving two widgets on the same metric apart. A value here WINS over the
+       field above (see idValue), so the count says how many are doing that. -->
+  {#if $ids.length}
+    <details class="raw">
+      <summary>
+        per-source overrides{overrides ? ` — ${overrides} set` : ""}
+      </summary>
+      <div class="ids-list">
+        {#each $ids as { id, max }}
+          <div class="id-row">
+            <span class="id-label">{pickerLabel(id)}</span>
+            <span class="id-input">
+              <Input
+                type="number"
+                placeholder="auto"
+                value={String($sim.overrides[id] ?? "")}
+                onInput={(v) => overrideSet({ id, value: v })}
+              />
+            </span>
+            <!-- meta.max: the widget's OWN declared maximum (a hand's 60 positions, a number's
+                 digit cap), not the metric's range — it doesn't scale what you type here -->
+            {#if max}<span
+                class="max-hint"
+                title="the widget's declared max, not this metric's range">max {max}</span
+              >{/if}
+          </div>
+        {/each}
+      </div>
+    </details>
   {/if}
 </div>
 
@@ -203,13 +228,18 @@
     grid-template-columns: repeat(2, 1fr);
     gap: 0.5rem 0.75rem;
   }
-  .section-heading {
-    margin: 0.25rem 0 0;
-    font-size: 0.625rem;
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: oklch(from var(--color-text) l c h / 55%);
+  .raw {
+    summary {
+      cursor: pointer;
+      font-size: 0.625rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: oklch(from var(--color-text) l c h / 55%);
+    }
+    &[open] summary {
+      margin-bottom: 0.5rem;
+    }
   }
   .ids-list {
     display: flex;
@@ -222,7 +252,7 @@
     gap: 0.5rem;
   }
   .id-label {
-    width: 9rem;
+    width: 7.5rem;
     flex-shrink: 0;
     overflow: hidden;
     white-space: nowrap;
@@ -237,6 +267,7 @@
     flex-shrink: 0;
   }
   .max-hint {
+    white-space: nowrap;
     font-size: 0.625rem;
     color: oklch(from var(--color-text) l c h / 55%);
   }
