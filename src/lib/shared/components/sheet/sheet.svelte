@@ -90,6 +90,7 @@
         <div class="body">{@render children?.({ travel })}</div>
       </div>
     </div>
+    <div class="tail"></div>
   </div>
 </dialog>
 
@@ -121,9 +122,14 @@
        driving the fade itself */
     transition: opacity 0.2s ease-out;
   }
+  /* Silk's geometry, seen on silkhq.com with the mask peeled back: the scrollport is TALLER
+     than the screen — the dialog clips its bottom 50svh — and only the spacer and the tail
+     are snap areas. The sheet takes no part in snapping, so the room below it (where its
+     bleed hangs) lives inside the scrollport but off screen: in the flow, costing no scroll
+     range, riding up into view when an elastic overscroll stretches past open. */
   .scroll {
     position: relative; /* above .overlay, which is positioned and would paint over it */
-    height: 100%;
+    height: calc(100svh + 50svh);
     overflow-y: scroll;
     overscroll-behavior-y: contain;
     overflow-x: hidden;
@@ -134,15 +140,17 @@
       display: none;
     }
   }
-  /* the closed position: one screen of nothing, with the sheet below the fold */
+  /* the closed position: one SCREEN of nothing — not one scrollport — so the travel to the
+     open snap point is exactly the sheet's height */
   .spacer {
-    height: 100%;
+    height: 100svh;
     scroll-snap-align: start;
   }
-  /* the open position. It is exactly as tall as the sheet, so the scroll runs out the moment
-     the sheet is up — dragging further is a bounce, not more scrolling. Aligning to its end
-     parks the sheet against the bottom of the screen. */
-  .dock {
+  /* the open position: the tail's end is the end of the content, and aligning it with the
+     scrollport's end parks the sheet's bottom edge exactly on the visible screen's bottom —
+     the tail below it is the clipped, off-screen zone */
+  .tail {
+    height: 50svh;
     scroll-snap-align: end;
   }
   .sheet {
@@ -168,18 +176,16 @@
     }
 
   }
-  /* The surface, a layer of its own (Silk's BleedingBackground). Its box stays inside the
-     sheet — an edge poking past it would extend the scroll range past the open snap point —
-     and the continuation below is painted by the shadow: ink overflow costs no scroll, so a
-     stretch past open stays the browser's own elastic bounce and reveals more surface. */
+  /* The surface, a layer of its own (Silk's BleedingBackground), pulled well past the sheet's
+     bottom edge: the tail's flow room is what it hangs into, so the overhang adds no scroll
+     range — it just gets revealed when a stretch lifts the sheet. */
   .bleed {
     position: absolute;
-    inset: 0;
+    inset: 0 0 -50svh;
     z-index: -1;
     border-radius: calc(3 * var(--border-radius, 0.5rem)) calc(3 * var(--border-radius, 0.5rem))
       0 0;
     background: var(--color-background, Canvas);
-    box-shadow: 0 6rem 0 var(--color-background, Canvas);
   }
   .grabber {
     width: 2.25rem;
