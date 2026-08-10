@@ -20,6 +20,7 @@
 
   // native HTML5 drag & drop over the frame list, same shape as TreePanel's layer reorder
   let dragIdx = $state<number | null>(null);
+  let ringFile = $state<HTMLInputElement | null>(null);
   let dropIdx = $state<number | null>(null);
 
   // a fresh layer object arrives on every edit, so plain deriveds are enough here
@@ -112,20 +113,22 @@
 {#if layer.kind === "ring" && !images.length}
   <div>
     <span class="muted-label">ring art</span>
-    <label class="pick">
+    <!-- hidden input + a real Button, same as the tree panel's own add-image control -->
+    <input
+      bind:this={ringFile}
+      type="file"
+      accept="image/*"
+      hidden
+      onchange={(e) => {
+        const file = e.currentTarget.files?.[0];
+
+        if (file) ringImageAdded({ id: layer.id, file });
+      }}
+    />
+    <Button kind="secondary" onClick={() => ringFile?.click()}>
       <Icon name="image-plus" size={14} />
       use a ring bitmap
-      <input
-        type="file"
-        accept="image/*"
-        hidden
-        onchange={(e) => {
-          const file = e.currentTarget.files?.[0];
-
-          if (file) ringImageAdded({ id: layer.id, file });
-        }}
-      />
-    </label>
+    </Button>
     <p class="hint-xs">a full ring, drawn at 100% — the watch clips it to the filled sector</p>
   </div>
 {/if}
@@ -198,20 +201,6 @@
     display: flex;
     flex-wrap: wrap;
     gap: 0.5rem;
-  }
-  /* a file input has to be a label, so it can't be the shared Button — same chrome, by hand */
-  .pick {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.375rem;
-    padding: 0.375rem 0.625rem;
-    border: 1px solid oklch(from var(--color-text) l c h / 12%);
-    border-radius: var(--border-radius);
-    cursor: pointer;
-
-    &:hover {
-      background: oklch(from var(--color-text) l c h / 6%);
-    }
   }
   .thumb-cap {
     font-size: 0.625rem;

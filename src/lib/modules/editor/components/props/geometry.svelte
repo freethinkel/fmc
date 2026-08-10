@@ -3,8 +3,9 @@
   import { Slider } from "$lib/shared/components/slider";
   import { Icon, type IconName } from "$lib/shared/components/icon";
   import { framesOf, isPlaced, type Frame, type Layer } from "../../core/document/doc";
-  import type { ArcSpec } from "../../core/render/arc";
-  import { CENTER, SCREEN } from "../../core/render/screen";
+  import { FULL_BLEED_R, type ArcSpec } from "../../core/render/arc";
+  import { ringRadius } from "../../core/document/edits";
+  import { CENTER } from "../../core/render/screen";
   import { editorModel } from "../../model";
   import type { AlignDir } from "../../model/edit.model";
   import { num, set } from "./patch";
@@ -15,6 +16,7 @@
     $lockAspect: lockAspect,
     lockAspectToggled,
     resizeImageRequested,
+    ringResized,
     adjustImageRequested,
     alignRequested,
   } = editorModel;
@@ -46,25 +48,16 @@
   const ring = $derived(layer.kind === "ring" ? layer : null);
 
   // A ring with art is sized by its bitmap, like any other widget (the w/h block below); one
-  // without has no pixels at all — the diameter lives in the 0x5a spec, with meta.w/h as the
-  // renderer's fallback, so both move together and the ring grows around its own centre.
-  const ringR = $derived(ring ? ring.spec.radius || Math.round(ring.meta.w / 2) || 60 : 0);
+  // without has no pixels at all — its size is the 0x5a spec, so the field asks the model for the
+  // same factor a corner drag would, rather than rebuilding the ring here.
+  const ringR = $derived(ring ? ringRadius(ring) : 0);
   const bareRing = $derived(ring && !ring.frames.length ? ring : null);
 
   const setSpec = (patch: Partial<ArcSpec>) =>
     ring && set(ring.id, { spec: { ...ring.spec, ...patch } } as Partial<Layer>);
 
-  function setRingSize(d: number) {
-    if (!ring) return;
-    const r = Math.max(2, Math.round(d / 2));
-
-    set(ring.id, {
-      spec: { ...ring.spec, radius: r },
-      meta: { ...ring.meta, w: 2 * r, h: 2 * r },
-      x: ring.x + ringR - r,
-      y: ring.y + ringR - r,
-    } as Partial<Layer>);
-  }
+  const setRingSize = (d: number) =>
+    ring && ringResized({ layer: ring.id, kw: d / (2 * ringR), kh: d / (2 * ringR) });
 
   // size of the widget's first frame — the asset IS the widget's size, there's no draw-time
   // scale in the format, so resizing rescales the pixels (see assets.model)
@@ -179,7 +172,7 @@
       <Input
         type="number"
         min={4}
-        max={SCREEN}
+        max={2 * (FULL_BLEED_R - 1)}
         value={String(ringR * 2)}
         onChange={(v) => setRingSize(num(v))}
       />

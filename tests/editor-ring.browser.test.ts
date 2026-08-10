@@ -4,6 +4,7 @@
 import { test, expect, vi } from "vitest";
 import { findLayer } from "$lib/modules/editor/core/document/edits";
 import type { Layer, NodeId, RingLayer } from "$lib/modules/editor/core/document/doc";
+import { FULL_BLEED_R } from "$lib/modules/editor/core/render/arc";
 import { editorModel } from "$lib/modules/editor/model";
 import url from "./__fixtures__/Default__276__Dichotomy.bin?url";
 
@@ -85,6 +86,78 @@ test("resizing a ring's art scales meta.w/h with it — the sector pivot is that
   await vi.waitFor(() => expect(ringById(ring.id).meta.w).not.toBe(w0));
 
   expect(ringById(ring.id).meta.w).toBe(Math.round(w0 / 2));
+});
+
+// The factors rescaleFrames reports are relative to the PINNED ORIGINAL bitmap, so a second resize
+// that multiplies the already-scaled meta by them lands on a quarter instead of a half.
+test("halving a ring's art twice halves its circle twice, not compounds", async () => {
+  await load();
+  const ring = imageRing();
+  const asset0 = doc().images.get(ring.frames[0])!;
+  const w0 = ring.meta.w;
+  const half = (n: number) => {
+    editorModel.resizeImageRequested({
+      layer: ring.id,
+      w: Math.round(asset0.w / n),
+      h: Math.round(asset0.h / n),
+    });
+  };
+
+  half(2);
+  await vi.waitFor(() => expect(ringById(ring.id).meta.w).toBe(Math.round(w0 / 2)));
+  half(4);
+  await vi.waitFor(() =>
+    expect(doc().images.get(ring.frames[0])!.w).toBe(Math.round(asset0.w / 4)),
+  );
+
+  expect(ringById(ring.id).meta.w).toBe(Math.round(w0 / 4));
+});
+
+// A circle takes one factor: the axis that actually moved. Reading it as max() froze every
+// shrink (max(0.9, 1) === 1), which is what an arrow-key resize hands over.
+test("a one-axis shrink shrinks a bare ring, and a no-op resize keeps the undo stack", async () => {
+  await load();
+  editorModel.nodeAdded("ring");
+  const id = editorModel.$sel.getState()!;
+  const r0 = ringById(id).spec.radius;
+
+  editorModel.ringResized({ layer: id, kw: 0.5, kh: 1 });
+  expect(ringById(id).spec.radius).toBe(Math.round(r0 / 2));
+
+  const undos = editorModel.$undoN.getState();
+
+  editorModel.ringResized({ layer: id, kw: 1, kh: 1 });
+  expect(editorModel.$undoN.getState()).toBe(undos);
+});
+
+// drawProceduralArc draws a ring this big from the screen centre and ignores its x/y, so a drag
+// that crossed the line would teleport the ring and throw its position away.
+test("a bare ring can't be resized past the full-bleed radius", async () => {
+  await load();
+  editorModel.nodeAdded("ring");
+  const id = editorModel.$sel.getState()!;
+
+  editorModel.ringResized({ layer: id, kw: 8, kh: 8 });
+
+  expect(ringById(id).spec.radius).toBe(FULL_BLEED_R - 1);
+});
+
+// Same rule one level up: a group drag rescales its children's pixels, and a ring's circle is not
+// its pixels — a bare ring inside a group has none at all.
+test("resizing a group scales a ring child's circle too", async () => {
+  await load();
+  editorModel.nodeAdded("ring");
+  const id = editorModel.$sel.getState()!;
+  const r0 = ringById(id).spec.radius;
+
+  editorModel.select(id);
+  editorModel.groupRequested();
+  const group = editorModel.$sel.getState()!;
+
+  editorModel.resizeGroupRequested({ layer: group, kw: 0.5, kh: 0.5 });
+  await vi.waitFor(() => expect(ringById(id).spec.radius).toBe(Math.round(r0 / 2)));
+
+  expect(ringById(id).meta.w).toBe(2 * Math.round(r0 / 2));
 });
 
 test("a ring with no art can be given one, and keeps the bitmap's circle", async () => {

@@ -23,7 +23,7 @@ import {
   type ImageCache,
   type ImageId,
 } from "../core/document/doc";
-import { findLayer, patchLayer } from "../core/document/edits";
+import { findLayer, patchLayer, scaleRing } from "../core/document/edits";
 import type { Layer, NodeId } from "../core/document/doc";
 import type { Resource } from "../core/format";
 import { $doc, committed, docLoaded } from "./doc.model";
@@ -271,15 +271,10 @@ const resizeImageFx = attach({
 
       patch = { pivotX, pivotY, x: cx - pivotX, y: cy - pivotY };
     }
-    // A ring's meta.w/h is the circle its filled sector pivots around, NOT the bitmap (which may
-    // be cropped to the arc's bounding box) — scaled by the same factors, or the sector swings
-    // around the old centre and the ring tears as soon as it is resized. `auto` is the group's
-    // "size me from my content" sentinel, not a diameter.
-    if (l.kind === "ring" && l.meta.w && l.meta.h && !l.meta.auto)
-      patch = {
-        ...patch,
-        meta: { ...l.meta, w: dim(l.meta.w * sx), h: dim(l.meta.h * sy) },
-      } as Partial<Layer>;
+    // A ring's own circle (see scaleRing) follows its art. Measured against the asset's CURRENT
+    // size, not sx/sy: those are relative to the PINNED ORIGINAL, so multiplying an already-scaled
+    // meta by them compounds — halving a 284px ring twice would land its circle on 36, not 71.
+    if (l.kind === "ring") patch = { ...patch, ...scaleRing(l, tw / first.w, th / first.h) };
     return { assets, cache: cached, layer: l.id, patch };
   },
 });
@@ -331,6 +326,9 @@ const resizeGroupFx = attach({
         : null;
       const moved = { ...l, x: scale(l.x), y: scaleY(l.y) } as Layer;
 
+      // a ring's circle isn't its pixels, and a ring with no pixels at all still has a size —
+      // both are the group's factors, same rule as the standalone resize above
+      if (moved.kind === "ring") return { ...moved, ...scaleRing(moved, kw, kh) };
       if (moved.kind !== "hand" || !scaled) return moved;
       // the pivot is a coordinate inside the art, so it scales with it
       return {

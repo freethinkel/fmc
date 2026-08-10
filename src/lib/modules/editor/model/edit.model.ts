@@ -19,6 +19,7 @@ import {
   patchLayer,
   removeLayer,
   repointFrames,
+  scaleRing,
   setSlotBinding,
   shiftLayer,
   siblingsOf,
@@ -124,8 +125,8 @@ export const slotMetricRemoved = createEvent<{ id: NodeId; metric: number }>();
  *  sector, like every 0x5b ring — the corpus has 0x5a rings with an image, so the spec tag
  *  doesn't have to change. Replacing that art afterwards is the usual frame thumbnail. */
 export const ringImageAdded = createEvent<{ id: NodeId; file: File }>();
-/** A corner drag / arrow-key resize on a ring with no art: there are no pixels to rescale, the
- *  size IS the 0x5a spec. Factors rather than a size, like a group — see resizeRingFactor. */
+/** A corner drag, arrow key or size field on a ring with no art: there are no pixels to rescale,
+ *  the size IS the 0x5a spec. Factors rather than a size, like a group — see scaleRing. */
 export const ringResized = createEvent<{
   layer: NodeId;
   kw: number;
@@ -597,9 +598,12 @@ sample({
       const a = assets.get(image)!;
 
       if (l?.kind !== "ring") return doc;
+      // the art IS the ring's circle now: meta and the spec's own radius both take it, or the .bin
+      // would carry a diameter the widget no longer has. `auto` keeps its 0x8000 sentinel.
       return patchLayer(withAssets(doc, assets), id, {
         frames: [image],
-        meta: { ...l.meta, w: a.w, h: a.h },
+        spec: { ...l.spec, radius: Math.round(a.w / 2) },
+        ...(l.meta.auto ? {} : { meta: { ...l.meta, w: a.w, h: a.h } }),
       } as Partial<Layer>);
     },
   }),
@@ -622,14 +626,12 @@ sample({
       const l = findLayer(doc, layer);
 
       if (l?.kind !== "ring" || l.locked || l.frames.length) return doc;
-      const k = Math.max(kw, kh);
-      const r = Math.max(2, Math.round((l.spec.radius || Math.round(l.meta.w / 2) || 60) * k));
+      const patch = scaleRing(l, kw, kh);
+      const spec = patch.spec!;
 
-      return patchLayer(doc, layer, {
-        spec: { ...l.spec, radius: r, width: Math.max(1, Math.round(l.spec.width * k)) },
-        meta: { ...l.meta, w: 2 * r, h: 2 * r },
-        ...at,
-      } as Partial<Layer>);
+      // a factor that rounds to the same ring is not an edit — it must not eat an undo
+      if (!at && spec.radius === l.spec.radius && spec.width === l.spec.width) return doc;
+      return patchLayer(doc, layer, { ...patch, ...at } as Partial<Layer>);
     },
     coalesce: 600, // a live drag is one history entry, same as an image resize
   }),
@@ -1065,6 +1067,7 @@ sample({
     glyphsFx.failData,
     addSlotFx.failData,
     addSlotMetricFx.failData,
+    addRingImageFx.failData,
     addAodFx.failData,
     sourceIdFx.failData,
     alignFx.failData,

@@ -611,7 +611,9 @@
       // wide layer pulling the short side barely moved it. Shift inverts the lock, as usual.
       const rx = Math.abs(p.x - rz.ax) / rz.dx0,
         ry = Math.abs(p.y - rz.ay) / rz.dy0;
-      const locked = $lockAspect !== e.shiftKey;
+      // a ring is a circle: scaling it per axis would show a preview the model can't reproduce,
+      // and `at` below anchors the corner for whatever factors the preview used
+      const locked = isBareRing(rz.layer) || $lockAspect !== e.shiftKey;
       const [sw, sh] = locked ? [Math.max(rx, ry), Math.max(rx, ry)] : [rx, ry];
 
       rz.gw = Math.max(1, Math.round(rz.w0 * sw));
