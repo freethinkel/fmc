@@ -195,6 +195,59 @@ export function timeParts(sim: Sim): TimeParts {
   };
 }
 
+/** The simulator fields that stand for a real metric — everything else it holds is time or a
+ *  display option. */
+export type SimMetric =
+  | "steps"
+  | "hr"
+  | "battery"
+  | "calories"
+  | "distance"
+  | "temp"
+  | "aqi"
+  | "stands";
+
+/** Which metric each data source reads. The firmware exposes one metric under a pile of ids —
+ *  `steps` alone answers eight of them — so this is what lets the simulator offer ONE input per
+ *  metric instead of one per id, and what idValue reads for every source that is a plain
+ *  passthrough. The derived ones (distance's km/mi, integer/fraction splits) are listed here for
+ *  the panel's sake but still compute their own value in the switch below. */
+export const ID_METRIC: Record<number, SimMetric> = {
+  0x19: "steps",
+  0x25: "steps",
+  0x26: "steps",
+  0x49: "steps",
+  // unlabelled complication-slot / goal metrics — they behave like a steps goal ring
+  0x6a: "steps",
+  0x6c: "steps",
+  0x6f: "steps",
+  0x82: "steps",
+  0x1a: "hr",
+  // 0x48/0x24 corrected against Function's widget-slot menu icons (standing figure/lightning
+  // bolt, not calories/steps) — 0x48 is stand hours, 0x24 is battery.
+  0x24: "battery",
+  0x30: "battery",
+  0x48: "stands",
+  0x1c: "calories",
+  0x1e: "calories",
+  0x27: "calories",
+  0x36: "temp",
+  0x5f: "temp",
+  0x8b: "aqi",
+  0x22: "distance", // derived below: km/mi, integer and fraction
+  0x23: "distance",
+  0x74: "distance",
+  0x75: "distance",
+  0x76: "distance",
+};
+
+/** The goal a metric's ring divides by, where it has one. */
+export const METRIC_GOAL: Partial<Record<SimMetric, "stepsGoal" | "calGoal" | "standsGoal">> = {
+  steps: "stepsGoal",
+  calories: "calGoal",
+  stands: "standsGoal",
+};
+
 const h12 = (h: number) => ((h + 11) % 12) + 1;
 
 export function idValue(id: number, sim: Sim, t: TimeParts): number {
@@ -251,38 +304,10 @@ export function idValue(id: number, sim: Sim, t: TimeParts): number {
       // 0=Sunday: stock Combo/Elaborate_2 weekday sprite lists start at "Sun", so the
       // firmware's index for this source is plain getDay()
       return t.wd;
-    case 0x19:
-      return Number(sim.steps);
-    case 0x1a:
-      return Number(sim.hr);
-    case 0x1c:
-    case 0x1e:
-    case 0x27:
-      return Number(sim.calories);
     case 0x22:
       return Math.floor(Number(sim.distance) / 1000);
     case 0x23:
       return Math.floor(Number(sim.distance) / 1609.34);
-    // 0x48/0x24 corrected against Function's widget-slot menu icons (standing figure/lightning
-    // bolt, not calories/steps) — 0x48 is stand hours, 0x24 is battery.
-    case 0x24:
-      return Number(sim.battery);
-    case 0x25:
-    case 0x26:
-    case 0x49:
-      return Number(sim.steps);
-    case 0x48:
-      return Number(sim.stands);
-    case 0x6a:
-    case 0x6c:
-    case 0x6f:
-    case 0x82:
-      return Number(sim.steps); // unlabelled complication-slot / goal metrics
-    case 0x30:
-      return Number(sim.battery);
-    case 0x36:
-    case 0x5f:
-      return Number(sim.temp);
     case 0x73:
       return sim.is24h ? 1 : 0;
     case 0x74:
@@ -292,10 +317,12 @@ export function idValue(id: number, sim: Sim, t: TimeParts): number {
     // ponytail: slot-menu labels only, unit unverified — km int / plain AQI, override per face
     case 0x76:
       return Math.floor(Number(sim.distance) / 1000);
-    case 0x8b:
-      return Number(sim.aqi);
-    default:
-      return 0;
+    default: {
+      // every source that just hands its metric back, from the one table the panel groups by
+      const metric = ID_METRIC[id];
+
+      return metric ? Number(sim[metric]) : 0;
+    }
   }
 }
 
