@@ -19,6 +19,7 @@ import {
   patchLayer,
   removeLayer,
   repointFrames,
+  scaleRing,
   setSlotBinding,
   shiftLayer,
   siblingsOf,
@@ -120,6 +121,18 @@ export const slotBindSet = createEvent<{ id: NodeId; slot: number | null; metric
  *  edit. See SLOT_METRIC_CHOICES for what the corpus uses. */
 export const slotMetricAdded = createEvent<{ id: NodeId; metric: number }>();
 export const slotMetricRemoved = createEvent<{ id: NodeId; metric: number }>();
+/** Give a procedural ring (0x5a, no art) a bitmap: from there it draws clipped to the filled
+ *  sector, like every 0x5b ring — the corpus has 0x5a rings with an image, so the spec tag
+ *  doesn't have to change. Replacing that art afterwards is the usual frame thumbnail. */
+export const ringImageAdded = createEvent<{ id: NodeId; file: File }>();
+/** A corner drag, arrow key or size field on a ring with no art: there are no pixels to rescale,
+ *  the size IS the 0x5a spec. Factors rather than a size, like a group — see scaleRing. */
+export const ringResized = createEvent<{
+  layer: NodeId;
+  kw: number;
+  kh: number;
+  at?: { x: number; y: number };
+}>();
 export const frameMoved = createEvent<{ id: NodeId; from: number; to: number }>();
 export const alignRequested = createEvent<AlignDir>();
 /** meta.source — the data a widget reads. Not a plain patch: value-indexed sources also fix the
@@ -312,6 +325,29 @@ const addSlotMetricFx = attach({
         [frame, { id: frame, cf: r.cf, w: r.w, h: r.h, data: r.data }],
       ]),
       cache: new Map<ImageId, ImageCache>([[frame, { bitmap: r.bitmap }]]),
+    };
+  },
+});
+
+// The first bitmap a procedural ring gets. meta.w/h follow the art, because that is the circle
+// drawSector pivots the filled sector around — a ring whose meta says a different diameter draws
+// its sector off-centre.
+const addRingImageFx = attach({
+  source: $doc,
+  async effect(doc, { id, file }: { id: NodeId; file: File }) {
+    const l = doc ? findLayer(doc, id) : null;
+
+    if (!doc || l?.kind !== "ring" || l.locked || l.frames.length) return null;
+    const r = await resourceFromFile(file, 5);
+    const image = newImageId();
+
+    return {
+      id,
+      image,
+      assets: new Map<ImageId, ImageAsset>([
+        [image, { id: image, cf: r.cf, w: r.w, h: r.h, data: r.data }],
+      ]),
+      cache: new Map<ImageId, ImageCache>([[image, { bitmap: r.bitmap }]]),
     };
   },
 });
@@ -549,6 +585,59 @@ sample({
   fn: ({ cache }) => cache,
   target: cachePatched,
 });
+sample({
+  clock: ringImageAdded,
+  target: addRingImageFx,
+});
+sample({
+  clock: addRingImageFx.doneData,
+  filter: Boolean,
+  fn: ({ id, image, assets }) => ({
+    edit: (doc: Doc) => {
+      const l = findLayer(doc, id);
+      const a = assets.get(image)!;
+
+      if (l?.kind !== "ring") return doc;
+      // the art IS the ring's circle now: meta and the spec's own radius both take it, or the .bin
+      // would carry a diameter the widget no longer has. `auto` keeps its 0x8000 sentinel.
+      return patchLayer(withAssets(doc, assets), id, {
+        frames: [image],
+        spec: { ...l.spec, radius: Math.round(a.w / 2) },
+        ...(l.meta.auto ? {} : { meta: { ...l.meta, w: a.w, h: a.h } }),
+      } as Partial<Layer>);
+    },
+  }),
+  target: committed,
+});
+sample({
+  clock: addRingImageFx.doneData,
+  filter: Boolean,
+  fn: ({ cache }) => cache,
+  target: cachePatched,
+});
+
+// A ring with no art has no pixels to rescale: its size is spec.radius (and meta.w/h, which the
+// renderer falls back to), and the stroke scales with it so the drag lands where the preview —
+// a plain ctx.scale — showed it. A circle takes one factor; a corner drag hands over two.
+sample({
+  clock: ringResized,
+  fn: ({ layer, kw, kh, at }) => ({
+    edit: (doc: Doc) => {
+      const l = findLayer(doc, layer);
+
+      if (l?.kind !== "ring" || l.locked || l.frames.length) return doc;
+      const patch = scaleRing(l, kw, kh);
+      const spec = patch.spec!;
+
+      // a factor that rounds to the same ring is not an edit — it must not eat an undo
+      if (!at && spec.radius === l.spec.radius && spec.width === l.spec.width) return doc;
+      return patchLayer(doc, layer, { ...patch, ...at } as Partial<Layer>);
+    },
+    coalesce: 600, // a live drag is one history entry, same as an image resize
+  }),
+  target: committed,
+});
+
 sample({
   clock: slotMetricRemoved,
   source: $doc,
@@ -978,6 +1067,7 @@ sample({
     glyphsFx.failData,
     addSlotFx.failData,
     addSlotMetricFx.failData,
+    addRingImageFx.failData,
     addAodFx.failData,
     sourceIdFx.failData,
     alignFx.failData,

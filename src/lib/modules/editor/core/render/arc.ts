@@ -77,6 +77,11 @@ export function progressFrac(id: number, sim: Sim, t: TimeParts, spec: ArcSpec):
   return Math.max(0, Math.min(1, (v - spec.min) / (spec.max - spec.min || 1)));
 }
 
+/** A ring this big is drawn from the screen centre, ignoring its own x/y — a dial-sized ring in the
+ *  corpus sits at 0,0 or 3,3, and only the centre reading makes those land concentric. Editing has
+ *  to stay below it (see scaleRing), or a resize would silently throw the position away. */
+export const FULL_BLEED_R = 230;
+
 // ponytail: image-backed arcs (0x5b) start at 12 o'clock, not the 3-o'clock/LVGL convention
 // documented for procedural arcs (0x5a) — measured against Function's battery ring (id 0x24):
 // our gap centered ~90° clockwise of the baked preview's at start=0. Confirmed again on Combo's
@@ -138,8 +143,8 @@ export function drawProceduralArc(
   // radius: meta.w/h (the widget's own diameter) when known, spec.radius (0x5a only)
   // as an override, 60 as a last-resort guess for older/short structs with w=0
   const r = spec.radius || (w ? Math.round(w / 2) : 60);
-  const cx = r >= 230 ? CENTER : x + r,
-    cy = r >= 230 ? CENTER : y + r;
+  const cx = r >= FULL_BLEED_R ? CENTER : x + r,
+    cy = r >= FULL_BLEED_R ? CENTER : y + r;
   const a0 = radians(spec.start);
   const sweep = sweepOf(spec);
   // no explicit meta color (byte 7 !== 1, e.g. the plain steps ring) — falls back to a

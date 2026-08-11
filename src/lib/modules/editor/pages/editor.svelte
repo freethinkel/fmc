@@ -66,6 +66,7 @@
     orderMoved,
     resizeImageRequested,
     resizeGroupRequested,
+    ringResized,
     $lockAspect: lockAspect,
     loadRequested,
     newFaceRequested,
@@ -386,8 +387,11 @@
   /** Does anything under this layer have pixels to scale? A group has none of its own. */
   const hasArt = (l: Layer): boolean =>
     framesOf(l).length > 0 || (l.kind === "group" && l.children.some(hasArt));
+  /** A ring with no art still resizes — its size is the 0x5a spec, not pixels (see ringResized). */
+  const isBareRing = (l: Layer): boolean => l.kind === "ring" && !l.frames.length;
   // locked is editor-only (see doc.ts): the layer still draws, it just stops answering the canvas
-  const resizable = (l: Layer | null): boolean => Boolean(l) && hasArt(l!) && !l!.locked;
+  const resizable = (l: Layer | null): boolean =>
+    Boolean(l) && (hasArt(l!) || isBareRing(l!)) && !l!.locked;
 
   type Rz = {
     layer: Layer;
@@ -438,6 +442,10 @@
     // a group has no pixels of its own: resizing it scales everything under it, by factor
     if (z.layer.kind === "group") {
       resizeGroupRequested({ layer: z.layer.id, kw, kh, at });
+      return;
+    }
+    if (isBareRing(z.layer)) {
+      ringResized({ layer: z.layer.id, kw, kh, at });
       return;
     }
     resizeImageRequested({
@@ -603,7 +611,9 @@
       // wide layer pulling the short side barely moved it. Shift inverts the lock, as usual.
       const rx = Math.abs(p.x - rz.ax) / rz.dx0,
         ry = Math.abs(p.y - rz.ay) / rz.dy0;
-      const locked = $lockAspect !== e.shiftKey;
+      // a ring is a circle: scaling it per axis would show a preview the model can't reproduce,
+      // and `at` below anchors the corner for whatever factors the preview used
+      const locked = isBareRing(rz.layer) || $lockAspect !== e.shiftKey;
       const [sw, sh] = locked ? [Math.max(rx, ry), Math.max(rx, ry)] : [rx, ry];
 
       rz.gw = Math.max(1, Math.round(rz.w0 * sw));
@@ -684,6 +694,10 @@
 
     if (l.kind === "group") {
       resizeGroupRequested({ layer: l.id, kw, kh });
+      return;
+    }
+    if (isBareRing(l)) {
+      ringResized({ layer: l.id, kw, kh });
       return;
     }
     const r0 = firstAsset(l);

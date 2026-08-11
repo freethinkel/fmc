@@ -3,6 +3,8 @@
   import { Slider } from "$lib/shared/components/slider";
   import { Icon, type IconName } from "$lib/shared/components/icon";
   import { framesOf, isPlaced, type Frame, type Layer } from "../../core/document/doc";
+  import { FULL_BLEED_R, type ArcSpec } from "../../core/render/arc";
+  import { ringRadius } from "../../core/document/edits";
   import { CENTER } from "../../core/render/screen";
   import { editorModel } from "../../model";
   import type { AlignDir } from "../../model/edit.model";
@@ -14,6 +16,7 @@
     $lockAspect: lockAspect,
     lockAspectToggled,
     resizeImageRequested,
+    ringResized,
     adjustImageRequested,
     alignRequested,
   } = editorModel;
@@ -42,6 +45,19 @@
   const placed = $derived(isPlaced(layer) ? layer : null);
   const frame = $derived(layer.kind === "group" ? layer.frame : null);
   const hand = $derived(layer.kind === "hand" ? layer : null);
+  const ring = $derived(layer.kind === "ring" ? layer : null);
+
+  // A ring with art is sized by its bitmap, like any other widget (the w/h block below); one
+  // without has no pixels at all — its size is the 0x5a spec, so the field asks the model for the
+  // same factor a corner drag would, rather than rebuilding the ring here.
+  const ringR = $derived(ring ? ringRadius(ring) : 0);
+  const bareRing = $derived(ring && !ring.frames.length ? ring : null);
+
+  const setSpec = (patch: Partial<ArcSpec>) =>
+    ring && set(ring.id, { spec: { ...ring.spec, ...patch } } as Partial<Layer>);
+
+  const setRingSize = (d: number) =>
+    ring && ringResized({ layer: ring.id, kw: d / (2 * ringR), kh: d / (2 * ringR) });
 
   // size of the widget's first frame — the asset IS the widget's size, there's no draw-time
   // scale in the format, so resizing rescales the pixels (see assets.model)
@@ -90,13 +106,13 @@
 {/if}
 {#if placed && !frame}
   <div class="row">
-    <span class="field-label">x</span>
+    <span class="field-label w-md">x</span>
     <Input
       type="number"
       value={String(placed.x)}
       onInput={(v) => set(layer.id, { x: num(v) } as Partial<Layer>)}
     />
-    <span class="field-label">y</span>
+    <span class="field-label w-md">y</span>
     <Input
       type="number"
       value={String(placed.y)}
@@ -106,7 +122,7 @@
 {/if}
 {#if resSize}
   <div class="row">
-    <span class="field-label">w</span>
+    <span class="field-label w-md">w</span>
     <Input
       type="number"
       min={1}
@@ -115,7 +131,7 @@
       onChange={(v) =>
         resize(num(v), $lockAspect ? Math.round((num(v) * resSize.h) / resSize.w) : resSize.h)}
     />
-    <span class="field-label">h</span>
+    <span class="field-label w-md">h</span>
     <Input
       type="number"
       min={1}
@@ -149,21 +165,55 @@
     </div>
   {/each}
 {/if}
+{#if ring}
+  <div class="row">
+    {#if bareRing}
+      <span class="field-label w-md">size</span>
+      <Input
+        type="number"
+        min={4}
+        max={2 * (FULL_BLEED_R - 1)}
+        value={String(ringR * 2)}
+        onChange={(v) => setRingSize(num(v))}
+      />
+    {/if}
+    <span class="field-label w-md">stroke</span>
+    <Input
+      type="number"
+      min={1}
+      value={String(ring.spec.width)}
+      onInput={(v) => setSpec({ width: Math.max(1, num(v)) })}
+    />
+  </div>
+  <div class="row">
+    <span class="field-label w-md">start</span>
+    <Input
+      type="number"
+      value={String(ring.spec.start)}
+      onInput={(v) => setSpec({ start: num(v) })}
+    />
+    <span class="field-label w-md">end</span>
+    <Input type="number" value={String(ring.spec.end)} onInput={(v) => setSpec({ end: num(v) })} />
+  </div>
+  <!-- the gap an icon sits in: start after 0 and end before 360 leaves the rest of the circle
+       empty, and the fill still runs the whole way from start to end -->
+  <p class="hint-xs">degrees clockwise from 12 o'clock — 20 → 340 leaves a 40° gap at the top</p>
+{/if}
 {#if frame}
   <div class="row">
-    <span class="field-label">x</span>
+    <span class="field-label w-md">x</span>
     <Input type="number" value={String(frame.x)} onInput={(v) => setFrame({ x: num(v) })} />
-    <span class="field-label">y</span>
+    <span class="field-label w-md">y</span>
     <Input type="number" value={String(frame.y)} onInput={(v) => setFrame({ y: num(v) })} />
   </div>
   <div class="row">
-    <span class="field-label">w</span>
+    <span class="field-label w-md">w</span>
     <Input type="number" value={String(frame.w)} onInput={(v) => setFrame({ w: num(v) })} />
-    <span class="field-label">h</span>
+    <span class="field-label w-md">h</span>
     <Input type="number" value={String(frame.h)} onInput={(v) => setFrame({ h: num(v) })} />
   </div>
   <div class="row">
-    <span class="field-label">align</span>
+    <span class="field-label w-md">align</span>
     <div class="btn-group">
       {#each FLEX_ALIGN as [main, iconName, title] (main)}
         <button
@@ -188,7 +238,7 @@
       value={String(hand.pivotX)}
       onInput={(v) => set(layer.id, { pivotX: num(v) } as Partial<Layer>)}
     />
-    <span class="field-label w-sm">y</span>
+    <span class="field-label w-md">y</span>
     <Input
       type="number"
       value={String(hand.pivotY)}

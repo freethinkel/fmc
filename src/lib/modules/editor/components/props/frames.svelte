@@ -15,10 +15,12 @@
     replaceImageRequested,
     frameMoved,
     glyphDialogOpened,
+    ringImageAdded,
   } = editorModel;
 
   // native HTML5 drag & drop over the frame list, same shape as TreePanel's layer reorder
   let dragIdx = $state<number | null>(null);
+  let ringFile = $state<HTMLInputElement | null>(null);
   let dropIdx = $state<number | null>(null);
 
   // a fresh layer object arrives on every edit, so plain deriveds are enough here
@@ -102,6 +104,32 @@
 {:else if images}
   <div class="images">
     {#each images as ri}{@render thumb(ri)}{/each}
+  </div>
+{/if}
+
+<!-- A ring is the one widget that draws with no art at all (the stroked 0x5a fallback), so it is
+     also the one that has nothing to click to give it some. Once it has a bitmap it clips to the
+     filled sector like any 0x5b ring, and the thumbnail above takes over. -->
+{#if layer.kind === "ring" && !images.length}
+  <div>
+    <span class="muted-label">ring art</span>
+    <!-- hidden input + a real Button, same as the tree panel's own add-image control -->
+    <input
+      bind:this={ringFile}
+      type="file"
+      accept="image/*"
+      hidden
+      onchange={(e) => {
+        const file = e.currentTarget.files?.[0];
+
+        if (file) ringImageAdded({ id: layer.id, file });
+      }}
+    />
+    <Button kind="secondary" onClick={() => ringFile?.click()}>
+      <Icon name="image-plus" size={14} />
+      use a ring bitmap
+    </Button>
+    <p class="hint-xs">a full ring, drawn at 100% — the watch clips it to the filled sector</p>
   </div>
 {/if}
 
