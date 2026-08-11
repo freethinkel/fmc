@@ -1,11 +1,11 @@
 <script lang="ts">
   // The watch panel: connect, what the watch reports about itself, and what is installed on it.
-  // A sheet rather than a popover — it is the same panel from the header and from the phone's
-  // tab bar, and the sheet is the one shape that suits both.
+  // The shell is adaptive — an anchored popover on desktop, the swipeable sheet on the phone —
+  // since it is the same panel from the header and from the phone's tab bar.
   import type { Snippet } from "svelte";
+  import { AdaptivePopover } from "$lib/shared/components/adaptive-popover";
   import { Button } from "$lib/shared/components/button";
   import { Icon } from "$lib/shared/components/icon";
-  import { Sheet } from "$lib/shared/components/sheet";
   import { bleModel } from "../model";
   import { dialLabel, dialPreview, dialTitle } from "../lib/catalog-names";
   import { WF_CAPACITY } from "../lib/ble";
@@ -17,6 +17,17 @@
   const { trigger }: Props = $props();
 
   let open = $state(false);
+  // The popover light-dismisses on pointerdown; without this guard the click that follows
+  // would toggle it straight back open, so a toggle right after a close means "close".
+  let closedAt = 0;
+  function toggle() {
+    if (open) open = false;
+    else if (Date.now() - closedAt > 250) open = true;
+  }
+  function onClose() {
+    open = false;
+    closedAt = Date.now();
+  }
 
   const {
     $bleStatus: bleStatus,
@@ -31,19 +42,14 @@
   const muted = "oklch(from var(--color-text) l c h / 55%)";
 </script>
 
-{@render trigger({
-  open,
-  toggle: () => (open = !open),
-  connected: !!$bleInfo,
-})}
+{@render trigger({ open, toggle, connected: !!$bleInfo })}
 
-<Sheet {open} onClose={() => (open = false)}>
-  <header>
-    <h2>{$bleInfo ? "CMF Watch Pro 2" : "Connect your watch"}</h2>
-    <button class="close" aria-label="Close" onclick={() => (open = false)}>
-      <Icon name="x" size={18} />
-    </button>
-  </header>
+<AdaptivePopover
+  {open}
+  title={$bleInfo ? "CMF Watch Pro 2" : "Connect your watch"}
+  anchor="--watch-trigger"
+  {onClose}
+>
   <!-- ponytail: don't gate on navigator.bluetooth at render time — the Safari polyfill injects later; the real check is in ble.ts on click -->
   {#if !$bleInfo}
     <div class="section">
@@ -96,32 +102,9 @@
       </div>
     {/if}
   {/if}
-</Sheet>
+</AdaptivePopover>
 
 <style>
-  header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 0.75rem;
-
-    h2 {
-      margin: 0;
-      font-size: 1.75rem;
-    }
-  }
-  .close {
-    border: none;
-    border-radius: 0.375rem;
-    padding: 0.25rem;
-    background: transparent;
-    color: oklch(from var(--color-text) l c h / 55%);
-    cursor: pointer;
-
-    &:hover {
-      background: oklch(from var(--color-text) l c h / 8%);
-    }
-  }
   .section {
     display: flex;
     flex-direction: column;

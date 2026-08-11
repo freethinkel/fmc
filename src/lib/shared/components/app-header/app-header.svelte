@@ -104,6 +104,8 @@
     position: relative;
     display: inline-flex;
     align-items: center;
+    /* the watch popover (watch-sheet.svelte) anchors here */
+    anchor-name: --watch-trigger;
   }
   .dot {
     position: absolute;
