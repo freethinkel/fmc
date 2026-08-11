@@ -1,16 +1,4 @@
 <script lang="ts">
-  // A bottom sheet that swipes away without a single pointer handler: the overlay is a scroll
-  // container with two snap points — an empty screen, then the sheet — so dragging it down is
-  // ordinary scrolling, with native inertia and the same gesture from a touch screen, a
-  // trackpad or a wheel. Arriving back at the top means "dismissed". <dialog> hosts it, so the
-  // top layer, Esc and the focus trap come for free.
-  //
-  // Self-contained on purpose — no imports beyond Svelte, and every token it reads has a
-  // fallback, so the file can be copied into another project as it is.
-  //
-  // How far the sheet has travelled (0 off screen, 1 fully up) is published as --travel on the
-  // dialog and handed to the children snippet, so effects elsewhere can ride the same gesture:
-  //   opacity: var(--travel);  scale: calc(0.96 + 0.04 * var(--travel));
   import type { Snippet } from "svelte";
 
   interface Props {
@@ -24,35 +12,28 @@
   let scroller = $state<HTMLDivElement>();
   let dock = $state<HTMLDivElement>();
   let travel = $state(0);
-  // "scrolled to the top" only means dismissal once the sheet has landed at the bottom —
-  // before that it would close itself on its first frame
   let armed = false;
 
   $effect(() => {
     if (!el || !scroller || !dock) return;
     if (open && !el.open) {
       el.showModal();
-      // Park it at the OPEN SNAP POINT — one dock height of scroll, since the spacer is one
-      // screen — and let CSS play the entrance. Not scrollHeight: the bleed extends that past
-      // the snap point, and a programmatic scroll is allowed to rest off-snap, which parked
-      // the sheet over-stretched until the first touch jolted it back.
       scroller.scrollTop = dock.offsetHeight;
       travel = 1;
       armed = true;
     } else if (!open && el.open) dismiss();
   });
 
-  /** Scroll the sheet back down off screen; onScroll turns arriving at the top into a close. */
   function dismiss() {
-    if (armed && scroller) scroller.scrollTo({ top: 0, behavior: "smooth" });
+    // already at the top: a smooth scroll to 0 fires no scroll event, so onScroll would
+    // never close the dialog — close it outright
+    if (armed && scroller && scroller.scrollTop > 0)
+      scroller.scrollTo({ top: 0, behavior: "smooth" });
     else el?.close();
   }
 
   function onScroll() {
     if (!scroller || !dock) return;
-    // The travel runs from closed to the open snap point — one dock height. Not the scroll
-    // range: the bleed (and, mid-entrance, the translate) stretch that further, and dividing
-    // by it left the overlay dimmer than the sheet's real position.
     const max = dock.offsetHeight;
 
     travel = max > 0 ? Math.min(Math.max(scroller.scrollTop / max, 0), 1) : 0;
@@ -60,8 +41,13 @@
   }
 </script>
 
+<!-- autofocus on the dialog itself: otherwise showModal() focuses the first button inside,
+     and the browser then nudges the scroller to keep the focused element in view, fighting
+     the snap scroll -->
+<!-- svelte-ignore a11y_autofocus -->
 <dialog
   bind:this={el}
+  autofocus
   style:--travel={travel}
   onclose={() => {
     armed = false;
@@ -74,17 +60,19 @@
   }}
 >
   <div class="overlay"></div>
-  <!-- the backdrop is a click target only; Esc and whatever close button the content carries
-       are what keyboard users get -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <div class="scroll" bind:this={scroller} onscroll={onScroll} onclick={dismiss}>
+  <div
+    class="scroll"
+    bind:this={scroller}
+    onscroll={onScroll}
+    onclick={dismiss}
+  >
     <div class="spacer"></div>
     <div class="dock" bind:this={dock}>
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <!-- svelte-ignore a11y_click_events_have_key_events -->
       <div class="sheet" onclick={(e) => e.stopPropagation()}>
-        <!-- the sheet's surface, as its own layer (like Silk's BleedingBackground) -->
         <div class="bleed"></div>
         <div class="grabber"></div>
         <div class="body">{@render children?.({ travel })}</div>
@@ -98,12 +86,16 @@
   dialog {
     margin: 0;
     border: none;
+    outline: none; /* the dialog itself holds focus (autofocus above) — no ring */
     padding: 0;
     width: 100vw;
     max-width: 100vw;
     height: 100svh;
     max-height: 100svh;
-    overflow: hidden;
+    /* clip, not hidden: a hidden box is still a scroll container, and iOS Safari scrolls it
+       itself (focus reveal on showModal, chained rubber-band) — which slid the clipped tail
+       zone up into view. clip forbids scrolling outright; Silk's view wrapper does the same. */
+    overflow: clip;
     background: transparent;
     color: var(--color-text, CanvasText);
 
@@ -122,13 +114,8 @@
        driving the fade itself */
     transition: opacity 0.2s ease-out;
   }
-  /* Silk's geometry, seen on silkhq.com with the mask peeled back: the scrollport is TALLER
-     than the screen — the dialog clips its bottom 50svh — and only the spacer and the tail
-     are snap areas. The sheet takes no part in snapping, so the room below it (where its
-     bleed hangs) lives inside the scrollport but off screen: in the flow, costing no scroll
-     range, riding up into view when an elastic overscroll stretches past open. */
   .scroll {
-    position: relative; /* above .overlay, which is positioned and would paint over it */
+    position: relative;
     height: calc(100svh + 50svh);
     overflow-y: scroll;
     overscroll-behavior-y: contain;
@@ -140,51 +127,42 @@
       display: none;
     }
   }
-  /* the closed position: one SCREEN of nothing — not one scrollport — so the travel to the
-     open snap point is exactly the sheet's height */
   .spacer {
     height: 100svh;
     scroll-snap-align: start;
   }
-  /* the open position: the tail's end is the end of the content, and aligning it with the
-     scrollport's end parks the sheet's bottom edge exactly on the visible screen's bottom —
-     the tail below it is the clipped, off-screen zone */
+  .dock {
+    height: 100svh;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+  }
   .tail {
     height: 50svh;
     scroll-snap-align: end;
   }
   .sheet {
+    height: min-content;
     position: relative; /* the bleed layer is positioned against it */
     display: flex;
     flex-direction: column;
     width: min(30rem, 100%);
-    /* a sheet shorter than this reads as a toast — content-sized above it */
-    min-height: 60svh;
-    max-height: 100svh;
+    max-height: 90svh;
     margin-inline: auto;
     padding-bottom: env(safe-area-inset-bottom);
     translate: 0 0;
-    /* the sheet's own curve, not the app's: this is the iOS sheet ease Silk and friends use —
-       fast off the mark, settling without overshoot, so nothing bounces past the edge it just
-       came from */
     transition: translate 0.4s cubic-bezier(0.32, 0.72, 0, 1);
-
-    /* the entrance: the scroll can't animate it (snapping rounds every step to a snap point),
-       so the sheet slides in on its own while sitting at the bottom snap point */
     @starting-style {
       translate: 0 100%;
     }
-
   }
-  /* The surface, a layer of its own (Silk's BleedingBackground), pulled well past the sheet's
-     bottom edge: the tail's flow room is what it hangs into, so the overhang adds no scroll
-     range — it just gets revealed when a stretch lifts the sheet. */
   .bleed {
     position: absolute;
     inset: 0 0 -50svh;
     z-index: -1;
-    border-radius: calc(3 * var(--border-radius, 0.5rem)) calc(3 * var(--border-radius, 0.5rem))
-      0 0;
+    border-radius: calc(3 * var(--border-radius, 0.5rem))
+      calc(3 * var(--border-radius, 0.5rem)) 0 0;
     background: var(--color-background, Canvas);
   }
   .grabber {
