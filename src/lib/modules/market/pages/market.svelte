@@ -4,6 +4,7 @@
   import { Skeleton } from "$lib/shared/components/skeleton";
   import { Icon } from "$lib/shared/components/icon";
   import type { RecordModel } from "pocketbase";
+  import { page } from "$app/state";
   import { authModel } from "$lib/modules/auth/model";
   import { marketModel } from "../model";
   import { WatchfaceCard } from "../components/watchface-card";
@@ -17,10 +18,17 @@
     marketLoadRequested,
     likeToggleRequested,
     removeRequested,
-    editRequested,
+    showcaseRequested,
   } = marketModel;
 
   marketLoadRequested();
+
+  // ?creator=<user id> — where a showcase page's creator link lands, until creators get
+  // profile pages of their own (issue #11)
+  const creator = $derived(page.url.searchParams.get("creator"));
+  const creatorName = $derived(
+    $items.find((wf) => wf.owner === creator)?.expand?.owner?.name || "this creator",
+  );
 
   let query = $state("");
   let sort = $state("new"); // new | popular | downloads
@@ -44,6 +52,7 @@
       // (fmc_pocketbase 1753500000_hide_catalog.js); the guard stays so a stale
       // cached list can't render them either
       .filter((wf) => Boolean(wf.owner))
+      .filter((wf) => !creator || wf.owner === creator)
       .filter((wf) => wf.name.toLowerCase().includes(query.trim().toLowerCase()))
       .toSorted((a, b) =>
         // popular = most liked; downloads used to be mixed in here, which just made this
@@ -66,6 +75,7 @@
   $effect(() => {
     query;
     sort;
+    creator;
     visibleCount = PAGE;
   });
   /* oxlint-enable no-unused-expressions */
@@ -83,6 +93,13 @@
 
 <div class="page">
   {#if $marketErr}<p class="error">{$marketErr}</p>{/if}
+
+  {#if creator}
+    <p class="filter">
+      Watchfaces by {creatorName}
+      <a href="/market">Show all</a>
+    </p>
+  {/if}
 
   <div class="toolbar">
     <div class="search">
@@ -113,7 +130,7 @@
           liked={!!myLike(wf.id)}
           canLike={!!$user}
           canRemove={$user?.id === wf.owner}
-          onOpen={() => editRequested(wf)}
+          onOpen={() => showcaseRequested(wf)}
           onLike={() => $user && likeToggleRequested({ wf, userId: $user.id })}
           onRemove={() => remove(wf)}
         />
@@ -138,6 +155,19 @@
     padding: 0.75rem 1rem 0;
     font-size: 0.75rem;
     color: var(--color-error);
+  }
+  .filter {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin: 0;
+    padding: 0.75rem 1rem 0;
+    font-size: 0.75rem;
+    color: oklch(from var(--color-text) l c h / 55%);
+
+    a {
+      color: var(--color-accent);
+    }
   }
   .toolbar {
     display: flex;

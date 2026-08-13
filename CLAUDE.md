@@ -8,7 +8,8 @@ pointing straight at PocketBase — no vite dev-server proxy involved), and fall
 same-origin (`location.origin`) without it, which is what prod uses — through Caddy on the
 same domain as the backend (see `fmc_pocketbase/README.md`).
 
-App: landing page (`/`), marketplace (`/market`, `/my`), watchface editor (`/editor`,
+App: landing page (`/`), marketplace (`/market`, `/market/[id]` — a face's showcase page,
+`/my`), watchface editor (`/editor`,
 with a BLE connection to the CMF Watch Pro 2) and auth (`/login`, `/register`).
 
 ## Architecture
