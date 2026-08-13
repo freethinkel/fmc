@@ -20,6 +20,20 @@ export const loadMarketFx = createEffect(async () => {
   return { items, likes };
 });
 
+// public creator profile: the user record + everything they published. Likes come along so
+// the grid can show counts without depending on a prior /market visit.
+export const loadProfileFx = createEffect(async (userId: string) => {
+  const [user, items, likes] = await Promise.all([
+    pb.collection("users").getOne(userId),
+    pb
+      .collection("watchfaces")
+      .getFullList({ sort: "-created", filter: `owner = '${userId}' && published = true` }),
+    pb.collection("likes").getFullList(),
+  ]);
+
+  return { user, items, likes };
+});
+
 export const loadMyFx = createEffect((userId: string) =>
   pb.collection("watchfaces").getFullList({ sort: "-updated", filter: `owner = '${userId}'` }),
 );

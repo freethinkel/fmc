@@ -12,6 +12,8 @@
     liked?: boolean;
     canLike?: boolean;
     canRemove?: boolean;
+    // off on a creator's own profile page, where every card would repeat the same name
+    showAuthor?: boolean;
     onOpen?: () => void;
     onLike?: () => void;
     onRemove?: () => void;
@@ -23,6 +25,7 @@
     liked = false,
     canLike = false,
     canRemove = false,
+    showAuthor = true,
     onOpen,
     onLike,
     onRemove,
@@ -44,8 +47,12 @@
       <h3 class="name">{wf.name}</h3>
       {#if wf.type}<Badge>{wf.type}</Badge>{/if}
     </div>
-    {#if wf.owner}
-      <span class="author">by {wf.expand?.owner?.name || "—"}</span>
+    {#if wf.owner && showAuthor}
+      <!-- nested in the card's <button>, like the download link below — the click has to be
+           kept from opening the editor -->
+      <a class="author" href="/user/{wf.owner}" onclick={(e) => e.stopPropagation()}>
+        by {wf.expand?.owner?.name || "—"}
+      </a>
     {/if}
     {#if wf.description}
       <p class="desc">{wf.description}</p>
@@ -124,8 +131,14 @@
     font-size: 1.125rem;
   }
   .author {
+    align-self: flex-start;
     font-size: 0.625rem;
+    text-decoration: none;
     color: oklch(from var(--color-text) l c h / 55%);
+
+    &:hover {
+      color: var(--color-accent);
+    }
   }
   .desc {
     margin: 0;
