@@ -94,7 +94,11 @@
         </h2>
         <div class="badges">
           {#each $dials as id, i (id)}
-            <WatchSelector name={dialLabel(id, i)} preview={dialPreview(id)} title={dialTitle(id)} />
+            <WatchSelector
+              name={dialLabel(id, i)}
+              preview={dialPreview(id)}
+              title={dialTitle(id)}
+            />
           {:else}
             <span class="none">the watch reported none</span>
           {/each}

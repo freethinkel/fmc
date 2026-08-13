@@ -205,12 +205,32 @@
 {/if}
 {#if frame}
   <div class="row">
-    <Input label="x" type="number" value={String(frame.x)} onInput={(v) => setFrame({ x: num(v) })} />
-    <Input label="y" type="number" value={String(frame.y)} onInput={(v) => setFrame({ y: num(v) })} />
+    <Input
+      label="x"
+      type="number"
+      value={String(frame.x)}
+      onInput={(v) => setFrame({ x: num(v) })}
+    />
+    <Input
+      label="y"
+      type="number"
+      value={String(frame.y)}
+      onInput={(v) => setFrame({ y: num(v) })}
+    />
   </div>
   <div class="row">
-    <Input label="w" type="number" value={String(frame.w)} onInput={(v) => setFrame({ w: num(v) })} />
-    <Input label="h" type="number" value={String(frame.h)} onInput={(v) => setFrame({ h: num(v) })} />
+    <Input
+      label="w"
+      type="number"
+      value={String(frame.w)}
+      onInput={(v) => setFrame({ w: num(v) })}
+    />
+    <Input
+      label="h"
+      type="number"
+      value={String(frame.h)}
+      onInput={(v) => setFrame({ h: num(v) })}
+    />
   </div>
   <div class="row">
     <span class="field-label w-md">align</span>
