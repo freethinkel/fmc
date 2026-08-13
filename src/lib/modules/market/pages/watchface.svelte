@@ -22,6 +22,8 @@
     $watchface: watchface,
     $watchfaceLoading: loading,
     $live: live,
+    $dialScreen: dialScreen,
+    $hasAod: hasAod,
     $installing: installing,
     $installed: installed,
     $likes: likes,
@@ -30,6 +32,7 @@
     installRequested,
     likeToggleRequested,
     editRequested,
+    dialScreenSet,
   } = marketModel;
   const {
     $bleInfo: bleInfo,
@@ -75,12 +78,24 @@
 
     {#if wf}
       <article class="face">
-        <div class="preview">
-          <!-- the still preview holds the spot until the file is parsed, and stays if it can't be -->
-          {#if $live}
-            <LiveDial face={$live} />
-          {:else}
-            <img src={fileUrl(wf, "preview")} alt={wf.name} />
+        <div class="dial">
+          <div class="preview">
+            <!-- the still preview holds the spot until the file is parsed, and stays if it can't be -->
+            {#if $live}
+              <LiveDial face={$live} screen={$dialScreen} />
+            {:else}
+              <img src={fileUrl(wf, "preview")} alt={wf.name} />
+            {/if}
+          </div>
+
+          {#if $hasAod}
+            <Button
+              kind="secondary"
+              onClick={() => dialScreenSet($dialScreen === "aod" ? "main" : "aod")}
+            >
+              <Icon name={$dialScreen === "aod" ? "monitor" : "moon"} size={16} />
+              {$dialScreen === "aod" ? "Show normal" : "Show always-on"}
+            </Button>
           {/if}
         </div>
 
@@ -237,7 +252,14 @@
     max-width: 56rem;
     margin: 1rem auto 0;
   }
+  .dial {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+  }
   .preview {
+    width: 100%;
     aspect-ratio: 1 / 1;
     overflow: hidden;
     border-radius: 625rem;

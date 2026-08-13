@@ -60,6 +60,11 @@ export interface LiveFace {
   store: ImageStore;
 }
 export const $live = createStore<LiveFace | null>(null);
+/** Which screen of that face the showcase preview draws. */
+export const $dialScreen = createStore<"main" | "aod">("main");
+// no AOD screen means renderDoc would fall back to the main one — nothing to switch to, so the
+// page doesn't offer the toggle at all
+export const $hasAod = $live.map((live) => Boolean(live?.doc.screens.some((s) => s.kind === "aod")));
 // the same bytes an install sends — fetched once, whichever happens first
 const $bin = createStore<Uint8Array | null>(null);
 export const $likes = createStore<RecordModel[]>([]);
@@ -97,6 +102,8 @@ export const publishDialogClosed = createEvent();
 // showcase page: load one watchface by id, and open its page from a card
 export const watchfaceRequested = createEvent<string>();
 export const showcaseRequested = createEvent<RecordModel>();
+// showcase page: switch the preview between the normal render and the always-on one
+export const dialScreenSet = createEvent<"main" | "aod">();
 export const likeToggleRequested = createEvent<{
   wf: RecordModel;
   userId: string;
@@ -260,7 +267,12 @@ sample({
 });
 
 // a different face on screen than the one that was just installed
-reset({ clock: watchfaceRequested, target: [$installed, $live, $bin] });
+reset({ clock: watchfaceRequested, target: [$installed, $live, $bin, $dialScreen] });
+
+sample({
+  clock: dialScreenSet,
+  target: $dialScreen,
+});
 
 // the page draws the dial for real: fetch the file, parse it, decode its pixels
 sample({

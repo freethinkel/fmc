@@ -8,8 +8,10 @@
 
   interface Props {
     face: LiveFace;
+    /** which screen of the face to draw — a face without an AOD one falls back to the main screen */
+    screen?: "main" | "aod";
   }
-  const { face }: Props = $props();
+  const { face, screen = "main" }: Props = $props();
 
   let canvas = $state<HTMLCanvasElement>();
   // no panel to change it here, so one sim for the lifetime of the component — `live` makes
@@ -22,10 +24,11 @@
     if (!ctx) return;
     // read here, not inside the loop: the loop must not re-run the effect
     const { doc, store } = face;
+    const kind = screen;
     let raf = 0;
     const loop = () => {
       ctx.clearRect(0, 0, SCREEN, SCREEN);
-      renderDoc(ctx, doc, store, "main", sim);
+      renderDoc(ctx, doc, store, kind, sim);
       // ponytail: a plain rAF, like the editor's canvas — drop to a timer if a market page ever
       // needs to run several of these at once
       raf = requestAnimationFrame(loop);
