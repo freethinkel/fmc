@@ -1,4 +1,6 @@
 <script lang="ts">
+  // One watchface on its own page: everything the market card shows, plus the one thing that
+  // used to require a detour through the editor — installing it on the watch.
   import { Avatar } from "$lib/shared/components/avatar";
   import { Badge } from "$lib/shared/components/badge";
   import { Button } from "$lib/shared/components/button";
@@ -6,7 +8,9 @@
   import { Skeleton } from "$lib/shared/components/skeleton";
   import { downloadUrl, fileUrl } from "$lib/shared/api";
   import { authModel } from "$lib/modules/auth/model";
+  import { bleModel } from "$lib/modules/device/model";
   import { marketModel } from "../model";
+  import { LiveDial } from "../components/live-dial";
 
   interface Props {
     id: string;
@@ -17,12 +21,22 @@
   const {
     $watchface: watchface,
     $watchfaceLoading: loading,
+    $live: live,
+    $installing: installing,
+    $installed: installed,
     $likes: likes,
     $marketErr: marketErr,
     watchfaceRequested,
+    installRequested,
     likeToggleRequested,
     editRequested,
   } = marketModel;
+  const {
+    $bleInfo: bleInfo,
+    $bleStatus: bleStatus,
+    $connecting: connecting,
+    connectRequested,
+  } = bleModel;
 
   $effect(() => {
     watchfaceRequested(id);
@@ -62,7 +76,12 @@
     {#if wf}
       <article class="face">
         <div class="preview">
-          <img src={fileUrl(wf, "preview")} alt={wf.name} />
+          <!-- the still preview holds the spot until the file is parsed, and stays if it can't be -->
+          {#if $live}
+            <LiveDial face={$live} />
+          {:else}
+            <img src={fileUrl(wf, "preview")} alt={wf.name} />
+          {/if}
         </div>
 
         <div class="info">
@@ -86,6 +105,28 @@
           {:else}
             <p class="desc muted">No description.</p>
           {/if}
+
+          <div class="cta">
+            {#if !$bleInfo}
+              <Button onClick={() => connectRequested()} disabled={$connecting}>
+                <Icon name="bluetooth" size={16} />
+                {$connecting ? "Connecting…" : "Connect watch"}
+              </Button>
+            {:else if $installed}
+              <Button disabled>
+                <Icon name="check" size={16} /> Installed
+              </Button>
+              <Button kind="secondary" onClick={() => installRequested(wf)} disabled={$installing}>
+                Install again
+              </Button>
+            {:else}
+              <Button onClick={() => installRequested(wf)} disabled={$installing}>
+                <Icon name="watch" size={16} />
+                {$installing ? "Installing…" : "Install watchface"}
+              </Button>
+            {/if}
+          </div>
+          {#if $bleStatus}<span class="status">{$bleStatus}</span>{/if}
 
           <dl class="stats">
             <div>
@@ -182,8 +223,10 @@
     color: oklch(from var(--color-text) l c h / 55%);
     text-decoration: none;
 
-    &:hover {
-      color: var(--color-text);
+    @media (hover: hover) {
+      &:hover {
+        color: var(--color-text);
+      }
     }
   }
   .face {
@@ -234,8 +277,10 @@
     text-decoration: none;
     background: oklch(from var(--color-text) l c h / 6%);
 
-    &:hover {
-      background: oklch(from var(--color-text) l c h / 12%);
+    @media (hover: hover) {
+      &:hover {
+        background: oklch(from var(--color-text) l c h / 12%);
+      }
     }
   }
   .creator-text {
@@ -256,6 +301,15 @@
     font-size: 0.875rem;
   }
   .muted {
+    color: oklch(from var(--color-text) l c h / 55%);
+  }
+  .cta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+  .status {
+    font-size: 0.625rem;
     color: oklch(from var(--color-text) l c h / 55%);
   }
   .stats {
@@ -299,8 +353,10 @@
     font-weight: 500;
     transition: background-color 0.15s ease;
 
-    &:hover {
-      background-color: oklch(from var(--color-text) l c h / 20%);
+    @media (hover: hover) {
+      &:hover {
+        background-color: oklch(from var(--color-text) l c h / 20%);
+      }
     }
   }
   .empty {
@@ -317,6 +373,12 @@
     .preview {
       max-width: 15rem;
       margin-inline: auto;
+    }
+    /* one full-width row per button — a 30px pill floating in a phone-wide column reads as
+       a secondary link, not as the thing the page is for */
+    .cta :global(button) {
+      flex: 1 1 100%;
+      height: 2.25rem;
     }
   }
 </style>

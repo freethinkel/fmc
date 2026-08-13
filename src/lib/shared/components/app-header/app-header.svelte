@@ -2,7 +2,7 @@
   import { page } from "$app/state";
   import { Icon } from "$lib/shared/components/icon";
   import { authModel } from "$lib/modules/auth/model";
-  import WatchPopover from "$lib/modules/device/components/watch-popover.svelte";
+  import WatchSheet from "$lib/modules/device/components/watch-sheet.svelte";
   import { Avatar } from "$lib/shared/components/avatar";
   import { Menu, MenuItem } from "$lib/shared/components/menu";
 
@@ -22,14 +22,14 @@
         {item.title}
       </a>
     {/each}
-    <WatchPopover>
+    <WatchSheet>
       {#snippet trigger({ open, toggle, connected })}
         <button class="watch-btn" class:active={open} onclick={toggle} aria-label="Watch">
           <Icon name="watch" size={18} />
           {#if connected}<span class="dot"></span>{/if}
         </button>
       {/snippet}
-    </WatchPopover>
+    </WatchSheet>
   </nav>
   <div class="user">
     <a
@@ -91,8 +91,10 @@
       border-radius: calc(var(--border-radius) / 1.5);
       color: oklch(from var(--color-text) l c h / 60%);
 
-      &:hover {
-        background: oklch(from var(--color-text) l c h / 6%);
+      @media (hover: hover) {
+        &:hover {
+          background: oklch(from var(--color-text) l c h / 6%);
+        }
       }
       &.active {
         color: var(--color-text);
@@ -104,6 +106,8 @@
     position: relative;
     display: inline-flex;
     align-items: center;
+    /* the watch popover (watch-sheet.svelte) anchors here */
+    anchor-name: --watch-trigger;
   }
   .dot {
     position: absolute;
@@ -129,9 +133,11 @@
     border-radius: 50%;
     color: oklch(from var(--color-text) l c h / 55%);
 
-    &:hover {
-      background: oklch(from var(--color-text) l c h / 6%);
-      color: var(--color-text);
+    @media (hover: hover) {
+      &:hover {
+        background: oklch(from var(--color-text) l c h / 6%);
+        color: var(--color-text);
+      }
     }
   }
   .avatar-btn {

@@ -35,8 +35,10 @@
     border-radius: calc(var(--border-radius) - 0.25rem);
     text-align: start;
 
-    &:hover {
-      background: oklch(from var(--color-text) l c h / 6%);
+    @media (hover: hover) {
+      &:hover {
+        background: oklch(from var(--color-text) l c h / 6%);
+      }
     }
   }
   .danger {

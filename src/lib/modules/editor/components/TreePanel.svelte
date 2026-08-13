@@ -535,8 +535,10 @@
     text-align: start;
     cursor: pointer;
 
-    &:hover {
-      background: oklch(from var(--color-text) l c h / 6%);
+    @media (hover: hover) {
+      &:hover {
+        background: oklch(from var(--color-text) l c h / 6%);
+      }
     }
     &.selected {
       background: oklch(from var(--color-accent) l c h / 12%);
@@ -577,13 +579,25 @@
     opacity: 0;
     color: oklch(from var(--color-text) l c h / 55%);
 
-    &:hover {
-      opacity: 1;
+    @media (hover: hover) {
+      &:hover {
+        opacity: 1;
+      }
     }
   }
-  :global(.flag.on),
-  .node-row:hover :global(.flag) {
+  :global(.flag.on) {
     opacity: 0.75;
+  }
+  @media (hover: hover) {
+    .node-row:hover :global(.flag) {
+      opacity: 0.75;
+    }
+  }
+  /* no hover to reveal them with — flags stay visible on touch */
+  @media (hover: none) {
+    :global(.flag) {
+      opacity: 0.75;
+    }
   }
   .rename {
     flex: 1;

@@ -88,13 +88,19 @@
   .pickable {
     cursor: pointer;
 
-    &:hover .face,
     &:focus-visible .face {
       outline-color: oklch(from var(--color-accent) l c h / 45%);
     }
-    &:hover .label,
     &:focus-visible .label {
       color: var(--color-text);
+    }
+    @media (hover: hover) {
+      &:hover .face {
+        outline-color: oklch(from var(--color-accent) l c h / 45%);
+      }
+      &:hover .label {
+        color: var(--color-text);
+      }
     }
   }
   .selected {

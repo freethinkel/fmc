@@ -177,8 +177,10 @@
     font-size: 0.75rem;
     transition: background-color 0.15s ease;
 
-    &:hover {
-      background-color: oklch(from var(--color-text) l c h / 20%);
+    @media (hover: hover) {
+      &:hover {
+        background-color: oklch(from var(--color-text) l c h / 20%);
+      }
     }
   }
 </style>

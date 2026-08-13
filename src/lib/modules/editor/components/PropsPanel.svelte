@@ -95,9 +95,27 @@
       width: 4rem;
       flex-shrink: 0;
     }
+    /* a segmented pill: one recessed track, equal segments, the active one raised */
     .btn-group {
       display: flex;
-      gap: 0.25rem;
+      flex: 1;
+      gap: 0.125rem;
+      padding: 0.125rem;
+      background: oklch(from var(--color-text) l c h / 5%);
+      border-radius: var(--border-radius);
+
+      .icon-btn {
+        flex: 1;
+        width: auto;
+        height: 1.625rem;
+        border: none;
+        border-radius: calc(var(--border-radius) - 0.125rem);
+
+        &.on {
+          background: oklch(from var(--color-text) l c h / 10%);
+          color: var(--color-accent);
+        }
+      }
     }
     .grow {
       flex: 1;
@@ -115,9 +133,11 @@
       cursor: pointer;
       transition: background-color 0.15s ease;
 
-      &:hover {
-        background: oklch(from var(--color-text) l c h / 6%);
-        color: var(--color-text);
+      @media (hover: hover) {
+        &:hover {
+          background: oklch(from var(--color-text) l c h / 6%);
+          color: var(--color-text);
+        }
       }
       &.on {
         border-color: var(--color-accent);

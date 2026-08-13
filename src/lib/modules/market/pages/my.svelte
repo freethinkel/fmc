@@ -46,7 +46,7 @@
     {#each $myItems as wf (wf.id)}
       <Card>
         <div class="content">
-          <button class="preview" onclick={() => editRequested(wf)} title="Open in editor">
+          <button class="preview" onclick={() => goto(`/market/${wf.id}`)} title="Open">
             <img src={fileUrl(wf, "preview")} alt={wf.name} loading="lazy" />
           </button>
           <div class="title-row">

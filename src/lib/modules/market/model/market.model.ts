@@ -7,6 +7,13 @@ import { fileUrl } from "$lib/shared/api";
 import { authModel } from "$lib/modules/auth/model";
 import { bleModel } from "$lib/modules/device/model";
 import { editorModel } from "$lib/modules/editor/model";
+// The watchface page draws the real dial rather than the still preview, so it needs the editor's
+// domain layer (the .bin reader and the renderer's inputs) — not its model, which is the editor's
+// own session. Everything the renderer itself needs stays in the component that draws.
+import { parseBin } from "$lib/modules/editor/core/format";
+import { fromLegacy, type Doc } from "$lib/modules/editor/core/document/doc";
+import { decodeAssets } from "$lib/modules/editor/core/render/pixels";
+import type { ImageStore } from "$lib/modules/editor/core/render/canvas";
 import * as marketApi from "./market.api";
 
 export type { SavePayload } from "./market.api";
@@ -33,9 +40,6 @@ export const $foreignWf = combine(
   $openedWf,
   (loaded, opened) => Boolean(loaded) && !opened,
 );
-// editorModel.loadDone also fires for unrelated loads (drag-drop import on /editor) — only
-// navigate when the load we're waiting on is specifically the one editRequested started
-const $awaitingEdit = createStore(false);
 // editor.svelte's "Save" and PublishDialog's "Publish" both hit saveFx but need different
 // done/error handling (Publish also navigates + closes the dialog) and are mounted on the same
 // page at the same time — a shared done/err reaction would make one react to the other's call,
@@ -46,6 +50,18 @@ export const $publishDialogOpen = createStore(false);
 // marketLoadRequested fires on every market.svelte mount — load the catalog once per session,
 // a page revisit reuses $items; reloading needs a full page refresh (or removeFx's own reload below)
 const $marketRequestedOnce = createStore(false);
+// the one being flashed straight from that page, without the editor — the downloads bump
+// below reads it first, $loadedWf only ever knows what the editor has open
+const $installingWf = createStore<RecordModel | null>(null);
+export const $installed = createStore(false);
+/** The parsed face behind that page: what the canvas draws, ticking against the real clock. */
+export interface LiveFace {
+  doc: Doc;
+  store: ImageStore;
+}
+export const $live = createStore<LiveFace | null>(null);
+// the same bytes an install sends — fetched once, whichever happens first
+const $bin = createStore<Uint8Array | null>(null);
 export const $likes = createStore<RecordModel[]>([]);
 // the single record behind the showcase page (/market/[id]) — refetched on every mount, so
 // it doesn't need patching when downloads/likes move elsewhere
@@ -69,9 +85,11 @@ export const publishToggleRequested = createEvent<RecordModel>();
 export const openedWfSet = createEvent<RecordModel | null>();
 // fired by the component on New / drag-drop import — the loaded face has no backing record
 export const faceDetached = createEvent();
-// "open in editor" from a market/my card: fetch the .bin, hand it to the editor model, then
-// navigate once it's actually loaded — used by both pages (market.svelte, my.svelte)
+// "open in editor" from a market/my card or the watchface page: go to the editor at once and
+// fetch the .bin behind it, handing the bytes to the editor model when they land
 export const editRequested = createEvent<RecordModel>();
+// the showcase page: flash the face to the watch without the editor
+export const installRequested = createEvent<RecordModel>();
 export const saveDraftRequested = createEvent<marketApi.SavePayload>();
 export const publishRequested = createEvent<marketApi.SavePayload>();
 export const publishDialogOpened = createEvent();
@@ -91,6 +109,33 @@ const openInEditorFx = createEffect(async (wf: RecordModel) => {
   return { wf, buf };
 });
 const navigateToEditorFx = createEffect(() => goto("/editor"));
+const binOfFx = createEffect(
+  async (wf: RecordModel) => new Uint8Array(await (await fetch(fileUrl(wf, "bin"))).arrayBuffer()),
+);
+// the still preview is a fallback, not the plan: parse the file and hand the renderer the same
+// two things the editor gives it — the document and its decoded pixels
+const liveFx = createEffect(async (bin: Uint8Array): Promise<LiveFace> => {
+  const { doc } = fromLegacy(parseBin(bin));
+
+  return { doc, store: { assets: doc.images, cache: await decodeAssets(doc.images) } };
+});
+// install from the watchface page: the .bin is all the watch needs, the editor never enters it
+const fetchBinFx = attach({
+  source: $bin,
+  async effect(cached, wf: RecordModel) {
+    return {
+      bin: cached ?? (await binOfFx(wf)),
+      // the watch reports ids only — the market preview is what makes it recognisable later
+      preview: fileUrl(wf, "preview"),
+      key: wf.id,
+    };
+  },
+});
+export const $installing = combine(
+  fetchBinFx.pending,
+  bleModel.$flashing,
+  (fetching, flashing) => fetching || flashing,
+);
 // resolves openedId from $openedWf so the api layer doesn't need to know about model state
 const saveFx = attach({
   source: $openedWf,
@@ -211,12 +256,58 @@ sample({
 sample({
   clock: faceDetached,
   fn: () => null,
-  target: [$openedWf, $loadedWf, editorModel.faceKeySet],
+  target: [$openedWf, $loadedWf, $installingWf, editorModel.faceKeySet],
 });
 
+// a different face on screen than the one that was just installed
+reset({ clock: watchfaceRequested, target: [$installed, $live, $bin] });
+
+// the page draws the dial for real: fetch the file, parse it, decode its pixels
+sample({
+  clock: marketApi.loadWatchfaceFx.doneData,
+  fn: ({ wf }) => wf,
+  target: binOfFx,
+});
+sample({
+  clock: binOfFx.doneData,
+  target: [$bin, liveFx],
+});
+sample({
+  clock: liveFx.doneData,
+  target: $live,
+});
+// a file we can't parse or decode isn't worth an error banner — the still preview stays up,
+// and everything else on the page (install included) works off the bytes regardless
+
+sample({
+  clock: installRequested,
+  target: [fetchBinFx, $installingWf],
+});
+sample({
+  clock: fetchBinFx.doneData,
+  target: bleModel.flashRequested,
+});
+sample({
+  clock: bleModel.flashDone,
+  source: $installingWf,
+  filter: Boolean,
+  fn: () => true,
+  target: $installed,
+});
+reset({ clock: installRequested, target: $installed });
+// whichever of the two acted last owns the flash: opening a face in the editor hands the
+// downloads bump back to $loadedWf
+sample({
+  clock: openInEditorFx.doneData,
+  fn: () => null,
+  target: $installingWf,
+});
+
+// Open the editor first and let it show its own loading state: the .bin is a megabyte over the
+// network, and waiting for it on the page the user just left off reads as a frozen site.
 sample({
   clock: editRequested,
-  target: openInEditorFx,
+  target: [openInEditorFx, navigateToEditorFx, editorModel.bytesAwaited],
 });
 sample({
   clock: openInEditorFx.failData,
@@ -240,23 +331,6 @@ sample({
   clock: openInEditorFx.doneData,
   fn: ({ wf, buf }) => ({ buf, label: wf.name, key: wf.id }),
   target: editorModel.loadRequested,
-});
-
-sample({
-  clock: openInEditorFx.doneData,
-  fn: () => true,
-  target: $awaitingEdit,
-});
-sample({
-  clock: editorModel.loadDone,
-  source: $awaitingEdit,
-  filter: Boolean,
-  target: navigateToEditorFx,
-});
-sample({
-  clock: editorModel.loadDone,
-  fn: () => false,
-  target: $awaitingEdit,
 });
 
 sample({
@@ -419,6 +493,7 @@ sample({
     marketApi.loadMyFx.failData,
     marketApi.loadProfileFx.failData,
     marketApi.loadWatchfaceFx.failData,
+    fetchBinFx.failData,
     toggleLikeFx.failData,
     marketApi.removeFx.failData,
     marketApi.togglePublishFx.failData,
@@ -434,7 +509,7 @@ sample({
 // downloads counter also bumps on a successful flash to the watch — no auth check, own or not
 sample({
   clock: bleModel.flashDone,
-  source: $loadedWf,
+  source: combine($installingWf, $loadedWf, (installing, loaded) => installing || loaded),
   filter: Boolean,
   fn: (wf) => wf.id,
   target: marketApi.bumpDownloadsFx,
@@ -450,6 +525,13 @@ sample({
   source: $myItems,
   fn: (list, { params: wfId }) => bumpDownloads(list, wfId),
   target: $myItems,
+});
+sample({
+  clock: marketApi.bumpDownloadsFx.done,
+  source: $watchface,
+  filter: (wf, { params: wfId }) => wf?.id === wfId,
+  fn: (wf, _p) => ({ ...wf!, downloads: (wf!.downloads || 0) + 1 }),
+  target: $watchface,
 });
 
 // any successful load clears the banner — otherwise a one-off failure (or a request the SDK

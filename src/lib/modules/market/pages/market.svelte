@@ -167,12 +167,31 @@
   .sort {
     width: 8.125rem;
   }
+  /* a phone can't fit both fixed widths, and wrapping left the search pinned right on a row
+     of its own — let it take whatever the sort doesn't */
+  @media (max-width: 767px) {
+    .toolbar {
+      flex-wrap: nowrap;
+      gap: 0.5rem;
+      padding: 0.5rem;
+    }
+    .search {
+      flex: 1;
+      width: auto;
+      margin-inline-start: 0;
+    }
+    .sort {
+      width: 7.5rem;
+      flex: none;
+    }
+  }
   main {
     overflow-y: auto;
   }
   .grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(11.875rem, 1fr));
+    /* the min() keeps two columns on a phone, where a fixed 8.875rem would drop to one */
+    grid-template-columns: repeat(auto-fill, minmax(min(8.875rem, 50%), 1fr));
     align-items: start;
     gap: 1rem;
     padding: 1rem;
@@ -180,6 +199,11 @@
     & > :global(*) {
       min-height: auto;
       height: 100%;
+    }
+
+    @media (max-width: 767px) {
+      gap: 0.5rem;
+      padding: 0.5rem;
     }
   }
   .skeleton-card {

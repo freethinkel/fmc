@@ -109,8 +109,10 @@
     color: oklch(from var(--color-text) l c h / 55%);
     padding: 0.25rem;
     border-radius: 0.375rem;
-    &:hover {
-      background: oklch(from var(--color-text) l c h / 8%);
+    @media (hover: hover) {
+      &:hover {
+        background: oklch(from var(--color-text) l c h / 8%);
+      }
     }
   }
   .body {
