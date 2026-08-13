@@ -67,6 +67,7 @@
     orderMoved,
     resizeImageRequested,
     resizeGroupRequested,
+    rotateImageRequested,
     ringResized,
     $lockAspect: lockAspect,
     loadRequested,
@@ -342,6 +343,16 @@
         ctx.fillRect(p.x - HANDLE / 2, p.y - HANDLE / 2, HANDLE, HANDLE);
       }
     }
+    // round, and off the box, so it doesn't read as a fifth corner
+    if (rotatable(h.layer)) {
+      const p = rotateHandle(h);
+
+      ctx.setLineDash([]);
+      ctx.fillStyle = "#4af";
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, HANDLE / 2, 0, 2 * Math.PI);
+      ctx.fill();
+    }
     // a hand rotates around x+pivot — mark that point, it's what the user aims when centring
     if (h.layer.kind === "hand") {
       const px = h.layer.x + h.layer.pivotX,
@@ -394,6 +405,13 @@
   // locked is editor-only (see doc.ts): the layer still draws, it just stops answering the canvas
   const resizable = (l: Layer | null): boolean =>
     Boolean(l) && (hasArt(l!) || isBareRing(l!)) && !l!.locked;
+  /** A rotation is baked into the pixels (see rotateAsset), so it needs pixels OF ITS OWN: a
+   *  group's children would each turn about their own centre, which is not what rotating a group
+   *  looks like, and a bare ring is a spec, not art — its angle is start/end in the inspector. */
+  const rotatable = (l: Layer | null): boolean =>
+    Boolean(l) && framesOf(l!).length > 0 && !l!.locked;
+  /** Above the top edge, pulled onto the visible disc like the corners are. */
+  const rotateHandle = (h: LayerHit): XY => onDisc(h.x + h.w / 2, h.y - HANDLE * 1.5);
 
   type Rz = {
     layer: Layer;
@@ -419,12 +437,20 @@
   };
   let rz: Rz | null = null;
 
-  // What the canvas draws mid-drag: the layer scaled around its anchor, no assets touched. The
-  // real rescale happens once, on pointerup — see applyResize.
+  // The rotate drag, in the same shape: an angle accumulated around the box centre, applied once
+  // on pointerup. `deg` is the delta from where the gesture started, which is what the model wants.
+  type Rot = { layer: Layer; cx: number; cy: number; a0: number; deg: number; started: boolean };
+  let rot: Rot | null = null;
+  const ROT_STEP = 15; // ⇧ snap, the usual increment
+
+  // What the canvas draws mid-drag: the layer scaled around its anchor, or turned around its
+  // centre — no assets touched. The real re-bake happens once, on pointerup.
   const resizePreview = (): ResizePreview | null =>
     rz && rz.started
       ? { id: rz.layer.id, kw: rz.gw / rz.w0, kh: rz.gh / rz.h0, ax: rz.ax, ay: rz.ay }
-      : null;
+      : rot && rot.started
+        ? { id: rot.layer.id, kw: 1, kh: 1, ax: rot.cx, ay: rot.cy, deg: rot.deg }
+        : null;
 
   // Rescale the assets to the target box (g*) — one call, at the end of the drag.
   function applyResize(z: Rz) {
@@ -462,6 +488,11 @@
     const h = hitOf($sel);
 
     return h && resizable(h.layer) ? h : null;
+  };
+  const onRotateHandle = (p: XY, h: LayerHit) => {
+    const c = rotateHandle(h);
+
+    return rotatable(h.layer) && Math.hypot(p.x - c.x, p.y - c.y) <= HANDLE;
   };
   const handleAt = (p: XY, h: LayerHit) => {
     for (const [cx, cy] of CORNERS) {
@@ -535,6 +566,15 @@
     if (!$doc) return;
     const p = canvasXY(e);
     const sh = selHit();
+
+    if (sh && onRotateHandle(p, sh)) {
+      const cx = sh.x + sh.w / 2,
+        cy = sh.y + sh.h / 2;
+
+      rot = { layer: sh.layer, cx, cy, a0: Math.atan2(p.y - cy, p.x - cx), deg: 0, started: false };
+      canvas?.setPointerCapture(e.pointerId);
+      return;
+    }
     const c = sh && handleAt(p, sh);
 
     if (sh && c) {
@@ -605,6 +645,14 @@
   }
 
   function onMove(e: PointerEvent) {
+    if (rot) {
+      const p = canvasXY(e);
+      const d = ((Math.atan2(p.y - rot.cy, p.x - rot.cx) - rot.a0) * 180) / Math.PI;
+
+      rot.deg = e.shiftKey ? Math.round(d / ROT_STEP) * ROT_STEP : Math.round(d);
+      rot.started = true;
+      return;
+    }
     if (rz) {
       const p = canvasXY(e);
       // The dragged corner follows the pointer on BOTH axes, each measured against the grab
@@ -629,9 +677,17 @@
 
     if (!d) {
       const sh = canvas && selHit();
-      const c = sh && handleAt(canvasXY(e), sh);
+      const p = sh ? canvasXY(e) : null;
+      const c = sh && p && handleAt(p, sh);
 
-      if (canvas) canvas.style.cursor = c ? (c.cx === c.cy ? "nwse-resize" : "nesw-resize") : "";
+      if (canvas)
+        canvas.style.cursor = c
+          ? c.cx === c.cy
+            ? "nwse-resize"
+            : "nesw-resize"
+          : sh && p && onRotateHandle(p, sh)
+            ? "grab"
+            : "";
       return;
     }
     if (!d.moved) {
@@ -661,6 +717,11 @@
     for (const it of d.items) moveItem(it, it.x0 + dx, it.y0 + dy);
   }
   function onUp() {
+    if (rot) {
+      // the whole gesture lands as one bake, like a resize does
+      if (rot.started && rot.deg % 360) rotateImageRequested({ layer: rot.layer.id, deg: rot.deg });
+      rot = null;
+    }
     if (rz) {
       if (rz.started) applyResize(rz); // the whole drag lands as one rescale
       rz = null;
@@ -932,7 +993,7 @@
       {/if}
       <p class="hint">
         click — select · drag / arrow keys (⇧ ×10) — move · ⌥ drag — no snap · corners — resize (⇧
-        inverts the aspect lock) ·
+        inverts the aspect lock) · the dot above — rotate (⇧ snaps to 15°) ·
         <button class="hint-key" onclick={() => (helpOpen = true)}>? — all shortcuts</button>
       </p>
     </section>

@@ -14,16 +14,18 @@ import {
   blankFrame,
   invertAsset,
   resourceFromFile,
+  rotateAsset,
 } from "../core/render/pixels";
 import { glyphSprites, sizeForHeight, type GlyphSpec } from "../core/render/glyphs";
 import {
   framesOf,
+  isPlaced,
   type Doc,
   type ImageAsset,
   type ImageCache,
   type ImageId,
 } from "../core/document/doc";
-import { findLayer, patchLayer, scaleRing } from "../core/document/edits";
+import { findLayer, fitRingsToArt, patchLayer, scaleRing } from "../core/document/edits";
 import type { Layer, NodeId } from "../core/document/doc";
 import type { Resource } from "../core/format";
 import { $doc, committed, docLoaded } from "./doc.model";
@@ -80,6 +82,10 @@ export const resizeGroupRequested = createEvent<{
   kh: number;
   at?: { x: number; y: number };
 }>();
+/** Turn a widget's art. `deg` is a DELTA — both the angle field and the canvas handle send the
+ *  change, the asset carries the running total (see rotateAsset: the format has no angle, so the
+ *  pixels are what turns). */
+export const rotateImageRequested = createEvent<{ layer: NodeId; deg: number }>();
 export const adjustImageRequested = createEvent<{ layer: NodeId; adjust: ImageAsset["adjust"] }>();
 export const invertColorsRequested = createEvent();
 
@@ -354,6 +360,44 @@ const resizeGroupFx = attach({
   },
 });
 
+// Turn every frame of a widget by the same delta. Destructive, like the invert below: the file
+// format has no rotation, so the art is re-baked and the pinned original goes with it (the turned
+// pixels ARE the source from here — flushAssets must not re-encode the untouched ones over them).
+const rotateImageFx = attach({
+  source: { doc: $doc, cache: $cache },
+  async effect({ doc, cache }, { layer, deg }: { layer: NodeId; deg: number }) {
+    const l = doc ? findLayer(doc, layer) : null;
+    const frames = l ? framesOf(l) : [];
+    const first = doc && frames.length ? doc.images.get(frames[0]) : null;
+
+    if (!doc || !l || !first || l.locked || !(deg % 360)) return null;
+    const assets = new Map<ImageId, ImageAsset>();
+    const cached = new Map<ImageId, ImageCache>();
+
+    for (const id of new Set(frames)) {
+      const a = doc.images.get(id);
+      const turned = a && (await rotateAsset(a, cache.get(id), deg));
+
+      if (!turned) continue;
+      assets.set(id, turned.asset);
+      cached.set(id, { bitmap: turned.bitmap, original: undefined, accent: undefined });
+    }
+    // The bounding box grows around the centre, so the layer moves back by half of the growth and
+    // the art stays where it was. A hand's pivot moves with it, which keeps x+pivot — the point it
+    // rotates around at runtime — on the same pixel of the dial.
+    const grown = assets.get(frames[0]);
+    const dx = grown ? Math.round((grown.w - first.w) / 2) : 0;
+    const dy = grown ? Math.round((grown.h - first.h) / 2) : 0;
+    const moved = isPlaced(l) ? { x: l.x - dx, y: l.y - dy } : {};
+    const patch: Partial<Layer> =
+      l.kind === "hand"
+        ? { ...moved, pivotX: l.pivotX + dx, pivotY: l.pivotY + dy }
+        : (moved as Partial<Layer>);
+
+    return { assets, cache: cached, layer: l.id, patch };
+  },
+});
+
 // Brightness/contrast/saturation/hue of a widget's frames. Non-destructive: the untouched pixels
 // stay pinned in `original` and every move re-filters from there, so dragging a slider back to
 // 100 restores the original exactly. Only the preview bitmap is rebuilt here — the .bin gets the
@@ -504,7 +548,16 @@ sample({
   clock: [replaceImageFx.doneData, clearImageFx.doneData],
   filter: Boolean,
   fn: ({ asset }) => ({
-    edit: (doc: Doc) => ({ ...doc, images: new Map(doc.images).set(asset.id, asset) }),
+    edit: (doc: Doc) => {
+      const old = doc.images.get(asset.id);
+      const next = { ...doc, images: new Map(doc.images).set(asset.id, asset) };
+
+      // a ring's circle isn't its pixels (see scaleRing), so art of a different size moves it —
+      // otherwise the sector keeps pivoting around the circle the old bitmap had
+      return old && old.w && old.h && (old.w !== asset.w || old.h !== asset.h)
+        ? fitRingsToArt(next, asset.id, asset.w / old.w, asset.h / old.h)
+        : next;
+    },
   }),
   target: committed,
 });
@@ -560,6 +613,30 @@ sample({
 });
 sample({
   clock: resizeImageFx.doneData,
+  filter: Boolean,
+  fn: ({ cache }) => cache,
+  target: cachePatched,
+});
+
+sample({
+  clock: rotateImageRequested,
+  target: rotateImageFx,
+});
+sample({
+  clock: rotateImageFx.doneData,
+  filter: Boolean,
+  fn: ({ assets, layer, patch }) => ({
+    edit: (doc: Doc) => {
+      const images = new Map(doc.images);
+
+      assets.forEach((a, id) => images.set(id, a));
+      return patchLayer({ ...doc, images }, layer, patch);
+    },
+  }),
+  target: committed,
+});
+sample({
+  clock: rotateImageFx.doneData,
   filter: Boolean,
   fn: ({ cache }) => cache,
   target: cachePatched,
@@ -646,6 +723,7 @@ sample({
     replaceImageFx.failData,
     clearImageFx.failData,
     resizeImageFx.failData,
+    rotateImageFx.failData,
     adjustImageFx.failData,
     invertColorsFx.failData,
   ],

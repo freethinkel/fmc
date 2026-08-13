@@ -50,9 +50,6 @@ export const $publishDialogOpen = createStore(false);
 // marketLoadRequested fires on every market.svelte mount — load the catalog once per session,
 // a page revisit reuses $items; reloading needs a full page refresh (or removeFx's own reload below)
 const $marketRequestedOnce = createStore(false);
-// the watchface open on its own page (/market/[id]) — fetched by id, not read out of $items
-export const $wf = createStore<RecordModel | null>(null);
-export const $wfLoading = marketApi.loadWfFx.pending;
 // the one being flashed straight from that page, without the editor — the downloads bump
 // below reads it first, $loadedWf only ever knows what the editor has open
 const $installingWf = createStore<RecordModel | null>(null);
@@ -66,13 +63,23 @@ export const $live = createStore<LiveFace | null>(null);
 // the same bytes an install sends — fetched once, whichever happens first
 const $bin = createStore<Uint8Array | null>(null);
 export const $likes = createStore<RecordModel[]>([]);
+// the single record behind the showcase page (/market/[id]) — refetched on every mount, so
+// it doesn't need patching when downloads/likes move elsewhere
+export const $watchface = createStore<RecordModel | null>(null);
+export const $watchfaceLoading = marketApi.loadWatchfaceFx.pending;
 export const $items = createStore<RecordModel[]>([]);
 export const $myItems = createStore<RecordModel[]>([]);
 export const $marketErr = createStore("");
+// creator profile (/user/[id]) — the viewed user and their published faces
+export const $profile = createStore<RecordModel | null>(null);
+export const $profileItems = createStore<RecordModel[]>([]);
+export const $profileLoading = marketApi.loadProfileFx.pending;
 
 // ---- events ----
 export const marketLoadRequested = createEvent();
 export const myLoadRequested = createEvent<string>();
+// fired by profile.svelte on mount and whenever the id in the url changes
+export const profileLoadRequested = createEvent<string>();
 export const removeRequested = createEvent<RecordModel>();
 export const publishToggleRequested = createEvent<RecordModel>();
 export const openedWfSet = createEvent<RecordModel | null>();
@@ -81,13 +88,15 @@ export const faceDetached = createEvent();
 // "open in editor" from a market/my card or the watchface page: go to the editor at once and
 // fetch the .bin behind it, handing the bytes to the editor model when they land
 export const editRequested = createEvent<RecordModel>();
-// the watchface page: load the record by id, and flash it to the watch without the editor
-export const wfLoadRequested = createEvent<string>();
+// the showcase page: flash the face to the watch without the editor
 export const installRequested = createEvent<RecordModel>();
 export const saveDraftRequested = createEvent<marketApi.SavePayload>();
 export const publishRequested = createEvent<marketApi.SavePayload>();
 export const publishDialogOpened = createEvent();
 export const publishDialogClosed = createEvent();
+// showcase page: load one watchface by id, and open its page from a card
+export const watchfaceRequested = createEvent<string>();
+export const showcaseRequested = createEvent<RecordModel>();
 export const likeToggleRequested = createEvent<{
   wf: RecordModel;
   userId: string;
@@ -138,6 +147,7 @@ const saveFx = attach({
 });
 export const $savePending = saveFx.pending;
 const navigateToMarketFx = createEffect(() => goto("/market"));
+const navigateToShowcaseFx = createEffect((wf: RecordModel) => goto(`/market/${wf.id}`));
 // resolves the caller's existing like id from $likes so the api layer doesn't need to know about model state
 const toggleLikeFx = attach({
   source: $likes,
@@ -173,6 +183,58 @@ sample({
 });
 
 sample({
+  clock: profileLoadRequested,
+  target: marketApi.loadProfileFx,
+});
+sample({
+  clock: marketApi.loadProfileFx.doneData,
+  fn: (d) => d.user,
+  target: $profile,
+});
+sample({
+  clock: marketApi.loadProfileFx.doneData,
+  fn: (d) => d.items,
+  target: $profileItems,
+});
+sample({
+  clock: marketApi.loadProfileFx.doneData,
+  fn: (d) => d.likes,
+  target: $likes,
+});
+// don't let the previous creator's name and grid sit on screen while the next one loads
+reset({ clock: profileLoadRequested, target: [$profile, $profileItems] });
+
+sample({
+  clock: showcaseRequested,
+  target: navigateToShowcaseFx,
+});
+
+sample({
+  clock: watchfaceRequested,
+  target: marketApi.loadWatchfaceFx,
+});
+// drop the previous record while the new one loads — otherwise navigating from one showcase
+// page to another shows the old face under the new id
+sample({
+  clock: watchfaceRequested,
+  fn: () => null,
+  target: $watchface,
+});
+sample({
+  clock: marketApi.loadWatchfaceFx.doneData,
+  fn: ({ wf }) => wf,
+  target: $watchface,
+});
+// fold this face's likes into the shared list, so the showcase page counts and toggles them
+// with the same $likes/likeToggleRequested the grid uses
+sample({
+  clock: marketApi.loadWatchfaceFx.doneData,
+  source: $likes,
+  fn: (all, { wf, likes }) => [...all.filter((l) => l.watchface !== wf.id), ...likes],
+  target: $likes,
+});
+
+sample({
   clock: removeRequested,
   target: marketApi.removeFx,
 });
@@ -197,30 +259,13 @@ sample({
   target: [$openedWf, $loadedWf, $installingWf, editorModel.faceKeySet],
 });
 
-sample({
-  clock: wfLoadRequested,
-  target: marketApi.loadWfFx,
-});
-sample({
-  clock: marketApi.loadWfFx.doneData,
-  target: $wf,
-});
-// Coming from a list, the record is already in hand — show it (preview, name, author) on the
-// spot and let the fetch below refresh it. A deep link finds nothing cached and falls back to
-// the skeleton. Also what clears the previous face, so no reset() for $wf.
-sample({
-  clock: wfLoadRequested,
-  source: { items: $items, mine: $myItems },
-  fn: ({ items, mine }, id) =>
-    items.find((i) => i.id === id) ?? mine.find((i) => i.id === id) ?? null,
-  target: $wf,
-});
 // a different face on screen than the one that was just installed
-reset({ clock: wfLoadRequested, target: [$installed, $live, $bin] });
+reset({ clock: watchfaceRequested, target: [$installed, $live, $bin] });
 
 // the page draws the dial for real: fetch the file, parse it, decode its pixels
 sample({
-  clock: marketApi.loadWfFx.doneData,
+  clock: marketApi.loadWatchfaceFx.doneData,
+  fn: ({ wf }) => wf,
   target: binOfFx,
 });
 sample({
@@ -446,7 +491,8 @@ sample({
   clock: [
     marketApi.loadMarketFx.failData,
     marketApi.loadMyFx.failData,
-    marketApi.loadWfFx.failData,
+    marketApi.loadProfileFx.failData,
+    marketApi.loadWatchfaceFx.failData,
     fetchBinFx.failData,
     toggleLikeFx.failData,
     marketApi.removeFx.failData,
@@ -482,12 +528,20 @@ sample({
 });
 sample({
   clock: marketApi.bumpDownloadsFx.done,
-  source: $wf,
+  source: $watchface,
   filter: (wf, { params: wfId }) => wf?.id === wfId,
   fn: (wf, _p) => ({ ...wf!, downloads: (wf!.downloads || 0) + 1 }),
-  target: $wf,
+  target: $watchface,
 });
 
 // any successful load clears the banner — otherwise a one-off failure (or a request the SDK
 // auto-cancelled) stayed on screen for the rest of the session, /my never reset it at all
-reset({ clock: [marketApi.loadMarketFx.done, marketApi.loadMyFx.done], target: $marketErr });
+reset({
+  clock: [
+    marketApi.loadMarketFx.done,
+    marketApi.loadMyFx.done,
+    marketApi.loadProfileFx.done,
+    marketApi.loadWatchfaceFx.done,
+  ],
+  target: $marketErr,
+});

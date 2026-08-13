@@ -20,11 +20,31 @@ export const loadMarketFx = createEffect(async () => {
   return { items, likes };
 });
 
-// one record for its own page (/market/[id]) — a deep link has no catalog list to read from,
-// and $items only ever holds published faces
-export const loadWfFx = createEffect((id: string) =>
-  pb.collection("watchfaces").getOne(id, { expand: "owner" }),
-);
+// public creator profile: the user record + everything they published. Likes come along so
+// the grid can show counts without depending on a prior /market visit.
+export const loadProfileFx = createEffect(async (userId: string) => {
+  const [user, items, likes] = await Promise.all([
+    pb.collection("users").getOne(userId),
+    pb
+      .collection("watchfaces")
+      .getFullList({ sort: "-created", filter: `owner = '${userId}' && published = true` }),
+    pb.collection("likes").getFullList(),
+  ]);
+
+  return { user, items, likes };
+});
+
+// the showcase page (/market/[id]) is a deep link: it can be opened without the catalog ever
+// having been fetched, so it asks for its one record — plus that record's likes, which the
+// model folds into the shared $likes list
+export const loadWatchfaceFx = createEffect(async (id: string) => {
+  const [wf, likes] = await Promise.all([
+    pb.collection("watchfaces").getOne(id, { expand: "owner" }),
+    pb.collection("likes").getFullList({ filter: `watchface = '${id}'` }),
+  ]);
+
+  return { wf, likes };
+});
 
 export const loadMyFx = createEffect((userId: string) =>
   pb.collection("watchfaces").getFullList({ sort: "-updated", filter: `owner = '${userId}'` }),

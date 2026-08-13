@@ -2,7 +2,12 @@
 // is preview-only, an invert is involutive, and re-baking a preview reproduces what the renderer
 // draws. (Whether the renderer itself is right is editor-preview-match's job.)
 import { test, expect } from "vitest";
-import { parseBin, decodePixels, type Resource } from "$lib/modules/editor/core/format";
+import {
+  parseBin,
+  decodePixels,
+  encodePixels,
+  type Resource,
+} from "$lib/modules/editor/core/format";
 import {
   accentBitmapForAsset,
   accentFlaggedAssets,
@@ -10,12 +15,14 @@ import {
   invertAsset,
   pixelsOf,
   regenPreviewAssets,
+  rotateAsset,
 } from "$lib/modules/editor/core/render/pixels";
 import {
   fromLegacy,
   isAccent,
   framesOf,
   type ImageAsset,
+  type ImageId,
   type Layer,
 } from "$lib/modules/editor/core/document/doc";
 import { defaultSim } from "$lib/modules/editor/core/document/sources";
@@ -101,4 +108,33 @@ test("re-baking the embedded preview produces a new asset of the same shape", as
     expect([asset.cf, asset.w, asset.h]).toEqual([old.cf, old.w, old.h]);
     expect(asset.data).not.toBe(old.data);
   }
+});
+
+test("rotating an asset turns its pixels and grows the box to fit", async () => {
+  // a 6x2 strip, black but for one red pixel at (0,0) — enough to tell a turn from a no-op
+  const w = 6,
+    h = 2;
+  const px = new Uint8ClampedArray(w * h * 4);
+
+  for (let i = 3; i < px.length; i += 4) px[i] = 255;
+  px[0] = 255;
+  const r = encodePixels(px, w, h, 5);
+  const a: ImageAsset = { id: "a1" as ImageId, cf: r.cf, w, h, data: r.data };
+
+  const turned = (await rotateAsset(a, undefined, 90))!;
+
+  expect([turned.asset.w, turned.asset.h, turned.asset.rotate]).toEqual([h, w, 90]);
+  const out = decodePixels(asResource(turned.asset))!;
+  const red = (x: number, y: number) => out[(y * h + x) * 4];
+
+  expect(red(h - 1, 0)).toBeGreaterThan(200); // (0,0) turned clockwise into the top-right corner
+  expect(red(0, 0)).toBeLessThan(80);
+
+  // 45° grows the canvas to the rotated bounding box, and cf 4 has no alpha for the corners
+  const flat = encodePixels(px, w, h, 4);
+  const skew = (await rotateAsset({ ...a, cf: 4, data: flat.data }, undefined, 45))!;
+
+  expect(skew.asset.cf).toBe(5);
+  expect(skew.asset.h).toBeGreaterThan(h); // the strip's length now leans into its height
+  expect(skew.asset.rotate).toBe(45);
 });

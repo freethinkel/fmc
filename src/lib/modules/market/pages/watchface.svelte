@@ -1,31 +1,35 @@
 <script lang="ts">
   // One watchface on its own page: everything the market card shows, plus the one thing that
   // used to require a detour through the editor — installing it on the watch.
-  import { page } from "$app/state";
+  import { Avatar } from "$lib/shared/components/avatar";
   import { Badge } from "$lib/shared/components/badge";
   import { Button } from "$lib/shared/components/button";
   import { Icon } from "$lib/shared/components/icon";
   import { Skeleton } from "$lib/shared/components/skeleton";
-  import { fileUrl, downloadUrl } from "$lib/shared/api";
+  import { downloadUrl, fileUrl } from "$lib/shared/api";
   import { authModel } from "$lib/modules/auth/model";
   import { bleModel } from "$lib/modules/device/model";
   import { marketModel } from "../model";
   import { LiveDial } from "../components/live-dial";
 
+  interface Props {
+    id: string;
+  }
+  const { id }: Props = $props();
+
   const { $user: user } = authModel;
   const {
-    $wf: wf,
-    $wfLoading: wfLoading,
+    $watchface: watchface,
+    $watchfaceLoading: loading,
     $live: live,
     $installing: installing,
     $installed: installed,
     $likes: likes,
     $marketErr: marketErr,
-    wfLoadRequested,
-    marketLoadRequested,
+    watchfaceRequested,
     installRequested,
-    editRequested,
     likeToggleRequested,
+    editRequested,
   } = marketModel;
   const {
     $bleInfo: bleInfo,
@@ -34,119 +38,190 @@
     connectRequested,
   } = bleModel;
 
-  const id = $derived(page.params.id);
-
   $effect(() => {
-    if (id) wfLoadRequested(id);
+    watchfaceRequested(id);
   });
-  // likes live in the catalog load — a deep link never went through /market
-  marketLoadRequested();
 
+  const wf = $derived($watchface);
+  const owner = $derived(wf?.expand?.owner);
   const likeCount = $derived($likes.filter((l) => l.watchface === id).length);
   const liked = $derived($likes.some((l) => l.watchface === id && l.user === $user?.id));
+  const day = (v: string) => new Date(v).toLocaleDateString();
+
+  // ponytail: Web Share where it exists, clipboard everywhere else — no share-sheet dependency
+  let copied = $state(false);
+
+  async function share() {
+    const url = location.href;
+
+    if (navigator.share) {
+      // a dismissed share sheet rejects — that's a cancel, not an error
+      await navigator.share({ title: wf?.name, url }).catch(() => {});
+      return;
+    }
+    await navigator.clipboard.writeText(url);
+    copied = true;
+  }
 </script>
 
-<svelte:head><title>{$wf?.name || "Watchface"} — FMC Watchfaces</title></svelte:head>
+<svelte:head><title>{wf?.name || "Watchface"} — FMC Watchfaces</title></svelte:head>
 
 <div class="page">
-  <a class="back" href="/market">← Market</a>
-
   {#if $marketErr}<p class="error">{$marketErr}</p>{/if}
 
-  {#if $wf}
-    <div class="wrap">
-      <div class="preview">
-        <!-- the still preview holds the spot until the file is parsed, and stays if it can't be -->
-        {#if $live}
-          <LiveDial face={$live} />
-        {:else}
-          <img src={fileUrl($wf, "preview")} alt={$wf.name} />
-        {/if}
-      </div>
+  <main>
+    <!-- ponytail: no back-arrow glyph in the icon registry, and "←" needs no import -->
+    <a class="back" href="/market">← Marketplace</a>
 
-      <div class="info">
-        <div class="title-row">
-          <h1>{$wf.name}</h1>
-          {#if $wf.type}<Badge>{$wf.type}</Badge>{/if}
-        </div>
-        <span class="author">by {$wf.expand?.owner?.name || "—"}</span>
-
-        {#if $wf.description}<p class="desc">{$wf.description}</p>{/if}
-
-        <div class="cta">
-          {#if !$bleInfo}
-            <Button onClick={() => connectRequested()} disabled={$connecting}>
-              <Icon name="bluetooth" size={16} />
-              {$connecting ? "Connecting…" : "Connect watch"}
-            </Button>
-          {:else if $installed}
-            <Button disabled>
-              <Icon name="check" size={16} /> Installed
-            </Button>
-            <Button kind="secondary" onClick={() => installRequested($wf)} disabled={$installing}>
-              Install again
-            </Button>
+    {#if wf}
+      <article class="face">
+        <div class="preview">
+          <!-- the still preview holds the spot until the file is parsed, and stays if it can't be -->
+          {#if $live}
+            <LiveDial face={$live} />
           {:else}
-            <Button onClick={() => installRequested($wf)} disabled={$installing}>
-              <Icon name="watch" size={16} />
-              {$installing ? "Installing…" : "Install watchface"}
-            </Button>
+            <img src={fileUrl(wf, "preview")} alt={wf.name} />
           {/if}
         </div>
-        {#if $bleStatus}<span class="status">{$bleStatus}</span>{/if}
 
-        <div class="actions">
-          <span class="action-slot" title={$user ? "Like" : "Sign in to like"}>
-            <Button
-              kind="ghost"
-              disabled={!$user}
-              onClick={() => $user && $wf && likeToggleRequested({ wf: $wf, userId: $user.id })}
-            >
-              <Icon
-                name="heart"
-                size={16}
-                color={liked ? "var(--color-error)" : undefined}
-                fill={liked ? "var(--color-error)" : "none"}
-              />
-              <span class="count">{likeCount}</span>
-            </Button>
-          </span>
-          <a class="link-action" href={downloadUrl($wf)} title="Download .bin">
-            <Icon name="download" size={16} />
-            <span class="count">{$wf.downloads || 0}</span>
-          </a>
-          <span class="action-slot" title="Open in editor">
-            <Button kind="ghost" onClick={() => $wf && editRequested($wf)}>
+        <div class="info">
+          <div class="title-row">
+            <h1 class="name">{wf.name}</h1>
+            {#if wf.type}<Badge>{wf.type}</Badge>{/if}
+          </div>
+
+          {#if owner}
+            <a class="creator" href="/user/{wf.owner}" title="Watchfaces by this creator">
+              <Avatar name={owner.name || "?"} size={36} />
+              <span class="creator-text">
+                <span class="creator-name">{owner.name || "Unknown"}</span>
+                <span class="creator-hint">See all their watchfaces</span>
+              </span>
+            </a>
+          {/if}
+
+          {#if wf.description}
+            <p class="desc">{wf.description}</p>
+          {:else}
+            <p class="desc muted">No description.</p>
+          {/if}
+
+          <div class="cta">
+            {#if !$bleInfo}
+              <Button onClick={() => connectRequested()} disabled={$connecting}>
+                <Icon name="bluetooth" size={16} />
+                {$connecting ? "Connecting…" : "Connect watch"}
+              </Button>
+            {:else if $installed}
+              <Button disabled>
+                <Icon name="check" size={16} /> Installed
+              </Button>
+              <Button kind="secondary" onClick={() => installRequested(wf)} disabled={$installing}>
+                Install again
+              </Button>
+            {:else}
+              <Button onClick={() => installRequested(wf)} disabled={$installing}>
+                <Icon name="watch" size={16} />
+                {$installing ? "Installing…" : "Install watchface"}
+              </Button>
+            {/if}
+          </div>
+          {#if $bleStatus}<span class="status">{$bleStatus}</span>{/if}
+
+          <dl class="stats">
+            <div>
+              <dt>Likes</dt>
+              <dd>{likeCount}</dd>
+            </div>
+            <div>
+              <dt>Downloads</dt>
+              <dd>{wf.downloads || 0}</dd>
+            </div>
+            <div>
+              <dt>Flashed</dt>
+              <dd>{wf.flashes || 0}</dd>
+            </div>
+            <div>
+              <dt>Published</dt>
+              <dd>{day(wf.created)}</dd>
+            </div>
+            <div>
+              <dt>Updated</dt>
+              <dd>{day(wf.updated)}</dd>
+            </div>
+          </dl>
+
+          <div class="actions">
+            <Button onClick={() => editRequested(wf)}>
               <Icon name="pencil" size={16} />
-              Edit
+              Open in editor
             </Button>
-          </span>
+            <a class="link-action" href={downloadUrl(wf)}>
+              <Icon name="download" size={16} />
+              Download .bin
+            </a>
+            <span class="action-slot" title={$user ? "Like" : "Sign in to like"}>
+              <Button
+                kind="secondary"
+                disabled={!$user}
+                onClick={() => $user && likeToggleRequested({ wf, userId: $user.id })}
+              >
+                <Icon
+                  name="heart"
+                  size={16}
+                  color={liked ? "var(--color-error)" : undefined}
+                  fill={liked ? "var(--color-error)" : "none"}
+                />
+                {likeCount}
+              </Button>
+            </span>
+            <Button kind="secondary" onClick={share}>
+              <Icon name="link" size={16} />
+              {copied ? "Link copied" : "Share"}
+            </Button>
+          </div>
+        </div>
+      </article>
+    {:else if $loading}
+      <div class="face">
+        <Skeleton height="17.5rem" />
+        <div class="info">
+          <Skeleton height="1.75rem" width="60%" />
+          <Skeleton height="2.25rem" width="40%" />
+          <Skeleton height="3rem" />
         </div>
       </div>
-    </div>
-  {:else if $wfLoading}
-    <div class="wrap">
-      <Skeleton height="16rem" />
-      <div class="info">
-        <Skeleton height="1.5rem" width="60%" />
-        <Skeleton height="0.875rem" width="30%" />
-      </div>
-    </div>
-  {/if}
+    {:else}
+      <p class="empty">Watchface not found.</p>
+    {/if}
+  </main>
 </div>
 
 <style>
   .page {
+    display: flex;
+    flex-direction: column;
     height: 100%;
+  }
+  .error {
+    margin: 0;
+    padding: 0.75rem 1rem 0;
+    font-size: 0.75rem;
+    color: var(--color-error);
+  }
+  main {
+    flex: 1;
     overflow-y: auto;
-    padding: 1rem;
+    /* the extra bottom padding keeps the action row clear of the mobile tab bar */
+    padding: 1rem 1rem 2rem;
   }
   .back {
-    display: inline-block;
-    margin-bottom: 1rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
     font-size: 0.75rem;
-    text-decoration: none;
     color: oklch(from var(--color-text) l c h / 55%);
+    text-decoration: none;
 
     @media (hover: hover) {
       &:hover {
@@ -154,21 +229,15 @@
       }
     }
   }
-  .error {
-    margin: 0 0 1rem;
-    font-size: 0.75rem;
-    color: var(--color-error);
-  }
-  .wrap {
+  .face {
     display: grid;
-    grid-template-columns: minmax(0, 18rem) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 20rem) minmax(0, 1fr);
     align-items: start;
     gap: 2rem;
-    max-width: 48rem;
-    margin: 0 auto;
+    max-width: 56rem;
+    margin: 1rem auto 0;
   }
   .preview {
-    width: 100%;
     aspect-ratio: 1 / 1;
     overflow: hidden;
     border-radius: 625rem;
@@ -184,49 +253,91 @@
   .info {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: 1rem;
   }
   .title-row {
     display: flex;
     align-items: baseline;
     gap: 0.75rem;
+  }
+  .name {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: 2rem;
+    font-weight: 400;
+  }
+  .creator {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.625rem;
+    align-self: flex-start;
+    padding: 0.375rem 0.75rem 0.375rem 0.375rem;
+    border-radius: var(--border-radius);
+    color: var(--color-text);
+    text-decoration: none;
+    background: oklch(from var(--color-text) l c h / 6%);
 
-    h1 {
-      margin: 0;
-      font-size: 1.5rem;
+    @media (hover: hover) {
+      &:hover {
+        background: oklch(from var(--color-text) l c h / 12%);
+      }
     }
   }
-  .author {
-    font-size: 0.75rem;
+  .creator-text {
+    display: flex;
+    flex-direction: column;
+  }
+  .creator-name {
+    font-size: 0.875rem;
+    font-weight: 500;
+  }
+  .creator-hint {
+    font-size: 0.625rem;
     color: oklch(from var(--color-text) l c h / 55%);
   }
   .desc {
-    margin: 0.5rem 0;
+    margin: 0;
+    white-space: pre-wrap;
     font-size: 0.875rem;
+  }
+  .muted {
+    color: oklch(from var(--color-text) l c h / 55%);
   }
   .cta {
     display: flex;
     flex-wrap: wrap;
     gap: 0.75rem;
-    margin-top: 0.5rem;
   }
   .status {
     font-size: 0.625rem;
     color: oklch(from var(--color-text) l c h / 55%);
   }
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(6rem, 1fr));
+    gap: 0.75rem;
+    margin: 0;
+    padding: 0.75rem 0;
+    border-top: 1px solid oklch(from var(--color-text) l c h / 12%);
+    border-bottom: 1px solid oklch(from var(--color-text) l c h / 12%);
+
+    dt {
+      font-size: 0.625rem;
+      color: oklch(from var(--color-text) l c h / 55%);
+    }
+    dd {
+      margin: 0;
+      font-size: 0.875rem;
+    }
+  }
   .actions {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 0.25rem;
-    margin-top: 0.5rem;
-    border-top: 1px solid oklch(from var(--color-text) l c h / 12%);
-    padding-top: 0.75rem;
+    gap: 0.5rem;
   }
   .action-slot {
     display: inline-flex;
-  }
-  .count {
-    font-size: 0.625rem;
   }
   .link-action {
     display: inline-flex;
@@ -236,8 +347,11 @@
     padding: 0 0.625rem;
     border-radius: var(--border-radius);
     color: var(--color-text);
+    background-color: oklch(from var(--color-text) l c h / 12%);
     text-decoration: none;
     font-size: 0.75rem;
+    font-weight: 500;
+    transition: background-color 0.15s ease;
 
     @media (hover: hover) {
       &:hover {
@@ -245,14 +359,20 @@
       }
     }
   }
+  .empty {
+    padding: 4rem 0;
+    text-align: center;
+    font-size: 0.75rem;
+    color: oklch(from var(--color-text) l c h / 55%);
+  }
   @media (max-width: 767px) {
-    .wrap {
+    .face {
       grid-template-columns: minmax(0, 1fr);
       gap: 1.25rem;
     }
     .preview {
-      max-width: 14rem;
-      margin: 0 auto;
+      max-width: 15rem;
+      margin-inline: auto;
     }
     /* one full-width row per button — a 30px pill floating in a phone-wide column reads as
        a secondary link, not as the thing the page is for */

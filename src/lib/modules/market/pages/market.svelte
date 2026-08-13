@@ -4,7 +4,6 @@
   import { Skeleton } from "$lib/shared/components/skeleton";
   import { Icon } from "$lib/shared/components/icon";
   import type { RecordModel } from "pocketbase";
-  import { goto } from "$app/navigation";
   import { authModel } from "$lib/modules/auth/model";
   import { marketModel } from "../model";
   import { WatchfaceCard } from "../components/watchface-card";
@@ -18,6 +17,7 @@
     marketLoadRequested,
     likeToggleRequested,
     removeRequested,
+    showcaseRequested,
   } = marketModel;
 
   marketLoadRequested();
@@ -113,7 +113,7 @@
           liked={!!myLike(wf.id)}
           canLike={!!$user}
           canRemove={$user?.id === wf.owner}
-          onOpen={() => goto(`/market/${wf.id}`)}
+          onOpen={() => showcaseRequested(wf)}
           onLike={() => $user && likeToggleRequested({ wf, userId: $user.id })}
           onRemove={() => remove(wf)}
         />
