@@ -9,7 +9,7 @@ same-origin (`location.origin`) without it, which is what prod uses — through 
 same domain as the backend (see `fmc_pocketbase/README.md`).
 
 App: landing page (`/`), marketplace (`/market`, `/market/[id]` — a face's showcase page,
-`/my`), watchface editor (`/editor`,
+`/my`), creator profiles (`/user/[id]`), watchface editor (`/editor`,
 with a BLE connection to the CMF Watch Pro 2) and auth (`/login`, `/register`).
 
 ## Architecture

@@ -72,7 +72,7 @@
           </div>
 
           {#if owner}
-            <a class="creator" href="/market?creator={wf.owner}" title="Watchfaces by this creator">
+            <a class="creator" href="/user/{wf.owner}" title="Watchfaces by this creator">
               <Avatar name={owner.name || "?"} size={36} />
               <span class="creator-text">
                 <span class="creator-name">{owner.name || "Unknown"}</span>

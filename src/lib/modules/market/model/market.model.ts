@@ -54,10 +54,16 @@ export const $watchfaceLoading = marketApi.loadWatchfaceFx.pending;
 export const $items = createStore<RecordModel[]>([]);
 export const $myItems = createStore<RecordModel[]>([]);
 export const $marketErr = createStore("");
+// creator profile (/user/[id]) — the viewed user and their published faces
+export const $profile = createStore<RecordModel | null>(null);
+export const $profileItems = createStore<RecordModel[]>([]);
+export const $profileLoading = marketApi.loadProfileFx.pending;
 
 // ---- events ----
 export const marketLoadRequested = createEvent();
 export const myLoadRequested = createEvent<string>();
+// fired by profile.svelte on mount and whenever the id in the url changes
+export const profileLoadRequested = createEvent<string>();
 export const removeRequested = createEvent<RecordModel>();
 export const publishToggleRequested = createEvent<RecordModel>();
 export const openedWfSet = createEvent<RecordModel | null>();
@@ -130,6 +136,28 @@ sample({
   clock: myLoadRequested,
   target: marketApi.loadMyFx,
 });
+
+sample({
+  clock: profileLoadRequested,
+  target: marketApi.loadProfileFx,
+});
+sample({
+  clock: marketApi.loadProfileFx.doneData,
+  fn: (d) => d.user,
+  target: $profile,
+});
+sample({
+  clock: marketApi.loadProfileFx.doneData,
+  fn: (d) => d.items,
+  target: $profileItems,
+});
+sample({
+  clock: marketApi.loadProfileFx.doneData,
+  fn: (d) => d.likes,
+  target: $likes,
+});
+// don't let the previous creator's name and grid sit on screen while the next one loads
+reset({ clock: profileLoadRequested, target: [$profile, $profileItems] });
 
 sample({
   clock: showcaseRequested,
@@ -389,6 +417,7 @@ sample({
   clock: [
     marketApi.loadMarketFx.failData,
     marketApi.loadMyFx.failData,
+    marketApi.loadProfileFx.failData,
     marketApi.loadWatchfaceFx.failData,
     toggleLikeFx.failData,
     marketApi.removeFx.failData,
@@ -426,6 +455,11 @@ sample({
 // any successful load clears the banner — otherwise a one-off failure (or a request the SDK
 // auto-cancelled) stayed on screen for the rest of the session, /my never reset it at all
 reset({
-  clock: [marketApi.loadMarketFx.done, marketApi.loadMyFx.done, marketApi.loadWatchfaceFx.done],
+  clock: [
+    marketApi.loadMarketFx.done,
+    marketApi.loadMyFx.done,
+    marketApi.loadProfileFx.done,
+    marketApi.loadWatchfaceFx.done,
+  ],
   target: $marketErr,
 });
