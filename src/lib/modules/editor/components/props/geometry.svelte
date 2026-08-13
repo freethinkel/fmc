@@ -16,6 +16,7 @@
     $lockAspect: lockAspect,
     lockAspectToggled,
     resizeImageRequested,
+    rotateImageRequested,
     ringResized,
     adjustImageRequested,
     alignRequested,
@@ -67,6 +68,8 @@
     return ids.length ? ($doc?.images.get(ids[0]) ?? null) : null;
   });
   const resSize = $derived(first ? { w: first.w, h: first.h } : null);
+  // absolute, the way the field reads — the model takes the change (see rotateImageRequested)
+  const angle = $derived(first?.rotate ?? 0);
 
   function resize(w: number, h: number) {
     if (resSize) resizeImageRequested({ layer: layer.id, w, h });
@@ -151,6 +154,16 @@
     </button>
   </div>
   <p class="hint-xs">rescaled from the original — re-encoded only on save/flash</p>
+  <div class="row">
+    <span class="field-label w-md">angle</span>
+    <Input
+      type="number"
+      step={15}
+      value={String(angle)}
+      onChange={(v) => rotateImageRequested({ layer: layer.id, deg: num(v) - angle })}
+    />
+  </div>
+  <p class="hint-xs">baked into the pixels — the format itself has no angle</p>
   {#each ADJUST as a (a.key)}
     <div class="row">
       <span class="field-label w-md">{a.label}</span>
