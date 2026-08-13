@@ -94,8 +94,12 @@
     top: auto;
     bottom: 0.125rem;
   }
-  .thumb-wrap:hover .dl-btn,
   .dl-btn:focus-visible {
     opacity: 1;
+  }
+  @media (hover: hover) {
+    .thumb-wrap:hover .dl-btn {
+      opacity: 1;
+    }
   }
 </style>

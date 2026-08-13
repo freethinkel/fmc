@@ -1036,8 +1036,10 @@
     text-overflow: ellipsis;
     white-space: nowrap;
 
-    &:hover {
-      border-color: oklch(from var(--color-text) l c h / 12%);
+    @media (hover: hover) {
+      &:hover {
+        border-color: oklch(from var(--color-text) l c h / 12%);
+      }
     }
     &:focus {
       border-color: var(--color-accent);
@@ -1108,10 +1110,14 @@
     touch-action: none;
     transition: background-color 0.15s ease;
 
-    &:hover,
     &:focus-visible,
     &.active {
       background: oklch(from var(--color-accent) l c h / 35%);
+    }
+    @media (hover: hover) {
+      &:hover {
+        background: oklch(from var(--color-accent) l c h / 35%);
+      }
     }
   }
   .gutter-tree {

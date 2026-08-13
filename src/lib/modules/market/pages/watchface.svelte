@@ -148,8 +148,10 @@
     text-decoration: none;
     color: oklch(from var(--color-text) l c h / 55%);
 
-    &:hover {
-      color: var(--color-text);
+    @media (hover: hover) {
+      &:hover {
+        color: var(--color-text);
+      }
     }
   }
   .error {
@@ -237,8 +239,10 @@
     text-decoration: none;
     font-size: 0.75rem;
 
-    &:hover {
-      background-color: oklch(from var(--color-text) l c h / 20%);
+    @media (hover: hover) {
+      &:hover {
+        background-color: oklch(from var(--color-text) l c h / 20%);
+      }
     }
   }
   @media (max-width: 767px) {

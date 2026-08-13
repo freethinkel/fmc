@@ -91,8 +91,10 @@
       border-radius: calc(var(--border-radius) / 1.5);
       color: oklch(from var(--color-text) l c h / 60%);
 
-      &:hover {
-        background: oklch(from var(--color-text) l c h / 6%);
+      @media (hover: hover) {
+        &:hover {
+          background: oklch(from var(--color-text) l c h / 6%);
+        }
       }
       &.active {
         color: var(--color-text);
@@ -131,9 +133,11 @@
     border-radius: 50%;
     color: oklch(from var(--color-text) l c h / 55%);
 
-    &:hover {
-      background: oklch(from var(--color-text) l c h / 6%);
-      color: var(--color-text);
+    @media (hover: hover) {
+      &:hover {
+        background: oklch(from var(--color-text) l c h / 6%);
+        color: var(--color-text);
+      }
     }
   }
   .avatar-btn {

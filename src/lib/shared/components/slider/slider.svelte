@@ -105,13 +105,19 @@
     box-shadow: 0 1px 4px oklch(from var(--color-text) l c h / 45%);
     transition: transform var(--spring-transition, 0.15s ease);
   }
-  input:hover::-webkit-slider-thumb,
   input:active::-webkit-slider-thumb {
     transform: scale(1.15);
   }
-  input:hover::-moz-range-thumb,
   input:active::-moz-range-thumb {
     transform: scale(1.15);
+  }
+  @media (hover: hover) {
+    input:hover::-webkit-slider-thumb {
+      transform: scale(1.15);
+    }
+    input:hover::-moz-range-thumb {
+      transform: scale(1.15);
+    }
   }
   input:focus-visible {
     outline: none;

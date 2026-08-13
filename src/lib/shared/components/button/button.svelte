@@ -40,8 +40,10 @@
       transform var(--spring-transition),
       background-color 0.15s ease;
 
-    &:hover:not(:disabled) {
-      background-color: oklch(from var(--color, var(--color-text)) l c h / 20%);
+    @media (hover: hover) {
+      &:hover:not(:disabled) {
+        background-color: oklch(from var(--color, var(--color-text)) l c h / 20%);
+      }
     }
     &:active:not(:disabled) {
       transform: scale(0.97);
@@ -63,8 +65,10 @@
   .kind__primary {
     background-color: var(--color-accent);
     color: var(--color-background);
-    &:hover:not(:disabled) {
-      background-color: oklch(from var(--color-accent) calc(l * 1.08) c h);
+    @media (hover: hover) {
+      &:hover:not(:disabled) {
+        background-color: oklch(from var(--color-accent) calc(l * 1.08) c h);
+      }
     }
   }
   .kind__secondary {

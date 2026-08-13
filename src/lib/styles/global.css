@@ -13,6 +13,12 @@
   box-sizing: border-box;
 }
 
+html {
+  /* an SPA has no pull-to-refresh to offer — a swipe past the top reloading the whole app
+     mid-edit is pure loss */
+  overscroll-behavior-y: none;
+}
+
 body {
   margin: 0;
   background: var(--color-background);
@@ -20,6 +26,30 @@ body {
   font-family: var(--font-family);
   /* type runs a notch below the 1rem sizing grid — see tokens.css */
   font-size: 0.875rem;
+  -webkit-tap-highlight-color: transparent; /* the gray tap flash on mobile */
+}
+
+/* touch papercuts: no double-tap-zoom delay on controls, no long-press text selection on
+   buttons — both keep taps feeling immediate */
+button,
+a,
+input,
+select,
+label {
+  touch-action: manipulation;
+}
+button {
+  user-select: none;
+}
+
+/* iOS zooms the page into any focused field whose font-size is under 16px; our fields run
+   12–14px by design. One hardware-constraint override beats retuning every component. */
+@media (pointer: coarse) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
 }
 
 h1,

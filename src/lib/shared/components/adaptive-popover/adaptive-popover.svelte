@@ -77,8 +77,10 @@
     color: oklch(from var(--color-text) l c h / 55%);
     cursor: pointer;
 
-    &:hover {
-      background: oklch(from var(--color-text) l c h / 8%);
+    @media (hover: hover) {
+      &:hover {
+        background: oklch(from var(--color-text) l c h / 8%);
+      }
     }
   }
 </style>
