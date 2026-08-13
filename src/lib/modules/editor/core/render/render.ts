@@ -33,15 +33,17 @@ import {
 import { FULL_BLEED_R, drawProceduralArc, drawSector, hexRGB, progressFrac } from "./arc";
 import { CENTER, SCREEN } from "./screen";
 
-/** One layer drawn at a scale it doesn't have yet — what a corner drag shows while it lasts.
- *  Rescaling the assets per pointermove costs a decode per frame; this costs a matrix. `ax`/`ay`
- *  is the point that stays put: the anchored corner, or a hand's rotation centre. */
+/** One layer drawn at a scale or angle it doesn't have yet — what a corner or rotate drag shows
+ *  while it lasts. Re-baking the assets per pointermove costs a decode per frame; this costs a
+ *  matrix. `ax`/`ay` is the point that stays put: the anchored corner, a hand's rotation centre,
+ *  or the box centre a rotation turns around. */
 export interface ResizePreview {
   id: NodeId;
   kw: number;
   kh: number;
   ax: number;
   ay: number;
+  deg?: number;
 }
 
 interface Env {
@@ -94,11 +96,14 @@ function drawLayer(env: Env, l: Layer, place: Place = {}): Size | null {
 
   if (!pv) return drawPlain(env, l, place);
   // scale the drawn pixels around the anchor, then move the hits the same way — the layer's own
-  // draw code stays unaware it's being previewed
+  // draw code stays unaware it's being previewed. A rotation preview leaves the hits alone (its
+  // factors are 1): the selection box stays put for the gesture and lands on the turned art when
+  // the rotation is baked.
   const from = env.hits?.length ?? 0;
 
   env.ctx?.save();
   env.ctx?.translate(pv.ax, pv.ay);
+  if (pv.deg) env.ctx?.rotate((pv.deg * Math.PI) / 180);
   env.ctx?.scale(pv.kw, pv.kh);
   env.ctx?.translate(-pv.ax, -pv.ay);
   const size = drawPlain(env, l, place);

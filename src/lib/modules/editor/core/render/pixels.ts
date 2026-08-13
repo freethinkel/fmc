@@ -192,6 +192,51 @@ export async function invertAsset(
   return { asset: { ...a, data: await encodeBitmap(bitmap, a.w, a.h, a.cf) }, bitmap };
 }
 
+/** Turn one asset's pixels by `deg` around their centre, growing the canvas to the rotated
+ *  bounding box. The file format has no angle of its own, so a rotation IS a pixel edit: the art
+ *  is re-baked (like invertAsset above) and `rotate` only records the running total for the
+ *  inspector. cf 4 has no alpha for the corners a non-square turn opens up, so it becomes cf 5;
+ *  a JPEG resource keeps its codec and gets black corners instead.
+ *  ponytail: every call resamples the current pixels, so a hundred 1° nudges blur more than one
+ *  100° turn. Pin the pre-rotation bitmap in the cache if that ever shows. */
+export async function rotateAsset(
+  a: ImageAsset,
+  cache: ImageCache | undefined,
+  deg: number,
+): Promise<{ asset: ImageAsset; bitmap: ImageBitmap } | null> {
+  const src = cache?.bitmap ?? (await bitmapOf({ cf: a.cf, w: a.w, h: a.h, data: a.data }));
+  const rad = (deg * Math.PI) / 180;
+  const cos = Math.abs(Math.cos(rad)),
+    sin = Math.abs(Math.sin(rad));
+  const size = (v: number) => Math.max(1, Math.min(2047, Math.round(v))); // 11-bit, see encodePixels
+  const w = size(a.w * cos + a.h * sin),
+    h = size(a.w * sin + a.h * cos);
+  const cf = a.cf === 4 && deg % 90 !== 0 ? 5 : a.cf;
+  const c = new OffscreenCanvas(w, h);
+  const cx = c.getContext("2d")!;
+
+  cx.translate(w / 2, h / 2);
+  cx.rotate(rad);
+  cx.drawImage(src, -a.w / 2, -a.h / 2, a.w, a.h);
+  const bitmap = await createImageBitmap(c);
+  const rotate = ((((a.rotate ?? 0) + deg) % 360) + 360) % 360;
+
+  return {
+    // the turned pixels are the ones the user was looking at, filter included — so `adjust` goes
+    // back to neutral rather than claiming it could still be dialled away
+    asset: {
+      ...a,
+      cf,
+      w,
+      h,
+      rotate,
+      adjust: undefined,
+      data: await encodeBitmap(bitmap, w, h, cf),
+    },
+    bitmap,
+  };
+}
+
 /** Re-encode every asset whose pixels were resized or adjusted, from the pinned original —
  *  the downsampling and the filter land only in what gets exported, never in the preview. */
 export async function flushAssets(

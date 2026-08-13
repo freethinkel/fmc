@@ -50,6 +50,10 @@ export interface ImageAsset {
   readonly h: number;
   readonly data: Uint8Array;
   readonly adjust?: ImageAdjust;
+  /** Degrees the pixels have already been turned by. The format has no rotation (a widget's meta
+   *  is a size and nothing else), so a rotation is baked into the art — this is bookkeeping, so
+   *  the inspector can show an absolute angle. See rotateAsset. */
+  readonly rotate?: number;
 }
 
 /** Editor-side only: never serialized, never in undo history, freely mutable. */
