@@ -23,7 +23,7 @@ import {
   type ImageCache,
   type ImageId,
 } from "../core/document/doc";
-import { findLayer, patchLayer, scaleRing } from "../core/document/edits";
+import { findLayer, fitRingsToArt, patchLayer, scaleRing } from "../core/document/edits";
 import type { Layer, NodeId } from "../core/document/doc";
 import type { Resource } from "../core/format";
 import { $doc, committed, docLoaded } from "./doc.model";
@@ -504,7 +504,16 @@ sample({
   clock: [replaceImageFx.doneData, clearImageFx.doneData],
   filter: Boolean,
   fn: ({ asset }) => ({
-    edit: (doc: Doc) => ({ ...doc, images: new Map(doc.images).set(asset.id, asset) }),
+    edit: (doc: Doc) => {
+      const old = doc.images.get(asset.id);
+      const next = { ...doc, images: new Map(doc.images).set(asset.id, asset) };
+
+      // a ring's circle isn't its pixels (see scaleRing), so art of a different size moves it —
+      // otherwise the sector keeps pivoting around the circle the old bitmap had
+      return old && old.w && old.h && (old.w !== asset.w || old.h !== asset.h)
+        ? fitRingsToArt(next, asset.id, asset.w / old.w, asset.h / old.h)
+        : next;
+    },
   }),
   target: committed,
 });

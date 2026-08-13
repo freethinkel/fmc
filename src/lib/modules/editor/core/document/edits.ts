@@ -34,14 +34,27 @@ export const ringRadius = (l: RingLayer) =>
 export function scaleRing(l: RingLayer, kx: number, ky: number): Partial<RingLayer> {
   const px = (v: number) => Math.max(1, Math.round(v));
   const meta = (w: number, h: number) => (l.meta.auto ? {} : { meta: { ...l.meta, w, h } });
-
-  if (l.frames.length)
-    return l.meta.w && l.meta.h ? meta(px(l.meta.w * kx), px(l.meta.h * ky)) : {};
   const k = Math.abs(kx - 1) >= Math.abs(ky - 1) ? kx : ky;
+
+  if (l.frames.length) {
+    // 0x5b carries no radius at all, but a 0x5a ring WITH art writes one — it has to keep
+    // agreeing with the art, the same way it is set when the art first arrives
+    const spec = l.spec.radius ? { spec: { ...l.spec, radius: px(l.spec.radius * k) } } : {};
+
+    return { ...spec, ...(l.meta.w && l.meta.h ? meta(px(l.meta.w * kx), px(l.meta.h * ky)) : {}) };
+  }
   const r = Math.min(FULL_BLEED_R - 1, Math.max(2, Math.round(ringRadius(l) * k)));
 
   return { spec: { ...l.spec, radius: r, width: px(l.spec.width * k) }, ...meta(2 * r, 2 * r) };
 }
+
+/** Swapping a ring's bitmap for one of a different size is a resize by another name — the circle
+ *  the sector pivots around lives in the layer, not in the art. Every ring drawing `image` follows
+ *  it by the same rule as a drag (scaleRing); an asset can be shared, so this is all of them. */
+export const fitRingsToArt = (doc: Doc, image: ImageId, kx: number, ky: number): Doc =>
+  mapLayers(doc, (l) =>
+    l.kind === "ring" && l.frames.includes(image) ? { ...l, ...scaleRing(l, kx, ky) } : l,
+  );
 
 export const childrenOf = (l: Layer): readonly Layer[] =>
   l.kind === "group" ? l.children : l.kind === "raw" ? (l.children ?? []) : [];
