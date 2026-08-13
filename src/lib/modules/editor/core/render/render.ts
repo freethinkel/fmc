@@ -30,7 +30,7 @@ import {
   type Point,
   type Size,
 } from "./canvas";
-import { drawProceduralArc, drawSector, hexRGB, progressFrac } from "./arc";
+import { FULL_BLEED_R, drawProceduralArc, drawSector, hexRGB, progressFrac } from "./arc";
 import { CENTER, SCREEN } from "./screen";
 
 /** One layer drawn at a scale it doesn't have yet — what a corner drag shows while it lasts.
@@ -245,8 +245,8 @@ function drawRing(
       ringColorOf(l.meta) ?? hexRGB(env.sim.accentColor),
     );
     const r = size.w / 2;
-    const cx = r >= 230 ? CENTER : x + r,
-      cy = r >= 230 ? CENTER : y + r;
+    const cx = r >= FULL_BLEED_R ? CENTER : x + r,
+      cy = r >= FULL_BLEED_R ? CENTER : y + r;
 
     if (env.ctx) env.hits?.push({ layer: l, x: cx - r, y: cy - r, w: size.w, h: size.h });
     return size;

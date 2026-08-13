@@ -19,6 +19,7 @@
     FRAME_LABELS,
     ID_LABELS,
   } from "../../core/document/sources";
+  import type { ArcSpec } from "../../core/render/arc";
   import { slotBindingOf } from "../../core/document/edits";
   import { SLOT_METRIC_CHOICES } from "../../core/document/factory";
   import { editorModel } from "../../model";
@@ -68,6 +69,9 @@
   // its baked color, so this works on any art.
   const setAccent = (on: boolean) =>
     meta && set(layer.id, { meta: { ...meta, flags: on ? 4 : 0 } } as Partial<Layer>);
+
+  const setSpec = (patch: Partial<ArcSpec>) =>
+    ring && set(ring.id, { spec: { ...ring.spec, ...patch } } as Partial<Layer>);
 
   const setFmt = (digits: number, padZero: boolean) =>
     set(layer.id, { digits: digits & 0x1f, padZero } as Partial<Layer>);
@@ -137,13 +141,20 @@
         {ID_LABELS[meta.source]} needs {frameLabels.length} frames, this widget has {images.length}
       </p>
     {/if}
-    {#if ring}
-      <p class="hint-xs">
-        gauge {ring.spec.min}–{ring.spec.max}, sweep {ring.spec.start}° → {ring.spec.end}°,
-        {ring.spec.width}px stroke{ring.spec.radius ? `, radius ${ring.spec.radius}` : ""}
-      </p>
-    {/if}
   </div>
+{/if}
+{#if ring}
+  <!-- the gauge's own range: frac = (value - min) / (max - min). The sweep and the stroke are
+       geometry and live in that section. Its own panel child, so it keeps the panel's row gap
+       instead of sitting flush against the source select. -->
+  <div class="row">
+    <span class="field-label w-md">gauge</span>
+    <Input type="number" value={String(ring.spec.min)} onInput={(v) => setSpec({ min: num(v) })} />
+    <span class="field-label w-md">to</span>
+    <Input type="number" value={String(ring.spec.max)} onInput={(v) => setSpec({ max: num(v) })} />
+  </div>
+{/if}
+{#if meta}
   <div class="check-row">
     <Checkbox checked={isAccent(meta)} onChange={(v) => setAccent(v)} />
     <button type="button" class="check-label" onclick={() => setAccent(!isAccent(meta))}

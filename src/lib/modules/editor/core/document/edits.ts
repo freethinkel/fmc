@@ -14,9 +14,34 @@ import {
   type GroupLayer,
   type Layer,
   type NodeId,
+  type RingLayer,
   type Screen,
 } from "./doc";
+import { FULL_BLEED_R } from "../render/arc";
 import { SLOT_SEL_ID, isSlotSel } from "./sources";
+
+/** What a ring with no bitmap is drawn at: its own radius, else the widget box, else the renderer's
+ *  last-resort guess — the same ladder as drawProceduralArc. */
+export const ringRadius = (l: RingLayer) =>
+  l.spec.radius || (l.meta.auto ? 0 : Math.round(l.meta.w / 2)) || 60;
+
+/** Resizing a ring is not resizing its pixels. `meta.w/h` is the circle drawSector pivots the
+ *  filled sector around — NOT the bitmap, which may be cropped to the arc's bounding box — and a
+ *  ring with no bitmap has nothing but `spec.radius`. Both have to follow the layer or the sector
+ *  swings around the old centre and the ring tears. A circle takes one factor, so a non-uniform
+ *  drag is read as the axis that actually moved; `auto` is a group's "size me from my content"
+ *  sentinel rather than a diameter, so it is left alone. */
+export function scaleRing(l: RingLayer, kx: number, ky: number): Partial<RingLayer> {
+  const px = (v: number) => Math.max(1, Math.round(v));
+  const meta = (w: number, h: number) => (l.meta.auto ? {} : { meta: { ...l.meta, w, h } });
+
+  if (l.frames.length)
+    return l.meta.w && l.meta.h ? meta(px(l.meta.w * kx), px(l.meta.h * ky)) : {};
+  const k = Math.abs(kx - 1) >= Math.abs(ky - 1) ? kx : ky;
+  const r = Math.min(FULL_BLEED_R - 1, Math.max(2, Math.round(ringRadius(l) * k)));
+
+  return { spec: { ...l.spec, radius: r, width: px(l.spec.width * k) }, ...meta(2 * r, 2 * r) };
+}
 
 export const childrenOf = (l: Layer): readonly Layer[] =>
   l.kind === "group" ? l.children : l.kind === "raw" ? (l.children ?? []) : [];
