@@ -7,6 +7,9 @@
     ID_METRIC,
     METRIC_GOAL,
     pickerLabel,
+    SLEEP_IDS,
+    SUN_IDS,
+    type Sim,
     type SimMetric,
   } from "../core/document/sources";
   import { editorModel } from "../model";
@@ -24,7 +27,18 @@
     ["distance", "Distance, m", ""],
     ["temp", "Temperature, °", ""],
     ["aqi", "AQI", ""],
+    ["spo2", "Blood oxygen, %", ""],
     ["stands", "Stand hours", "Stand goal, hours"],
+  ];
+
+  // The clock-shaped fields: each feeds an hour source and a minute source (and, for sleep, a
+  // ring against its goal), so one time field beats the four number boxes those ids would ask
+  // for. Shown only while the document reads the ids behind them.
+  const TIMES: [keyof Sim & ("sunrise" | "sunset" | "sleep" | "sleepGoal"), string, number[]][] = [
+    ["sunrise", "Sunrise", SUN_IDS],
+    ["sunset", "Sunset", SUN_IDS],
+    ["sleep", "Sleep", SLEEP_IDS],
+    ["sleepGoal", "Sleep goal", SLEEP_IDS],
   ];
 
   const used = $derived(new Set($ids.map(({ id }) => ID_METRIC[id]).filter(Boolean)));
@@ -36,6 +50,17 @@
   function localISO(t: number) {
     return new Date(t - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 19);
   }
+
+  const shownTimes = $derived(
+    TIMES.filter(([, , behind]) => $ids.some(({ id }) => behind.includes(id))),
+  );
+  const hhmm = (mins: number) =>
+    `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`;
+  const minutes = (v: string) => {
+    const [h, m] = v.split(":").map(Number);
+
+    return h * 60 + m;
+  };
 </script>
 
 <div class="panel">
@@ -123,6 +148,20 @@
             />
           </div>
         {/if}
+      {/each}
+    </div>
+  {/if}
+  {#if shownTimes.length}
+    <div class="fields-grid">
+      {#each shownTimes as [key, label]}
+        <div>
+          <span class="muted-label">{label}</span>
+          <Input
+            type="time"
+            value={hhmm($sim[key])}
+            onInput={(v) => v && simPatched({ [key]: minutes(v) })}
+          />
+        </div>
       {/each}
     </div>
   {/if}
