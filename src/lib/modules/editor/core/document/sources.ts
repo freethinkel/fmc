@@ -39,6 +39,9 @@ export const ID_LABELS: Record<number, string> = {
   0x18: "weekday",
   0x19: "steps",
   0x1a: "heart rate",
+  // Same face again (see 0x84 below): the widget beside its heart rate, reading 98 under a
+  // blood-oxygen icon on the screenshot.
+  0x1b: "blood oxygen",
   0x1c: "calories",
   0x1e: "calories",
   0x22: "distance km int",
@@ -49,6 +52,11 @@ export const ID_LABELS: Record<number, string> = {
   0x27: "calories (slot)?",
   0x30: "battery",
   0x36: "temperature",
+  // Last night's sleep, on the same face: an hours/minutes pair reading "7.36" inside a ring
+  // that gauges the same value against the wearer's sleep goal (0x81 ring, spec max 100).
+  0x42: "sleep hours",
+  0x43: "sleep min",
+  0x46: "sleep (ring)",
   0x48: "stand hours",
   0x49: "steps (slot)",
   0x5f: "temperature",
@@ -86,6 +94,8 @@ export const ID_LABELS: Record<number, string> = {
 
 /** The four sunrise/sunset sources, in the order a face lays them out. */
 export const SUN_IDS = [0x84, 0x85, 0x86, 0x87];
+/** Sleep: the hours/minutes pair and the ring gauging the same duration. */
+export const SLEEP_IDS = [0x42, 0x43, 0x46];
 
 // Value-indexed frame sets: the firmware picks images[value % count], so frame order is part
 // of the format. What each index MUST hold, for the sources where the value isn't the frame's
@@ -131,6 +141,7 @@ export interface Sim {
   temp: SimValue;
   distance: SimValue;
   aqi: SimValue;
+  spo2: SimValue; // blood oxygen, % (0x1b)
   stands: SimValue; // hours stood (0x48) — see ID_LABELS/idValue note, corrected from "calories"
   stepsGoal: SimValue;
   calGoal: SimValue;
@@ -141,6 +152,10 @@ export interface Sim {
   // is a dozen lines of trigonometry that would replace exactly these two fields.
   sunrise: number;
   sunset: number;
+  // Last night's sleep and the goal its ring divides by, both in minutes — same hour/minute
+  // split, so the panel offers them the same way.
+  sleep: number;
+  sleepGoal: number;
   overrides: Record<number, number | string>;
   // preview override for accent-flagged widgets (see metaInfo's `accent` field / "Accent
   // color" in docs/cmf-protocol.md); null = draw the baked default. Applied async in
@@ -191,12 +206,15 @@ export function defaultSim(): Sim {
     distance: 4520,
     temp: 25,
     aqi: 42,
+    spo2: 98,
     stands: 5,
     stepsGoal: 10000,
     calGoal: 500,
     standsGoal: 12,
     sunrise: 5 * 60 + 41, // the times the stock Multifunction face's own screenshot shows
     sunset: 18 * 60 + 24,
+    sleep: 7 * 60 + 36, // ditto, against the watch's own 8-hour default goal
+    sleepGoal: 8 * 60,
     overrides: {}, // id -> number, manual override of any source
     accentColor: null,
     showSlotPlaceholders: false,
@@ -226,6 +244,7 @@ export type SimMetric =
   | "distance"
   | "temp"
   | "aqi"
+  | "spo2"
   | "stands";
 
 /** Which metric each data source reads. The firmware exposes one metric under a pile of ids —
@@ -244,6 +263,7 @@ export const ID_METRIC: Record<number, SimMetric> = {
   0x6f: "steps",
   0x82: "steps",
   0x1a: "hr",
+  0x1b: "spo2",
   // 0x48/0x24 corrected against Function's widget-slot menu icons (standing figure/lightning
   // bolt, not calories/steps) — 0x48 is stand hours, 0x24 is battery.
   0x24: "battery",
@@ -349,6 +369,14 @@ export function idValue(id: number, sim: Sim, t: TimeParts): number {
       return sim.is24h ? Math.floor(sim.sunset / 60) : h12(Math.floor(sim.sunset / 60));
     case 0x87:
       return sim.sunset % 60;
+    // Sleep: the pair splits the duration, the ring reads it whole and divides by the goal
+    // (see goalOf) — the same shape as a steps ring.
+    case 0x42:
+      return Math.floor(sim.sleep / 60);
+    case 0x43:
+      return sim.sleep % 60;
+    case 0x46:
+      return sim.sleep;
     default: {
       // every source that just hands its metric back, from the one table the panel groups by
       const metric = ID_METRIC[id];
@@ -373,6 +401,7 @@ export function goalOf(id: number, sim: Sim): SimValue | undefined {
     0x1e: sim.calGoal,
     0x27: sim.calGoal,
     0x48: sim.standsGoal,
+    0x46: sim.sleepGoal,
   }[id];
 }
 

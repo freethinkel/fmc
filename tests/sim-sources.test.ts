@@ -6,6 +6,7 @@ import { test, expect } from "vitest";
 import {
   ID_METRIC,
   defaultSim,
+  goalOf,
   idValue,
   timeParts,
   type SimMetric,
@@ -34,6 +35,15 @@ test("sunrise/sunset split one time each into the hour/minute pair the face read
   expect([0x84, 0x85, 0x86, 0x87].map((id) => idValue(id, sun, t))).toEqual([5, 41, 18, 24]);
   // 12h device setting: the same evening sunset reads as 6, like the stock face's screenshot
   expect(idValue(0x86, { ...sun, is24h: false }, t)).toBe(6);
+});
+
+test("sleep splits into hours/minutes, and its ring reads the whole duration", () => {
+  const { sim, t } = at("steps", 0);
+  const slept = { ...sim, sleep: 7 * 60 + 36, sleepGoal: 8 * 60 };
+
+  expect([0x42, 0x43, 0x46].map((id) => idValue(id, slept, t))).toEqual([7, 36, 456]);
+  // the ring divides by the goal, so the duration and its denominator share one unit
+  expect(goalOf(0x46, slept)).toBe(480);
 });
 
 test("an override still wins over the metric field — that's what the folded section is for", () => {
