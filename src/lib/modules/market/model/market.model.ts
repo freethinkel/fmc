@@ -47,6 +47,10 @@ export const $publishDialogOpen = createStore(false);
 // a page revisit reuses $items; reloading needs a full page refresh (or removeFx's own reload below)
 const $marketRequestedOnce = createStore(false);
 export const $likes = createStore<RecordModel[]>([]);
+// the single record behind the showcase page (/market/[id]) — refetched on every mount, so
+// it doesn't need patching when downloads/likes move elsewhere
+export const $watchface = createStore<RecordModel | null>(null);
+export const $watchfaceLoading = marketApi.loadWatchfaceFx.pending;
 export const $items = createStore<RecordModel[]>([]);
 export const $myItems = createStore<RecordModel[]>([]);
 export const $marketErr = createStore("");
@@ -72,6 +76,9 @@ export const saveDraftRequested = createEvent<marketApi.SavePayload>();
 export const publishRequested = createEvent<marketApi.SavePayload>();
 export const publishDialogOpened = createEvent();
 export const publishDialogClosed = createEvent();
+// showcase page: load one watchface by id, and open its page from a card
+export const watchfaceRequested = createEvent<string>();
+export const showcaseRequested = createEvent<RecordModel>();
 export const likeToggleRequested = createEvent<{
   wf: RecordModel;
   userId: string;
@@ -95,6 +102,7 @@ const saveFx = attach({
 });
 export const $savePending = saveFx.pending;
 const navigateToMarketFx = createEffect(() => goto("/market"));
+const navigateToShowcaseFx = createEffect((wf: RecordModel) => goto(`/market/${wf.id}`));
 // resolves the caller's existing like id from $likes so the api layer doesn't need to know about model state
 const toggleLikeFx = attach({
   source: $likes,
@@ -150,6 +158,36 @@ sample({
 });
 // don't let the previous creator's name and grid sit on screen while the next one loads
 reset({ clock: profileLoadRequested, target: [$profile, $profileItems] });
+
+sample({
+  clock: showcaseRequested,
+  target: navigateToShowcaseFx,
+});
+
+sample({
+  clock: watchfaceRequested,
+  target: marketApi.loadWatchfaceFx,
+});
+// drop the previous record while the new one loads — otherwise navigating from one showcase
+// page to another shows the old face under the new id
+sample({
+  clock: watchfaceRequested,
+  fn: () => null,
+  target: $watchface,
+});
+sample({
+  clock: marketApi.loadWatchfaceFx.doneData,
+  fn: ({ wf }) => wf,
+  target: $watchface,
+});
+// fold this face's likes into the shared list, so the showcase page counts and toggles them
+// with the same $likes/likeToggleRequested the grid uses
+sample({
+  clock: marketApi.loadWatchfaceFx.doneData,
+  source: $likes,
+  fn: (all, { wf, likes }) => [...all.filter((l) => l.watchface !== wf.id), ...likes],
+  target: $likes,
+});
 
 sample({
   clock: removeRequested,
@@ -380,6 +418,7 @@ sample({
     marketApi.loadMarketFx.failData,
     marketApi.loadMyFx.failData,
     marketApi.loadProfileFx.failData,
+    marketApi.loadWatchfaceFx.failData,
     toggleLikeFx.failData,
     marketApi.removeFx.failData,
     marketApi.togglePublishFx.failData,
@@ -416,6 +455,11 @@ sample({
 // any successful load clears the banner — otherwise a one-off failure (or a request the SDK
 // auto-cancelled) stayed on screen for the rest of the session, /my never reset it at all
 reset({
-  clock: [marketApi.loadMarketFx.done, marketApi.loadMyFx.done, marketApi.loadProfileFx.done],
+  clock: [
+    marketApi.loadMarketFx.done,
+    marketApi.loadMyFx.done,
+    marketApi.loadProfileFx.done,
+    marketApi.loadWatchfaceFx.done,
+  ],
   target: $marketErr,
 });

@@ -20,7 +20,7 @@
     $marketErr: marketErr,
     profileLoadRequested,
     likeToggleRequested,
-    editRequested,
+    showcaseRequested,
   } = marketModel;
 
   $effect(() => {
@@ -100,7 +100,7 @@
             liked={!!myLike(wf.id)}
             canLike={!!$user}
             showAuthor={false}
-            onOpen={() => editRequested(wf)}
+            onOpen={() => showcaseRequested(wf)}
             onLike={() => $user && likeToggleRequested({ wf, userId: $user.id })}
           />
         {:else}

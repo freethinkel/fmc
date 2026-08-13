@@ -81,11 +81,24 @@ placeholder bytes (`(1,0,0)`/`(4,0,0)`), not a meaningful color, at least on fla
 | 0x15/0x16         | month (1-12)                    | 0x49,0x6a,   | steps & calories,         |
 | 0x17              | day of month                    | 0x6c,0x6f    | exact metric unconfirmed  |
 | 0x18              | weekday (0=Sunday)              | 0x79+slotIdx | synthetic: slot selection |
+| 0x84/0x85         | sunrise hour/minute             | 0x86/0x87    | sunset hour/minute        |
+| 0x42/0x43/0x46    | sleep hours/minutes, ring       | 0x1b         | blood oxygen (SpO2)       |
 
 Reconciled with §16 of the protocol repo (joshuapassos/CMF-Watch-Pro-2-BLE-Protocol), whose
 hand-angle/tens-units ids come from disassembling the firmware getter table; the health labels
 are ours, calibrated against the companion app's slot-menu icons. Unlisted: `0x82`, which drives
 Activity_Mood's fan gauge and is documented nowhere — treated as a goal percentage.
+
+`0x84..0x87` come from the one corpus face that binds them, `Default__280__Multifunction`: two
+auto-layout groups flanking its sun arc (`x=41` and `x=377`, both at `y=130`), each built like the
+face's own clock group — hour, separator image, minute widget declaring `max=60` — and rendering
+the `05:41` / `06:24` its screenshot shows. The hour appears to follow the device's 12/24h setting
+(that `06:24` is an evening sunset), which is how `idValue` drives it.
+
+`0x1b` (SpO2 — the widget beside the heart rate, reading 98) and `0x42`/`0x43` plus the `0x46`
+ring (sleep hours/minutes, `7.36H` against the wearer's sleep goal) come off the same face and
+the same screenshot. The ring gauges the duration whole and divides by the goal, like a steps
+ring, so the simulator feeds it minutes and `goalOf` answers with the goal in minutes too.
 
 Any id can drive a `number` widget, an `image`-pick widget, or an arc ring — the mechanism
 is generic (see below), not hardcoded per id.

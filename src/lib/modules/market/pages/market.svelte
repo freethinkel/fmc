@@ -17,7 +17,7 @@
     marketLoadRequested,
     likeToggleRequested,
     removeRequested,
-    editRequested,
+    showcaseRequested,
   } = marketModel;
 
   marketLoadRequested();
@@ -113,7 +113,7 @@
           liked={!!myLike(wf.id)}
           canLike={!!$user}
           canRemove={$user?.id === wf.owner}
-          onOpen={() => editRequested(wf)}
+          onOpen={() => showcaseRequested(wf)}
           onLike={() => $user && likeToggleRequested({ wf, userId: $user.id })}
           onRemove={() => remove(wf)}
         />
