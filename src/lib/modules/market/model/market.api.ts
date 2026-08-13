@@ -20,6 +20,18 @@ export const loadMarketFx = createEffect(async () => {
   return { items, likes };
 });
 
+// the showcase page (/market/[id]) is a deep link: it can be opened without the catalog ever
+// having been fetched, so it asks for its one record — plus that record's likes, which the
+// model folds into the shared $likes list
+export const loadWatchfaceFx = createEffect(async (id: string) => {
+  const [wf, likes] = await Promise.all([
+    pb.collection("watchfaces").getOne(id, { expand: "owner" }),
+    pb.collection("likes").getFullList({ filter: `watchface = '${id}'` }),
+  ]);
+
+  return { wf, likes };
+});
+
 export const loadMyFx = createEffect((userId: string) =>
   pb.collection("watchfaces").getFullList({ sort: "-updated", filter: `owner = '${userId}'` }),
 );

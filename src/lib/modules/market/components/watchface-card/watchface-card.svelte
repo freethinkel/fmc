@@ -37,7 +37,7 @@
 
 <Card onClick={onOpen}>
   <div class="content">
-    <div class="preview" title="Open in editor">
+    <div class="preview" title="Open">
       <img src={fileUrl(wf, "preview")} alt={wf.name} loading="lazy" />
     </div>
     <div class="title-row">
