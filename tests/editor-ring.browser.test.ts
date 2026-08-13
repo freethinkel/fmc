@@ -173,4 +173,29 @@ test("a ring with no art can be given one, and keeps the bitmap's circle", async
   expect(doc().images.get(l.frames[0])!.w).toBe(64);
   expect(l.meta.w).toBe(64);
   expect(l.meta.h).toBe(64);
+
+  // and swapping that art for a bigger bitmap moves the circle again — an editor-made ring is
+  // 0x5a, so its spec radius is written to the file and has to follow too
+  editorModel.replaceImageRequested({ id: l.frames[0], file: await png(128) });
+  await vi.waitFor(() => expect(ringById(id).meta.w).toBe(128));
+
+  expect(ringById(id).spec.radius).toBe(64);
+});
+
+// Swapping the bitmap is a resize by another name: the circle the sector pivots around is
+// meta.w/h, not the art, so art of a different size has to move it — or the replaced ring keeps
+// swinging around the old centre, which is what "can't replace the image" looks like on screen.
+test("replacing a ring's art moves its circle with it", async () => {
+  await load();
+  const ring = imageRing();
+  const frame = ring.frames[0];
+  const asset0 = doc().images.get(frame)!;
+  const w0 = ring.meta.w,
+    h0 = ring.meta.h;
+
+  editorModel.replaceImageRequested({ id: frame, file: await png(64) });
+  await vi.waitFor(() => expect(doc().images.get(frame)!.w).toBe(64));
+
+  expect(ringById(ring.id).meta.w).toBe(Math.round((w0 * 64) / asset0.w));
+  expect(ringById(ring.id).meta.h).toBe(Math.round((h0 * 64) / asset0.h));
 });
