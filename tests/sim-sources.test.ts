@@ -27,6 +27,15 @@ test.each(Object.entries(ID_METRIC))("0x%s reads its mapped metric", (idHex, met
   expect(idValue(id, low.sim, low.t)).not.toBe(idValue(id, high.sim, high.t));
 });
 
+test("sunrise/sunset split one time each into the hour/minute pair the face reads", () => {
+  const { sim, t } = at("steps", 0);
+  const sun = { ...sim, sunrise: 5 * 60 + 41, sunset: 18 * 60 + 24 };
+
+  expect([0x84, 0x85, 0x86, 0x87].map((id) => idValue(id, sun, t))).toEqual([5, 41, 18, 24]);
+  // 12h device setting: the same evening sunset reads as 6, like the stock face's screenshot
+  expect(idValue(0x86, { ...sun, is24h: false }, t)).toBe(6);
+});
+
 test("an override still wins over the metric field — that's what the folded section is for", () => {
   const { sim, t } = at("steps", 100);
 

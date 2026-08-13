@@ -7,6 +7,7 @@
     ID_METRIC,
     METRIC_GOAL,
     pickerLabel,
+    SUN_IDS,
     type SimMetric,
   } from "../core/document/sources";
   import { editorModel } from "../model";
@@ -36,6 +37,17 @@
   function localISO(t: number) {
     return new Date(t - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 19);
   }
+
+  // Sunrise/sunset are one time each, feeding an hour and a minute source — so they get a time
+  // field rather than the two number boxes four ids would otherwise ask for.
+  const sunUsed = $derived($ids.some(({ id }) => SUN_IDS.includes(id)));
+  const hhmm = (mins: number) =>
+    `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`;
+  const minutes = (v: string) => {
+    const [h, m] = v.split(":").map(Number);
+
+    return h * 60 + m;
+  };
 </script>
 
 <div class="panel">
@@ -124,6 +136,26 @@
           </div>
         {/if}
       {/each}
+    </div>
+  {/if}
+  {#if sunUsed}
+    <div class="fields-grid">
+      <div>
+        <span class="muted-label">Sunrise</span>
+        <Input
+          type="time"
+          value={hhmm($sim.sunrise)}
+          onInput={(v) => v && simPatched({ sunrise: minutes(v) })}
+        />
+      </div>
+      <div>
+        <span class="muted-label">Sunset</span>
+        <Input
+          type="time"
+          value={hhmm($sim.sunset)}
+          onInput={(v) => v && simPatched({ sunset: minutes(v) })}
+        />
+      </div>
     </div>
   {/if}
 
