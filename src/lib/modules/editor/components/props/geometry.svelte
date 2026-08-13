@@ -90,14 +90,14 @@
 {/if}
 {#if placed && !frame}
   <div class="row">
-    <span class="field-label">x</span>
     <Input
+      label="x"
       type="number"
       value={String(placed.x)}
       onInput={(v) => set(layer.id, { x: num(v) } as Partial<Layer>)}
     />
-    <span class="field-label">y</span>
     <Input
+      label="y"
       type="number"
       value={String(placed.y)}
       onInput={(v) => set(layer.id, { y: num(v) } as Partial<Layer>)}
@@ -106,8 +106,8 @@
 {/if}
 {#if resSize}
   <div class="row">
-    <span class="field-label">w</span>
     <Input
+      label="w"
       type="number"
       min={1}
       max={2047}
@@ -115,8 +115,8 @@
       onChange={(v) =>
         resize(num(v), $lockAspect ? Math.round((num(v) * resSize.h) / resSize.w) : resSize.h)}
     />
-    <span class="field-label">h</span>
     <Input
+      label="h"
       type="number"
       min={1}
       max={2047}
@@ -151,16 +151,12 @@
 {/if}
 {#if frame}
   <div class="row">
-    <span class="field-label">x</span>
-    <Input type="number" value={String(frame.x)} onInput={(v) => setFrame({ x: num(v) })} />
-    <span class="field-label">y</span>
-    <Input type="number" value={String(frame.y)} onInput={(v) => setFrame({ y: num(v) })} />
+    <Input label="x" type="number" value={String(frame.x)} onInput={(v) => setFrame({ x: num(v) })} />
+    <Input label="y" type="number" value={String(frame.y)} onInput={(v) => setFrame({ y: num(v) })} />
   </div>
   <div class="row">
-    <span class="field-label">w</span>
-    <Input type="number" value={String(frame.w)} onInput={(v) => setFrame({ w: num(v) })} />
-    <span class="field-label">h</span>
-    <Input type="number" value={String(frame.h)} onInput={(v) => setFrame({ h: num(v) })} />
+    <Input label="w" type="number" value={String(frame.w)} onInput={(v) => setFrame({ w: num(v) })} />
+    <Input label="h" type="number" value={String(frame.h)} onInput={(v) => setFrame({ h: num(v) })} />
   </div>
   <div class="row">
     <span class="field-label">align</span>
@@ -182,14 +178,14 @@
 {/if}
 {#if hand}
   <div class="row">
-    <span class="field-label w-md">pivot x</span>
     <Input
+      label="pivot x"
       type="number"
       value={String(hand.pivotX)}
       onInput={(v) => set(layer.id, { pivotX: num(v) } as Partial<Layer>)}
     />
-    <span class="field-label w-sm">y</span>
     <Input
+      label="pivot y"
       type="number"
       value={String(hand.pivotY)}
       onInput={(v) => set(layer.id, { pivotY: num(v) } as Partial<Layer>)}

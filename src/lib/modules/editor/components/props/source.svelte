@@ -171,9 +171,9 @@
 {/if}
 {#if num_}
   <div class="row">
-    <span class="field-label">digits</span>
-    <span class="w-num">
+    <span class="grow">
       <Input
+        label="digits"
         type="number"
         min={0}
         max={31}
