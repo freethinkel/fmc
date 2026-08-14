@@ -4,7 +4,7 @@
 // ring gauges, which metrics a slot offers.
 
 import { CENTER, SCREEN } from "../render/screen";
-import type { ArcSpec } from "../render/arc";
+import { ARC_REST, type ArcSpec } from "../render/arc";
 import {
   newImageId,
   newNodeId,
@@ -96,18 +96,21 @@ export const newGroup = (): GroupLayer => ({
   children: [],
 });
 
-/** A procedural progress ring: no bitmap at all — geometry and gauge live in the 0x5a spec, the
- *  stroke color follows the device accent (meta flags left at 0, see arc.ts). */
+/** A procedural progress ring: no bitmap at all — geometry and gauge live in the arc spec, the
+ *  stroke color follows the device accent. 0x5b with the corpus's trailing bytes and a 2-byte
+ *  struct tail is the shape the watch draws; `radius` is editor-side only from here on (0x5b
+ *  writes none — see bareRing in doc.ts). */
 export function newRing(): RingLayer {
   const d = 200;
   const spec: ArcSpec = {
-    kind: TAG.arc,
+    kind: TAG.arcClipped,
     min: 0,
     max: 100,
     start: 0,
     end: 360,
     width: 10,
     radius: d / 2,
+    rest: ARC_REST,
   };
 
   return {
@@ -116,7 +119,10 @@ export function newRing(): RingLayer {
     kind: "ring",
     x: CENTER - d / 2,
     y: CENTER - d / 2,
-    meta: metaWith({ w: d, h: d, source: 0x19, max: 100 }), // steps, as a percent-of-goal gauge
+    // steps, as a percent-of-goal gauge; flags 4 + byte 4 = accent slot 1, the same color source
+    // every stock imageless ring uses (a ring with no art has nothing else to stroke with)
+    meta: metaWith({ w: d, h: d, source: 0x19, max: 100, flags: 4, rgb: [1, 0, 0] }),
+    tail: "0000",
     spec,
     frames: [],
   };
