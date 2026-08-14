@@ -290,6 +290,34 @@ const SERVICE = new Set<number>([
   TAG.slot,
 ]);
 
+/** A ring with no art is nothing but a stroke, so where its color comes from is not decoration.
+ *  Byte 7 says which: 1 = the rgb in bytes 4..6 (and then byte 8 is 0xff), 4 = the wearer's
+ *  accent, whose slot is byte 4 — 1, 2 or 4 in all 206 accent widgets of the corpus, never 0.
+ *  The editor wrote byte 7 = 0, or 4 over a zero byte 4: no color to stroke with either way. */
+const ringMeta = (m: WidgetMeta): WidgetMeta =>
+  m.flags === 1 ? m : { ...m, flags: 4, rgb: [m.rgb[0] || 1, 0, 0], reserved: 0 };
+
+/** Every imageless ring in the corpus — and so every one the watch is known to draw — is a 0x5b
+ *  spec carrying its 3 trailing bytes, under a struct padded 2 bytes past the meta. The editor
+ *  used to mint a bare 16-byte 0x5a under an 18-byte struct: a shape no stock file has, and the
+ *  watch silently skipped it (#37). Applied in both directions — on the way in, so opening an
+ *  affected face repairs it in front of the author, and on the way out, so nothing else can put a
+ *  ring the watch won't draw into a file. 0x5b has nowhere to put a radius, so the editor's live
+ *  one moves into meta.w/h — where the reader picks it back up. */
+function bareRing(l: RingLayer): RingLayer {
+  const r = l.spec.radius;
+  const meta = ringMeta(r && !l.meta.auto ? { ...l.meta, w: 2 * r, h: 2 * r } : l.meta);
+
+  return {
+    ...l,
+    // `||`, not `??`: a spec parsed off a file the editor itself wrote has an empty rest, not a
+    // missing one — parseArcSpec hands back whatever was past the body, and there was nothing
+    tail: l.tail || "0000",
+    meta,
+    spec: { ...l.spec, kind: TAG.arcClipped, radius: 0, rest: l.spec.rest || ARC_REST },
+  };
+}
+
 /** A digit strip is tagged 0x60 in most faces, but the renderer also treats any node with a
  *  `fmt` sibling over a 10-glyph atlas as one — mirror that, so `kind` matches what's drawn. */
 const isDigits = (n: FaceNode, frames: readonly ImageId[]) =>
@@ -346,7 +374,11 @@ function toLayer(n: FaceNode, ids: readonly ImageId[]): Layer {
         pivotY: pivot.pivotY ?? 0,
         pivotFlag: pivot.flag ?? 0,
       };
-    if (spec) return { ...placed, kind: "ring", spec, frames };
+    if (spec) {
+      const ring: RingLayer = { ...placed, kind: "ring", spec, frames };
+
+      return frames.length ? ring : bareRing(ring);
+    }
     if (slot) {
       const v = unhex(slot.hex ?? "");
 
@@ -445,25 +477,6 @@ const frameHex = (f: Frame) => {
  *  watch silently skipped it (#37). Repaired here rather than only in the factory, so a ring
  *  already sitting in a document is fixed by re-exporting it. 0x5b has nowhere to put a radius,
  *  so the editor's live one moves into meta.w/h — where the reader picks it back up. */
-/** A ring with no art is nothing but a stroke, so where its color comes from is not decoration.
- *  Byte 7 says which: 1 = the rgb in bytes 4..6 (and then byte 8 is 0xff), 4 = the wearer's
- *  accent, whose slot is byte 4 — 1, 2 or 4 in all 206 accent widgets of the corpus, never 0.
- *  The editor wrote byte 7 = 0, or 4 over a zero byte 4: no color to stroke with either way. */
-const ringMeta = (m: WidgetMeta): WidgetMeta =>
-  m.flags === 1 ? m : { ...m, flags: 4, rgb: [m.rgb[0] || 1, 0, 0], reserved: 0 };
-
-function bareRing(l: RingLayer): RingLayer {
-  const r = l.spec.radius;
-  const meta = ringMeta(r && !l.meta.auto ? { ...l.meta, w: 2 * r, h: 2 * r } : l.meta);
-
-  return {
-    ...l,
-    tail: l.tail ?? "0000",
-    meta,
-    spec: { ...l.spec, kind: TAG.arcClipped, radius: 0, rest: l.spec.rest ?? ARC_REST },
-  };
-}
-
 function toNode(layer: Layer, runAt: ReadonlyMap<string, number[]>): FaceNode {
   const l = layer.kind === "ring" && !layer.frames.length ? bareRing(layer) : layer;
   const subs: FaceNode[] = [];

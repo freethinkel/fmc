@@ -11,7 +11,7 @@ import {
   type FaceNode,
   type Resource,
 } from "../src/lib/modules/editor/core/format";
-import { toLegacy } from "../src/lib/modules/editor/core/document/doc";
+import { toLegacy, type RingLayer } from "../src/lib/modules/editor/core/document/doc";
 import { blankDoc, newRing, withName } from "../src/lib/modules/editor/core/document/factory";
 import { SCREEN } from "../src/lib/modules/editor/core/render/screen";
 
@@ -53,11 +53,27 @@ const ringShape = (n: FaceNode) => {
   };
 };
 
-test("a fresh ring is written in the same node shape as a stock imageless ring", () => {
+/** What builds before the fix put in a file: a 0x5a spec with nothing past its body, no struct
+ *  tail, and a meta with no color source. Opening such a face has to repair it. */
+const legacyRing = (): RingLayer => {
+  const r = newRing();
+
+  return {
+    ...r,
+    tail: "",
+    meta: { ...r.meta, flags: 0, rgb: [0, 0, 0] },
+    spec: { ...r.spec, kind: TAG.arc, rest: "" },
+  };
+};
+
+test.each([
+  ["fresh", newRing],
+  ["legacy", legacyRing],
+])("a %s ring is written in the same node shape as a stock imageless ring", (_label, make) => {
   const doc = blankDoc("Ring", res(2, 2), res(SCREEN, SCREEN));
   const screen = doc.screens[0];
   const built = parseBin(
-    buildBin(toLegacy({ ...doc, screens: [{ ...screen, layers: [...screen.layers, newRing()] }] })),
+    buildBin(toLegacy({ ...doc, screens: [{ ...screen, layers: [...screen.layers, make()] }] })),
   );
   const written = built.screens[0].subs!.find((n) => n.tag === 0x81)!;
 
