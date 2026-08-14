@@ -17,7 +17,7 @@ import {
   type Resource,
 } from "../format";
 import { buildBind, parseBind, type BindEntry } from "./sources";
-import { arcSpecHex, parseArcSpec, type ArcSpec } from "../render/arc";
+import { ARC_REST, arcSpecHex, parseArcSpec, type ArcSpec } from "../render/arc";
 
 // Branded: a bare number index is exactly what let positional bugs (shared runs, orphaned
 // resources, a duplicate silently sharing its original's pixels) through unnoticed.
@@ -439,7 +439,25 @@ const frameHex = (f: Frame) => {
   return hex(out);
 };
 
-function toNode(l: Layer, runAt: ReadonlyMap<string, number[]>): FaceNode {
+/** Every imageless ring in the corpus — and so every one the watch is known to draw — is a 0x5b
+ *  spec carrying its 3 trailing bytes, under a struct padded 2 bytes past the meta. The editor
+ *  used to mint a bare 16-byte 0x5a under an 18-byte struct: a shape no stock file has, and the
+ *  watch silently skipped it (#37). Repaired here rather than only in the factory, so a ring
+ *  already sitting in a document is fixed by re-exporting it. 0x5b has nowhere to put a radius,
+ *  so the editor's live one moves into meta.w/h — where the reader picks it back up. */
+function bareRing(l: RingLayer): RingLayer {
+  const r = l.spec.radius;
+
+  return {
+    ...l,
+    tail: l.tail ?? "0000",
+    ...(r && !l.meta.auto ? { meta: { ...l.meta, w: 2 * r, h: 2 * r } } : {}),
+    spec: { ...l.spec, kind: TAG.arcClipped, radius: 0, rest: l.spec.rest ?? ARC_REST },
+  };
+}
+
+function toNode(layer: Layer, runAt: ReadonlyMap<string, number[]>): FaceNode {
+  const l = layer.kind === "ring" && !layer.frames.length ? bareRing(layer) : layer;
   const subs: FaceNode[] = [];
   const imgs = (f: readonly ImageId[]) => runAt.get(f.join(" "))!;
 

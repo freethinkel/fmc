@@ -18,6 +18,12 @@ export interface ArcSpec {
   rest?: string;
 }
 
+/** The 3 bytes every arc in the corpus carries past the body we decode: `01 00` and a byte that
+ *  varies per file without any pattern we can read. Written verbatim on a spec that has none of
+ *  its own — the watch skips a ring whose spec node is short (#37). Copied from Combo's imageless
+ *  battery ring, the closest stock widget to the one the editor mints. */
+export const ARC_REST = "010068";
+
 /** 0x5a/0x5b body: min i32 ‖ max i32 ‖ start i16 (0.1°) ‖ end i16 ‖ width u16 ‖ radius u16. */
 export function parseArcSpec(node: FaceNode): ArcSpec | null {
   const sp = node.subs?.find((n) => n.tag === TAG.arc || n.tag === TAG.arcClipped);
