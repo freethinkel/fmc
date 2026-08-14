@@ -445,13 +445,21 @@ const frameHex = (f: Frame) => {
  *  watch silently skipped it (#37). Repaired here rather than only in the factory, so a ring
  *  already sitting in a document is fixed by re-exporting it. 0x5b has nowhere to put a radius,
  *  so the editor's live one moves into meta.w/h — where the reader picks it back up. */
+/** A ring with no art is nothing but a stroke, so where its color comes from is not decoration.
+ *  Byte 7 says which: 1 = the rgb in bytes 4..6 (and then byte 8 is 0xff), 4 = the wearer's
+ *  accent, whose slot is byte 4 — 1, 2 or 4 in all 206 accent widgets of the corpus, never 0.
+ *  The editor wrote byte 7 = 0, or 4 over a zero byte 4: no color to stroke with either way. */
+const ringMeta = (m: WidgetMeta): WidgetMeta =>
+  m.flags === 1 ? m : { ...m, flags: 4, rgb: [m.rgb[0] || 1, 0, 0], reserved: 0 };
+
 function bareRing(l: RingLayer): RingLayer {
   const r = l.spec.radius;
+  const meta = ringMeta(r && !l.meta.auto ? { ...l.meta, w: 2 * r, h: 2 * r } : l.meta);
 
   return {
     ...l,
     tail: l.tail ?? "0000",
-    ...(r && !l.meta.auto ? { meta: { ...l.meta, w: 2 * r, h: 2 * r } } : {}),
+    meta,
     spec: { ...l.spec, kind: TAG.arcClipped, radius: 0, rest: l.spec.rest ?? ARC_REST },
   };
 }

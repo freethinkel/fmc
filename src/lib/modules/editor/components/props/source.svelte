@@ -66,9 +66,15 @@
 
   // meta.flags === 4 marks this widget's assets accent-tintable on the real device — see
   // docs/cmf-protocol.md "Accent color". Every non-transparent pixel gets swapped, regardless of
-  // its baked color, so this works on any art.
+  // its baked color, so this works on any art. Byte 4 is not a red channel here but which accent
+  // the watch hands over: 206 accent widgets across the corpus, and not one of them leaves it at
+  // 0 — so turning the flag on has to pick a slot too, or the widget is flagged for a color that
+  // doesn't exist (#37).
   const setAccent = (on: boolean) =>
-    meta && set(layer.id, { meta: { ...meta, flags: on ? 4 : 0 } } as Partial<Layer>);
+    meta &&
+    set(layer.id, {
+      meta: { ...meta, flags: on ? 4 : 0, rgb: on ? [meta.rgb[0] || 1, 0, 0] : meta.rgb },
+    } as Partial<Layer>);
 
   const setSpec = (patch: Partial<ArcSpec>) =>
     ring && set(ring.id, { spec: { ...ring.spec, ...patch } } as Partial<Layer>);

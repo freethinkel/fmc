@@ -37,14 +37,20 @@ test("a blank document builds into a parseable file with both of its assets", ()
 });
 
 // #37: a ring that renders in the editor but is missing on the watch. The editor wrote a shape
-// no stock file has — a 16-byte 0x5a spec under an 18-byte struct — and the watch skipped it.
-// Pinned against a stock imageless ring (Combo's battery ring) rather than against literal
-// numbers: the shape has to keep matching a file the firmware is known to draw.
+// no stock file has — a 16-byte 0x5a spec under an 18-byte struct — and a meta with no color
+// source in it (byte 7 = 0, or 4 over a zero accent slot). Pinned against a stock imageless ring
+// (Combo's battery ring) rather than against literal numbers: the bytes have to keep matching a
+// file the firmware is known to draw.
 const ringShape = (n: FaceNode) => {
   const st = n.subs!.find((s) => s.tag === TAG.struct)!;
   const spec = n.subs!.find((s) => s.tag === TAG.arc || s.tag === TAG.arcClipped)!;
 
-  return { subs: n.subs!.map((s) => s.tag), tail: st.tail, specBytes: spec.hex!.length / 2 };
+  return {
+    subs: n.subs!.map((s) => s.tag),
+    tail: st.tail,
+    specBytes: spec.hex!.length / 2,
+    color: st.meta!.slice(8, 18), // bytes 4..8: rgb / accent slot, the flag byte, the reserved one
+  };
 };
 
 test("a fresh ring is written in the same node shape as a stock imageless ring", () => {
