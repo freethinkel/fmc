@@ -64,7 +64,9 @@ export const $live = createStore<LiveFace | null>(null);
 export const $dialScreen = createStore<"main" | "aod">("main");
 // no AOD screen means renderDoc would fall back to the main one — nothing to switch to, so the
 // page doesn't offer the toggle at all
-export const $hasAod = $live.map((live) => Boolean(live?.doc.screens.some((s) => s.kind === "aod")));
+export const $hasAod = $live.map((live) =>
+  Boolean(live?.doc.screens.some((s) => s.kind === "aod")),
+);
 // the same bytes an install sends — fetched once, whichever happens first
 const $bin = createStore<Uint8Array | null>(null);
 export const $likes = createStore<RecordModel[]>([]);
