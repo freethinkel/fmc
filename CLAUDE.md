@@ -56,6 +56,8 @@ editor/core/
   import/          # other apps' formats -> Face -> fromLegacy
     facer/           assets.ts (files/images/fonts), text.ts (tags), index.ts
     watchmaker.ts
+    wff.ts           Wear OS Watch Face Format: unzips a .aab, bakes res/raw/watchface.xml
+    field.ts         the live-text row every importer emits (Part/Live + buildRow)
 
 device/lib/
   ble-protocol.ts  # GATT ids, command table, 0xF5 frame codec (AES/CRC)

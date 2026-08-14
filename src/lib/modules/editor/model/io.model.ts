@@ -1,5 +1,5 @@
-// Getting documents in and out: opening a .bin, starting a blank face, importing a Facer or
-// WatchMaker export, and building the bytes back. The assets are re-encoded on the way out only
+// Getting documents in and out: opening a .bin, starting a blank face, importing a Facer,
+// WatchMaker or Wear OS (.aab) export, and building the bytes back. The assets are re-encoded on the way out only
 // (flushAssets), so everything the editor did to the pixels stays non-destructive until export.
 import { attach, combine, createEffect, createEvent, createStore, sample } from "effector";
 import { reset } from "patronum";
@@ -73,11 +73,19 @@ const newFaceFx = createEffect(async (name: string = "Custom") => {
   return { doc, label: "new", dirty: true, cache: await decodeAssets(doc.images) };
 });
 
-// Facer and WatchMaker exports are both directories and tell each other apart by their manifest —
-// no need to make the user pick the format they downloaded.
+// Facer and WatchMaker exports are both directories and tell each other apart by their manifest;
+// a Wear OS bundle is one .aab file. No need to make the user pick the format they downloaded.
 const importFacerFx = createEffect(async (files: File[]) => {
   const has = (n: string) => files.some((f) => (f.webkitRelativePath || f.name).endsWith(n));
+  const aab = files.length === 1 && /\.aab$/i.test(files[0].name);
   const wm = has("watch.pxml");
+
+  if (aab) {
+    const { face } = await (await import("../core/import/wff")).wffToFace(files[0]);
+    const { doc } = fromLegacy(face);
+
+    return { doc, label: "wff", dirty: true, cache: await decodeAssets(doc.images) };
+  }
   const toFace = wm
     ? (await import("../core/import/watchmaker")).watchmakerToFace
     : (await import("../core/import/facer")).facerToFace;

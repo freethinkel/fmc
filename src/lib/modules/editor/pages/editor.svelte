@@ -166,7 +166,10 @@
     // made the toolbar forget which record is open the moment you dragged anything.
     if (!f) return;
     e.preventDefault();
-    f.arrayBuffer().then((buf) => loadRequested({ buf, label: f.name }));
+    // a Wear OS bundle is a single file, so it comes in through the same picker and drop target
+    // as a .bin — the import model tells the two apart by extension
+    if (/\.aab$/i.test(f.name)) importFacerRequested([f]);
+    else f.arrayBuffer().then((buf) => loadRequested({ buf, label: f.name }));
     faceDetached();
   }
 
@@ -855,13 +858,15 @@
 
 <div class="page">
   <div class="toolbar">
-    <Button kind="secondary">
-      <label class="file-label">
-        <Icon name="folder-input" size={16} />
-        <span class="btn-label">Import bin</span>
-        <input type="file" accept=".bin" hidden onchange={openFile} />
-      </label>
-    </Button>
+    <span class="tool-slot" title="Open a .bin, or import a Wear OS watchface bundle (.aab)">
+      <Button kind="secondary">
+        <label class="file-label">
+          <Icon name="folder-input" size={16} />
+          <span class="btn-label">Import bin</span>
+          <input type="file" accept=".bin,.aab" hidden onchange={openFile} />
+        </label>
+      </Button>
+    </span>
     <span class="tool-slot" title="Import a Facer or WatchMaker export folder">
       <Button kind="secondary">
         <label class="file-label">
