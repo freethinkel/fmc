@@ -168,15 +168,16 @@ test("group wraps in place and duplicate copies the whole subtree", async () => 
   expect(framesOf(copy.children[0])).toEqual(framesOf((byId(groupId) as GroupLayer).children[0]));
 });
 
-test("a visibility condition can be added and removed from the selection", async () => {
+test("visibility conditions stack up on the selection", async () => {
   await load("cond");
   const widget = plainWidget();
 
-  editorModel.conditionToggled(widget.id);
+  editorModel.conditionAdded(widget.id);
   expect(byId(widget.id).conditions).toHaveLength(1);
   // starts always-true, so adding one must not hide the widget
   expect(boxOf(widget.id)).toBeTruthy();
 
-  editorModel.conditionToggled(widget.id);
-  expect(byId(widget.id).conditions).toHaveLength(0);
+  // a second one is appended, it does not replace or clear the first
+  editorModel.conditionAdded(widget.id);
+  expect(byId(widget.id).conditions).toHaveLength(2);
 });

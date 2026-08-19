@@ -67,7 +67,7 @@ test("a layer binds to one slot metric and only draws while that metric is selec
   expect(drawn(id)).toBe(true);
 
   // a real metric condition on the same layer must survive the slot binding being rewritten
-  editorModel.conditionToggled(id); // always-true steps >= 0
+  editorModel.conditionAdded(id); // always-true steps >= 0
   editorModel.slotBindSet({ id, slot: slot.index, metric: 0 });
   expect(byId(id).conditions.map((c) => c.source)).toEqual([0x19, SLOT_SEL_ID + slot.index]);
   expect(drawn(id)).toBe(true);

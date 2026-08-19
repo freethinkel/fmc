@@ -31,7 +31,7 @@
     $doc: doc,
     $cache: cache,
     $screen: screen,
-    conditionToggled,
+    conditionAdded,
     sourceIdSet,
     slotBindSet,
     slotMetricAdded,
@@ -289,9 +289,10 @@
       <p class="hint-xs">"show if" lines are OR-ed, "only if"/"hide if" must all hold</p>
     {/if}
   </div>
-{:else if layer.kind !== "raw"}
+{/if}
+{#if conditions.length || layer.kind !== "raw"}
   <div class="row">
-    <Button kind="secondary" onClick={() => conditionToggled(layer.id)}>
+    <Button kind="secondary" onClick={() => conditionAdded(layer.id)}>
       <Icon name="git-branch" size={14} /> add condition
     </Button>
   </div>

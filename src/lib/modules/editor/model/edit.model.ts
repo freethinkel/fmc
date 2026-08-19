@@ -114,7 +114,7 @@ export const moveRequested = createEvent<{
 /** ⌘] / ⌘[ — one step up or down the draw order, among the primary selection's own siblings.
  *  `moveRequested` is the tree's drag-and-drop, which needs an explicit target; this doesn't. */
 export const orderMoved = createEvent<1 | -1>();
-export const conditionToggled = createEvent<NodeId>();
+export const conditionAdded = createEvent<NodeId>();
 export const slotBindSet = createEvent<{ id: NodeId; slot: number | null; metric?: number }>();
 /** The metrics a slot offers the wearer — its own 0x5f list, which the companion app shows as a
  *  menu. Adding one needs an icon frame, so it goes through an effect; removing one is a plain
@@ -932,9 +932,9 @@ sample({
   target: committed,
 });
 
-/** Add or remove the selected layer's visibility condition. */
+/** Append a visibility condition to the selected layer (rows are removed one by one). */
 sample({
-  clock: conditionToggled,
+  clock: conditionAdded,
   source: $doc,
   filter: (doc, id) => Boolean(doc && findLayer(doc, id)),
   fn: (doc, id) => ({
@@ -942,7 +942,7 @@ sample({
       const l = findLayer(d, id)!;
 
       return patchLayer(d, id, {
-        conditions: l.conditions.length ? [] : [newCondition()],
+        conditions: [...l.conditions, newCondition()],
       } as Partial<Layer>);
     },
   }),
