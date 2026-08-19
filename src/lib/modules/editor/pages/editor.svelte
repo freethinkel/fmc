@@ -4,6 +4,7 @@
   import { Dialog } from "$lib/shared/components/dialog";
   import { Loader } from "$lib/shared/components/loader";
   import { Icon } from "$lib/shared/components/icon";
+  import { Menu, MenuItem } from "$lib/shared/components/menu";
   import { authModel } from "$lib/modules/auth/model";
   import { marketModel } from "$lib/modules/market/model";
   import PublishDialog from "../components/PublishDialog.svelte";
@@ -85,6 +86,8 @@
   } = editorModel;
 
   let canvas = $state<HTMLCanvasElement | null>(null);
+  let fileInput = $state<HTMLInputElement>();
+  let dirInput = $state<HTMLInputElement>();
 
   let mobilePanel = $state<"tree" | "props" | "sim" | null>(null); // drawer on mobile
   let helpOpen = $state(false); // the `?` overlay
@@ -863,24 +866,28 @@
 
 <div class="page">
   <div class="toolbar">
-    <span class="tool-slot" title="Open a .bin, or import a Wear OS watchface bundle (.aab)">
-      <Button kind="secondary">
-        <label class="file-label">
+    <!-- One entry point, because "bin" vs "folder" only made sense once you knew which format
+         ships as which. The two pickers still have to be separate inputs: a directory picker is
+         a fixed attribute on the input, and no picker offers files and folders at once. -->
+    <Menu align="start">
+      {#snippet trigger({ toggle })}
+        <Button kind="secondary" onClick={toggle}>
           <Icon name="folder-input" size={16} />
-          <span class="btn-label">Import bin</span>
-          <input type="file" accept=".bin,.aab,.zip" hidden onchange={openFile} />
-        </label>
-      </Button>
-    </span>
-    <span class="tool-slot" title="Import a Facer or WatchMaker export folder">
-      <Button kind="secondary">
-        <label class="file-label">
-          <Icon name="watch" size={16} />
-          <span class="btn-label">Import folder</span>
-          <input type="file" webkitdirectory hidden onchange={openFacer} />
-        </label>
-      </Button>
-    </span>
+          <span class="btn-label">Import</span>
+        </Button>
+      {/snippet}
+      <MenuItem onClick={() => fileInput?.click()}>
+        <Icon name="file-plus" size={16} />
+        <span class="route">Watchface file <span>.bin, .aab</span></span>
+      </MenuItem>
+      <MenuItem onClick={() => dirInput?.click()}>
+        <Icon name="watch" size={16} />
+        <span class="route">Export folder <span>Facer, WatchMaker</span></span>
+      </MenuItem>
+    </Menu>
+    <!-- outside the menu: it unmounts its children on select, before the click could land -->
+    <input bind:this={fileInput} type="file" accept=".bin,.aab,.zip" hidden onchange={openFile} />
+    <input bind:this={dirInput} type="file" webkitdirectory hidden onchange={openFacer} />
     <span class="tool-slot" title="New">
       <Button
         kind="secondary"
@@ -1097,11 +1104,13 @@
     padding: 0.5rem 0.75rem;
     border-bottom: 1px solid oklch(from var(--color-text) l c h / 12%);
   }
-  .file-label {
-    display: flex;
-    align-items: center;
-    gap: 0.375rem;
-    cursor: pointer;
+  /* the menu grows to its longest route rather than wrapping a label onto two lines */
+  .route {
+    white-space: nowrap;
+
+    & span {
+      color: oklch(from var(--color-text) l c h / 55%);
+    }
   }
   .btn-label {
     display: none;
