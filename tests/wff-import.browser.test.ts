@@ -234,3 +234,17 @@ test("wffToFace bakes the default configuration and maps the live sources", asyn
     Math.round((140 - 100) * (SCREEN / WFF_CANVAS)),
   );
 });
+
+// A bundle downloaded from a browser or handed over in a chat routinely arrives inside one more
+// zip, and asking the user to extract it first is a support question waiting to happen.
+test("wffToFace unwraps a bundle nested in another zip", async () => {
+  const inner = await bundle([
+    ["base/res/raw/watchface.xml", new TextEncoder().encode(SCENE), true],
+    ["base/res/drawable-nodpi-v4/hand.png", await handPng(), false],
+  ]);
+  const outer = await bundle([["soft.aab", inner, false]]);
+  const { face } = await wffToFace(new File([outer as BlobPart], "soft.zip"));
+
+  expect(face.screens.map((s) => s.tag)).toEqual([TAG.main, TAG.aod]);
+  expect(all(face.screens[0], (n) => n.tag === TAG.hand)).toHaveLength(1);
+});

@@ -245,12 +245,22 @@ interface Ctx {
 }
 
 export async function wffToFace(file: File): Promise<{ face: Face; skipped: string[] }> {
-  const zip = await unzip(await file.arrayBuffer());
   const text = (b: Uint8Array) => new TextDecoder().decode(b);
-  const sceneEntry = [...zip].find(
-    ([k, v]) => /res\/raw\/[^/]+\.xml$/.test(k) && text(v).includes("<WatchFace"),
-  );
+  const sceneOf = (z: Map<string, Uint8Array>) =>
+    [...z].find(([k, v]) => /res\/raw\/[^/]+\.xml$/.test(k) && text(v).includes("<WatchFace"));
+  let zip = await unzip(await file.arrayBuffer());
+  let sceneEntry = sceneOf(zip);
 
+  // a bundle downloaded from a browser or handed over in a chat often arrives wrapped in one
+  // more zip; unwrap a single archive entry once rather than make the user extract it
+  if (!sceneEntry) {
+    const inner = [...zip.values()].find((v) => v[0] === 0x50 && v[1] === 0x4b);
+
+    if (inner) {
+      zip = await unzip(inner.slice().buffer);
+      sceneEntry = sceneOf(zip);
+    }
+  }
   if (!sceneEntry) throw new Error("not a Watch Face Format bundle: no res/raw/watchface.xml");
   const doc = new DOMParser().parseFromString(text(sceneEntry[1]), "text/xml");
   const root = doc.querySelector("WatchFace");
