@@ -7,10 +7,12 @@
   import { Menu, MenuItem } from "$lib/shared/components/menu";
 
   const { $user: user, logout } = authModel;
+  const path = $derived(page.url.pathname);
   const nav = $derived([
-    { title: "Market", url: "/market" },
-    { title: "Editor", url: "/editor" },
-    ...($user ? [{ title: "My", url: "/my" }] : []),
+    // the marketplace lives at the root; /market is a legacy redirect
+    { title: "Market", url: "/", active: path === "/" || path.startsWith("/market") },
+    { title: "Editor", url: "/editor", active: path.startsWith("/editor") },
+    ...($user ? [{ title: "My", url: "/my", active: path.startsWith("/my") }] : []),
   ]);
 </script>
 
@@ -18,7 +20,7 @@
   <a class="logo" href="/">fmc</a>
   <nav>
     {#each nav as item (item.url)}
-      <a href={item.url} class:active={page.url.pathname.startsWith(item.url)}>
+      <a href={item.url} class:active={item.active}>
         {item.title}
       </a>
     {/each}
