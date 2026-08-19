@@ -74,10 +74,13 @@ const newFaceFx = createEffect(async (name: string = "Custom") => {
 });
 
 // Facer and WatchMaker exports are both directories and tell each other apart by their manifest;
-// a Wear OS bundle is one .aab file. No need to make the user pick the format they downloaded.
+// a Wear OS bundle is one zip (.aab). No need to make the user pick the format they downloaded —
+// and the bundle is sniffed by its magic bytes, because a downloaded one often loses its
+// extension on the way (renamed, or unwrapped from a .zip).
 const importFacerFx = createEffect(async (files: File[]) => {
   const has = (n: string) => files.some((f) => (f.webkitRelativePath || f.name).endsWith(n));
-  const aab = files.length === 1 && /\.aab$/i.test(files[0].name);
+  const head = files.length === 1 ? new Uint8Array(await files[0].slice(0, 2).arrayBuffer()) : null;
+  const aab = head?.[0] === 0x50 && head?.[1] === 0x4b;
   const wm = has("watch.pxml");
 
   if (aab) {
@@ -91,7 +94,9 @@ const importFacerFx = createEffect(async (files: File[]) => {
     : (await import("../core/import/facer")).facerToFace;
 
   if (!wm && !has("watchface.json"))
-    throw new Error("not a watchface export: no watchface.json (Facer) or watch.pxml (WatchMaker)");
+    throw new Error(
+      "not a watchface export: no watchface.json (Facer), watch.pxml (WatchMaker) or .aab bundle",
+    );
   const { face } = await toFace(files);
   const { doc } = fromLegacy(face);
 

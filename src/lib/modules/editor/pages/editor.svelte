@@ -166,10 +166,15 @@
     // made the toolbar forget which record is open the moment you dragged anything.
     if (!f) return;
     e.preventDefault();
-    // a Wear OS bundle is a single file, so it comes in through the same picker and drop target
-    // as a .bin — the import model tells the two apart by extension
-    if (/\.aab$/i.test(f.name)) importFacerRequested([f]);
-    else f.arrayBuffer().then((buf) => loadRequested({ buf, label: f.name }));
+    // A Wear OS bundle is a single file, so it comes in through the same picker and drop target
+    // as a .bin. Told apart by the zip magic rather than the extension — a downloaded bundle
+    // does not reliably keep its .aab, and a .bin never starts with "PK".
+    f.arrayBuffer().then((buf) => {
+      const head = new Uint8Array(buf, 0, 2);
+
+      if (head[0] === 0x50 && head[1] === 0x4b) importFacerRequested([f]);
+      else loadRequested({ buf, label: f.name });
+    });
     faceDetached();
   }
 
@@ -863,7 +868,7 @@
         <label class="file-label">
           <Icon name="folder-input" size={16} />
           <span class="btn-label">Import bin</span>
-          <input type="file" accept=".bin,.aab" hidden onchange={openFile} />
+          <input type="file" accept=".bin,.aab,.zip" hidden onchange={openFile} />
         </label>
       </Button>
     </span>

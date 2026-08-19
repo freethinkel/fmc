@@ -829,7 +829,7 @@ export async function wffToFace(file: File): Promise<{ face: Face; skipped: stri
     .replace(/\.aab$/i, "")
     .replace(/[^ -~]/g, "")
     .trim();
-  const name = (/^[0-9a-f_]{16,}$/i.test(stemName) ? "" : stemName.slice(0, 14)) || "Watchface";
+  const name = (/^[0-9a-f_-]{16,}$/i.test(stemName) ? "" : stemName.slice(0, 14)) || "Watchface";
   const main = await screen(TAG.main, act, false, name);
   const aod = await screen(TAG.aod, amb, true);
   const nameRaw = new Uint8Array(16);
