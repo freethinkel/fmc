@@ -34,13 +34,11 @@ export const SEL_SRC: Record<string, { id: number; n: number; index: (v: string)
   DMMM: { id: 0x16, n: 12, index: (v) => MONTHS.indexOf(v.toUpperCase()) },
 };
 
-export type Live =
-  | { type: "number"; id: number; digits: number; fmt: string; sub?: number; max?: number }
-  | { type: "select"; id: number; labels: string[] };
-// A field is a row of parts — literal sprites and live widgets in template order, packed
-// into one auto-width group: "#WCT#°" is a value plus a unit, "(floor(#Db#/10))(#Db#%10):
-// #DmZ#" is hour, colon, minute. dropped: tags with no CMF data source, left out of the row.
-export type Part = { text: string } | Live;
+// Part/Live and the row builder they feed moved to ../field once ../wff needed them too —
+// re-exported here so the Facer importer's own imports stay in one place.
+export { isLive, type Live, type Part } from "../field";
+import { isLive, type Live, type Part } from "../field";
+// dropped: tags with no CMF data source, left out of the row.
 export type FieldClass =
   | { type: "static"; text: string }
   | { type: "row"; parts: Part[]; dropped: string[] };
@@ -48,8 +46,6 @@ export type FieldClass =
 // Tags with no data source that still always render the same glyph: the weather unit
 // follows the watch's own setting, and we bake Celsius rather than lose the "°C".
 const LITERAL: Record<string, string> = { WM: "C", WMS: "C" };
-
-export const isLive = (p: Part): p is Live => !("text" in p);
 
 // A face built on a digit-sprite font spells a value out one expression per digit:
 // "(floor(#Dm#/10))(#Dm#-(10*(floor(#Dm#/10))))". Collapse such a run back into the plain
