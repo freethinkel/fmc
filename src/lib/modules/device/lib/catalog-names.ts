@@ -58,6 +58,10 @@ export const dialLabel = (id: number, i: number) =>
 
 export const dialPreview = (id: number) => flashed()[id]?.preview;
 
+// did this browser ever put that id on a watch? The firmware doesn't list side-loaded dials in
+// a055, so this is the only record that a face already occupies a slot — see oldId in ble.ts.
+export const flashedHere = (id: number) => Boolean(flashed()[id]);
+
 export const dialTitle = (id: number) => {
   const group = dials[id]?.group || (flashed()[id] ? "Flashed from here" : "");
 

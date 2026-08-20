@@ -3,6 +3,7 @@
 // upload watchfaces. The wire format it speaks lives in ble-protocol.ts.
 // Chromium only (no Web Bluetooth in Firefox/Safari); requires a user gesture and
 // localhost or HTTPS.
+import { flashedHere } from "./catalog-names";
 import {
   cat,
   CMD,
@@ -35,6 +36,9 @@ export type WatchDials = number[];
 // there's no room for another watchface, so the caller has to name an installed dial to
 // overwrite instead. Own class so the model can tell it from a real failure.
 export class NoFreeSlotError extends Error {}
+// old_wf_id doesn't name a dial the watch actually has (removed on the watch, watch reset, or a
+// different physical unit). Recoverable here — the upload is retried as a plain append.
+class StaleSlotError extends Error {}
 
 // How many watchfaces the watch holds — nothing in the protocol reports it. ponytail: taken on
 // report from a CMF Watch Pro 2 (fw 1.0.0.73), NOT measured here. The `finish: 0a` rejections
@@ -395,7 +399,12 @@ export class Watch {
     // 0 means add a new one. Since the id is derived from the face, a face already on the watch
     // overwrites *itself*: re-flashing the one you're editing costs no slot and never has to ask
     // which dial to sacrifice, however many times you do it.
-    const oldId = slot ?? (this.installedWf.includes(id) ? id : 0);
+    // The watch doesn't list side-loaded dials in a055, so installedWf alone forgets our own
+    // faces across a reconnect and re-flashing one appends a *second* copy under an id the
+    // watch already holds — which it refuses. What we flashed from this browser is written down
+    // in catalog-names, so ask it too. ponytail: that store isn't per-watch, so it can name a
+    // dial this unit never had — a wrong guess costs one round trip, see the retry below.
+    const oldId = slot ?? (this.installedWf.includes(id) || flashedHere(id) ? id : 0);
 
     // the watch only refuses an append at the very end of the upload, so check the count up
     // front rather than shipping the whole file over BLE to be told no
@@ -431,7 +440,7 @@ export class Watch {
         // re-running attempt() with a real id starts a fresh init1/init2 handshake, which is
         // why the sequence lives in a function
         if (!oldId) throw new NoFreeSlotError(`append refused (init2: ${toHex(r2)})`);
-        throw new Error(`watch rejected the upload (init2: ${toHex(r2)})`);
+        throw new StaleSlotError(`overwrite refused (init2: ${toHex(r2)})`);
       }
 
       try {
@@ -487,14 +496,23 @@ export class Watch {
               resolve();
             } else {
               // the watch vetting what it received, after a transfer that completed cleanly.
-              // The known cause is a new_wf_id it won't take (see the 31-bit id above); size is
-              // reported because it's the other property worth eyeballing if this comes back.
               // 0x0a is the documented "stored but not activated" code — the file landed intact
-              // and the watch refused to switch to it (bad container, or an id it won't reuse).
+              // and the watch refused to switch to it. It's the only answer an out-of-room
+              // append ever gets (the watch doesn't say no at init2), so on an append it means
+              // the same as `append refused` above and has to reach the slot dialog the same
+              // way — leaving it a plain Error is what made every flash after the first one a
+              // dead end on a full watch (#43). With a real old_wf_id it means that dial isn't
+              // installed, which attempt() below retries as an append.
               const kb = Math.round(data.length / 1024);
-              const why = p[0] === 0x0a ? "stored but not activated" : `finish: ${toHex(p)}`;
 
-              reject(new Error(`watch did not accept the file (${why}; ${kb} KB)`));
+              if (p[0] === 0x0a)
+                reject(
+                  oldId
+                    ? new StaleSlotError(`dial ${oldId} not installed (finish: 0a)`)
+                    : new NoFreeSlotError(`append refused (finish: 0a; ${kb} KB)`),
+                );
+              else
+                reject(new Error(`watch did not accept the file (finish: ${toHex(p)}; ${kb} KB)`));
             }
           });
         });
@@ -504,7 +522,16 @@ export class Watch {
       }
     };
 
-    await attempt(oldId);
+    // the id list we aimed at is a guess (see oldId above) — when the watch says that dial
+    // isn't there, fall back to a plain append instead of failing the flash
+    await attempt(oldId).catch((e) => {
+      if (!(e instanceof StaleSlotError)) throw e;
+      dbg("stale old_wf_id", oldId, "→ retrying as append:", (e as Error).message);
+      this.installedWf = this.installedWf.filter((x) => x !== oldId);
+      if (this.installedWf.length >= WF_CAPACITY)
+        throw new NoFreeSlotError(`all ${WF_CAPACITY} slots taken`);
+      return attempt(0);
+    });
     onProgress(100);
     this.status("connected");
     // the id is random and the name only exists inside the file — the caller needs both to
