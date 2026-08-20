@@ -15,6 +15,10 @@ const NAME_STORE = "fmc_dial_names";
 interface Flashed {
   name: string;
   preview?: string;
+  // serial of the watch it went to — a055 doesn't list side-loaded dials, so this record is the
+  // only thing that knows the slot is taken (see mergeDials in ble.ts). Absent on entries
+  // written before it existed; those count for nothing but still carry a name and a preview.
+  serial?: string;
 }
 // localStorage is the single source of truth and the parsed copy is only a cache of one exact
 // string — a lazily-filled cache that never invalidated meant a reader who ran before the first
@@ -43,11 +47,28 @@ const flashed = () => {
   return cache;
 };
 
-export const rememberDial = (id: number, name: string, preview?: string) => {
-  raw = JSON.stringify({ ...flashed(), [id]: { name, preview } });
+const write = (next: Record<string, Flashed>) => {
+  raw = JSON.stringify(next);
   localStorage.setItem(NAME_STORE, raw);
   cache = JSON.parse(raw) as Record<string, Flashed>;
 };
+
+export const rememberDial = (id: number, name: string, preview?: string, serial?: string | null) =>
+  write({ ...flashed(), [id]: { name, preview, serial: serial || undefined } });
+
+// the watch says it doesn't have that dial after all — deleted on the watch, or the record
+// outlived a factory reset. Drop it, or it inflates the slot count forever.
+export const forgetDial = (id: number) => {
+  const { [id]: gone, ...rest } = flashed();
+
+  if (gone) write(rest);
+};
+
+// ids this browser put on that particular watch — what a055 leaves out of the installed list
+export const flashedOn = (serial: string) =>
+  Object.entries(flashed())
+    .filter(([, v]) => v.serial === serial)
+    .map(([id]) => Number(id));
 
 // i = position in the list the watch reported, which is the order its own carousel shows them
 // in — the only handle a user has on a dial nothing can name. Real hardware reports ids like
@@ -57,10 +78,6 @@ export const dialLabel = (id: number, i: number) =>
   dials[id]?.name || flashed()[id]?.name || `Slot ${i + 1}`;
 
 export const dialPreview = (id: number) => flashed()[id]?.preview;
-
-// did this browser ever put that id on a watch? The firmware doesn't list side-loaded dials in
-// a055, so this is the only record that a face already occupies a slot — see oldId in ble.ts.
-export const flashedHere = (id: number) => Boolean(flashed()[id]);
 
 export const dialTitle = (id: number) => {
   const group = dials[id]?.group || (flashed()[id] ? "Flashed from here" : "");

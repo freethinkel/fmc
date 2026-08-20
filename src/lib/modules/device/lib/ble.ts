@@ -3,7 +3,7 @@
 // upload watchfaces. The wire format it speaks lives in ble-protocol.ts.
 // Chromium only (no Web Bluetooth in Firefox/Safari); requires a user gesture and
 // localhost or HTTPS.
-import { flashedHere } from "./catalog-names";
+import { flashedOn, forgetDial } from "./catalog-names";
 import {
   cat,
   CMD,
@@ -80,7 +80,8 @@ export class Watch {
   battery: number | null = null;
   firmware: string | null = null;
   serial: string | null = null;
-  installedWf: number[] = []; // installed dial ids from cmdWfInstalled (§9.5g)
+  reportedWf: number[] = []; // dial ids exactly as cmdWfInstalled listed them (§9.5g)
+  installedWf: number[] = []; // …plus the side-loaded ones a055 leaves out, see mergeDials
 
   constructor(onStatus: (s: string) => void = () => {}) {
     this.onStatus = onStatus;
@@ -88,6 +89,20 @@ export class Watch {
   status(s: string) {
     dbg("status:", s);
     this.onStatus(s);
+  }
+
+  // a055 doesn't list dials that were side-loaded, so on a fresh connection a full watch looks
+  // like it still has room — and the pre-flight capacity check waves through an append the
+  // watch will only refuse at 100%, after the whole file has gone over BLE. Fold in what this
+  // browser flashed onto *this* watch so the slot count, the slot dialog and the oldId lookup
+  // all see the same slots the watch does. Called from both sides of the race: the a055
+  // notification, and fetchInfo learning the serial these records are keyed by.
+  mergeDials() {
+    const mine = this.serial ? flashedOn(this.serial) : [];
+
+    this.installedWf = [...this.reportedWf, ...mine.filter((id) => !this.reportedWf.includes(id))];
+    dbg("dials:", this.installedWf, "reported:", this.reportedWf, "flashed here:", mine);
+    this.onDials?.([...this.installedWf]);
   }
 
   async connect(): Promise<WatchInfo> {
@@ -305,18 +320,18 @@ export class Watch {
       // the UI doesn't distinguish, so flatten
       const p = res.payload;
 
-      this.installedWf = [];
+      this.reportedWf = [];
       for (let off = 4; off + 4 <= p.length; off += 4) {
         const id = new DataView(p.buffer, p.byteOffset + off).getUint32(0, true);
 
-        if (id !== 0xffffffff) this.installedWf.push(id);
+        if (id !== 0xffffffff) this.reportedWf.push(id);
       }
       // Leading 4 bytes, still unparsed. One sample so far: header 01 05 06 07 on a payload of
       // 28 bytes = 4 + 6 ids, with 6 dials installed — so byte 2 looks like the count and byte 3
       // (07) is the best candidate for the capacity WF_CAPACITY currently hardcodes. Needs a
       // second sample at a different count to confirm; keep logging it.
-      dbg("installed dials:", this.installedWf, "header:", toHex(p.slice(0, 4)));
-      this.onDials?.([...this.installedWf]);
+      dbg("installed dials:", this.reportedWf, "header:", toHex(p.slice(0, 4)));
+      this.mergeDials();
     }
     const w = this.waiters.get(res.key);
 
@@ -399,12 +414,7 @@ export class Watch {
     // 0 means add a new one. Since the id is derived from the face, a face already on the watch
     // overwrites *itself*: re-flashing the one you're editing costs no slot and never has to ask
     // which dial to sacrifice, however many times you do it.
-    // The watch doesn't list side-loaded dials in a055, so installedWf alone forgets our own
-    // faces across a reconnect and re-flashing one appends a *second* copy under an id the
-    // watch already holds — which it refuses. What we flashed from this browser is written down
-    // in catalog-names, so ask it too. ponytail: that store isn't per-watch, so it can name a
-    // dial this unit never had — a wrong guess costs one round trip, see the retry below.
-    const oldId = slot ?? (this.installedWf.includes(id) || flashedHere(id) ? id : 0);
+    const oldId = slot ?? (this.installedWf.includes(id) ? id : 0);
 
     // the watch only refuses an append at the very end of the upload, so check the count up
     // front rather than shipping the whole file over BLE to be told no
@@ -488,11 +498,12 @@ export class Watch {
             if (p.length && p[0] === 1) {
               // the watch doesn't re-announce wfInstalled after an upload — patch the slot in
               // place so the list stays right and the next flash can target another slot
-              const i = this.installedWf.indexOf(oldId);
+              const i = this.reportedWf.indexOf(oldId);
 
-              if (i < 0) this.installedWf.push(id);
-              else this.installedWf[i] = id;
-              this.onDials?.([...this.installedWf]);
+              if (i >= 0) this.reportedWf[i] = id;
+              // the new id joins the list through catalog-names, which the caller writes the
+              // moment this resolves — it calls mergeDials() again right after
+              this.mergeDials();
               resolve();
             } else {
               // the watch vetting what it received, after a transfer that completed cleanly.
@@ -527,7 +538,12 @@ export class Watch {
     await attempt(oldId).catch((e) => {
       if (!(e instanceof StaleSlotError)) throw e;
       dbg("stale old_wf_id", oldId, "→ retrying as append:", (e as Error).message);
-      this.installedWf = this.installedWf.filter((x) => x !== oldId);
+      // it isn't on the watch, so stop counting it as a taken slot — otherwise a face deleted
+      // on the watch keeps the count at six and every later flash goes through this same
+      // wasted round trip
+      this.reportedWf = this.reportedWf.filter((x) => x !== oldId);
+      forgetDial(oldId);
+      this.mergeDials();
       if (this.installedWf.length >= WF_CAPACITY)
         throw new NoFreeSlotError(`all ${WF_CAPACITY} slots taken`);
       return attempt(0);
@@ -629,6 +645,9 @@ export class Watch {
     } catch {
       /* optional */
     }
+    // the flashed-here records are keyed by serial, so the merged list is only right from here
+    // on — a055 may well have arrived before this point
+    this.mergeDials();
     try {
       if (this.chars[UUID.battery])
         this.battery = (await this.chars[UUID.battery].readValue()).getUint8(0);
