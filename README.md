@@ -1,6 +1,6 @@
 # FMC Watchfaces Frontend
 
-Watchface editor + marketplace for the CMF Watch Pro 2. SvelteKit (Svelte 5) SPA,
+Watchface editor + marketplace for the CMF Watch Pro 2 / Pro 3. SvelteKit (Svelte 5) SPA,
 static build (`@sveltejs/adapter-static`). Backend — [`fmc_pocketbase`](../fmc_pocketbase)
 (PocketBase), must be running for auth/marketplace to work.
 

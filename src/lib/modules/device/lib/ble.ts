@@ -23,6 +23,8 @@ import {
 } from "./ble-protocol";
 
 export interface WatchInfo {
+  /** The advertised name ("CMF Watch Pro 2 …", "CMF Watch Pro 3 …") — the only model id we get */
+  name: string | null;
   battery: number | null;
   firmware: string | null;
   serial: string | null;
@@ -261,7 +263,12 @@ export class Watch {
       throw e;
     }
     this.status("connected");
-    return { battery: this.battery, firmware: this.firmware, serial: this.serial };
+    return {
+      name: device.name ?? null,
+      battery: this.battery,
+      firmware: this.firmware,
+      serial: this.serial,
+    };
   }
 
   async onNotify(uuid: string, bytes: Uint8Array) {
