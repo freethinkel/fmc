@@ -213,7 +213,9 @@ standalone single images can go anywhere else.
 | 4   | 2        | RGB565, no alpha                                                                   |
 | 5   | 3        | RGB565 + separate alpha byte — **most common, use this by default**                |
 | 13  | 0.5      | 4-bit alpha-only mask, RGB forced white — only if you truly want a monochrome mask |
+| 14  | 1        | 8-bit alpha-only mask (Watch Pro 3 files; the Pro 2 corpus never uses it)          |
 | 24  | 4        | full BGRA8888                                                                      |
+| 28  | 1 (4x4 blocks) | ETC2 RGBA8 texture, dims padded to 4 (Watch Pro 3 backgrounds), **decode-only** |
 | 1   | —        | raw JPEG, **decode-only**, `encodePixels` throws — never produce this              |
 
 `encodePixels(px: Uint8ClampedArray RGBA, w, h, cf)` returns a `Resource` (LZ4-compressed

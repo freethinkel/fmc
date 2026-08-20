@@ -1,6 +1,8 @@
 // Resource payload <-> RGBA. The colour formats (`cf`) are LVGL's: 4 = RGB565, 5 = RGB565+alpha,
-// 13 = 4-bit alpha mask, 24 = BGRA8888, 1 = raw JPEG (left to the browser to decode).
+// 13 = 4-bit alpha mask, 14 = 8-bit alpha mask, 24 = BGRA8888, 28 = ETC2 RGBA8 (Watch Pro 3,
+// decode only), 1 = raw JPEG (left to the browser to decode).
 
+import { decodeEtc2, etc2Size } from "./etc2";
 import { lz4Compress, lz4Decompress } from "./lz4";
 import type { Resource } from "./raw";
 import { u16 } from "./raw";
@@ -10,12 +12,15 @@ export function decodePixels(r: Resource): Uint8ClampedArray<ArrayBuffer> | null
   const { cf, w, h } = r;
 
   if (cf === 1) return null;
-  const bpp = ({ 4: 2, 5: 3, 24: 4 } as Record<number, number>)[cf];
-  const want = cf === 13 ? (w * h + 1) >> 1 : w * h * bpp;
+  const bpp = ({ 4: 2, 5: 3, 13: 0.5, 14: 1, 24: 4 } as Record<number, number>)[cf];
+
+  if (!bpp && cf !== 28) throw new Error(`unknown cf=${cf}`);
+  const want = cf === 28 ? etc2Size(w, h) : Math.ceil(w * h * bpp);
   const raw = lz4Decompress(r.data, want);
 
   if (raw.length !== want)
     throw new Error(`cf=${cf} ${w}x${h}: decompressed ${raw.length}, expected ${want}`);
+  if (cf === 28) return decodeEtc2(raw, w, h);
   const px = new Uint8ClampedArray(w * h * 4);
   const e5 = (v: number) => ((v * 255) / 31) | 0,
     e6 = (v: number) => ((v * 255) / 63) | 0;
@@ -47,14 +52,16 @@ export function decodePixels(r: Resource): Uint8ClampedArray<ArrayBuffer> | null
         px[o + 3] = a * 17;
         break;
       }
+      case 14:
+        px[o] = px[o + 1] = px[o + 2] = 255;
+        px[o + 3] = raw[i];
+        break;
       case 24:
         px[o] = raw[i * 4 + 2];
         px[o + 1] = raw[i * 4 + 1];
         px[o + 2] = raw[i * 4];
         px[o + 3] = raw[i * 4 + 3];
         break;
-      default:
-        throw new Error(`unknown cf=${cf}`);
     }
   }
   return px;
@@ -75,6 +82,9 @@ export function encodePixels(px: Uint8ClampedArray, w: number, h: number, cf: nu
       break;
     case 13:
       raw = new Uint8Array((w * h + 1) >> 1);
+      break;
+    case 14:
+      raw = new Uint8Array(w * h);
       break;
     case 24:
       raw = new Uint8Array(w * h * 4);
@@ -106,6 +116,9 @@ export function encodePixels(px: Uint8ClampedArray, w: number, h: number, cf: nu
       }
       case 13:
         raw[i >> 1] |= i % 2 ? a >> 4 : (a >> 4) << 4;
+        break;
+      case 14:
+        raw[i] = a;
         break;
       case 24:
         raw[i * 4] = b;
