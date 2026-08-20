@@ -5,17 +5,26 @@
   import { Icon, type IconName } from "$lib/shared/components/icon";
 
   const { $user: user } = authModel;
-  const nav = $derived<{ title: string; url: string; icon: IconName }[]>([
-    { title: "Market", url: "/market", icon: "store" },
-    { title: "Editor", url: "/editor", icon: "pencil" },
-    ...($user ? [{ title: "My", url: "/my", icon: "folder-heart" as const }] : []),
+  const path = $derived(page.url.pathname);
+  const nav = $derived<{ title: string; url: string; icon: IconName; active: boolean }[]>([
+    // the marketplace lives at the root; /market is a legacy redirect
+    {
+      title: "Market",
+      url: "/",
+      icon: "store",
+      active: path === "/" || path.startsWith("/market"),
+    },
+    { title: "Editor", url: "/editor", icon: "pencil", active: path.startsWith("/editor") },
+    ...($user
+      ? [{ title: "My", url: "/my", icon: "folder-heart" as const, active: path.startsWith("/my") }]
+      : []),
   ]);
 </script>
 
 <!-- mobile bottom tab bar; on md+ navigation lives in the app header -->
 <nav>
   {#each nav as item (item.url)}
-    <a href={item.url} class:active={page.url.pathname.startsWith(item.url)}>
+    <a href={item.url} class:active={item.active}>
       <Icon name={item.icon} size={20} />
       {item.title}
     </a>

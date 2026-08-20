@@ -7,7 +7,7 @@
   const { $user: user } = authModel;
   // ponytail: already logged in — nothing to see on this page
   $effect(() => {
-    if ($user) goto("/market");
+    if ($user) goto("/");
   });
 </script>
 

@@ -74,7 +74,7 @@
 
   <main>
     <!-- ponytail: no back-arrow glyph in the icon registry, and "←" needs no import -->
-    <a class="back" href="/market">← Marketplace</a>
+    <a class="back" href="/">← Marketplace</a>
 
     {#if wf}
       <article class="face">

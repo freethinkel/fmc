@@ -155,7 +155,7 @@ const saveFx = attach({
   }),
 });
 export const $savePending = saveFx.pending;
-const navigateToMarketFx = createEffect(() => goto("/market"));
+const navigateToMarketFx = createEffect(() => goto("/"));
 const navigateToShowcaseFx = createEffect((wf: RecordModel) => goto(`/market/${wf.id}`));
 // resolves the caller's existing like id from $likes so the api layer doesn't need to know about model state
 const toggleLikeFx = attach({
