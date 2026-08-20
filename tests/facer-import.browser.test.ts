@@ -198,12 +198,14 @@ test("facerToFace maps tags, hands and alignment", async () => {
 
   // ...in the order the WATCH indexes them: images[getDay()], so frame 0 is Facer's
   // #DOWB#=1 (Sunday). The fixture's sprites brighten with the Facer value, so a set built
-  // Monday-first (the old order, a day off on the device) breaks the sort.
+  // Monday-first (the old order, a day off on the device) breaks the sort. Opaque pixels
+  // only: the scaled sprite's faint edge pixels carry un-premultiply noise (r=1, a=1 reads as
+  // 255), and how faint they are differs between Chromium builds.
   const red = (ri: number) => {
     const px = decodePixels(face.resources[ri])!;
     let m = 0;
 
-    for (let i = 0; i < px.length; i += 4) m = Math.max(m, px[i]);
+    for (let i = 0; i < px.length; i += 4) if (px[i + 3] === 255) m = Math.max(m, px[i]);
     return m;
   };
   const reds = sel.subs![0].images!.map(red);
