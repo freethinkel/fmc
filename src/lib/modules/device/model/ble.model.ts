@@ -21,7 +21,8 @@ let watch: Watch | null = null; // live connection — not serialized, lives out
 // ---- stores ----
 export const $bleStatus = createStore("");
 export const $bleInfo = createStore<WatchInfo | null>(null);
-// list of installed watchfaces from a055; the firmware doesn't report our own side-loaded one
+// installed watchfaces: what a055 reported, plus the ones this browser side-loaded onto this
+// watch — the firmware leaves those out of its own list
 export const $dials = createStore<WatchDials | null>(null);
 // a flash appends into a free slot; when the watch has none, the file waits here while the
 // user picks which dial to overwrite in the slot dialog
@@ -71,8 +72,11 @@ const flashFx = createEffect(
     const { id, name } = await watch!.uploadWatchface(bin, slot, key);
 
     // the watch will only ever report this dial by its id — this is the one moment the name
-    // and the picture are both in hand
-    rememberDial(id, name, preview);
+    // and the picture are both in hand. The serial goes with them: a055 won't list this dial on
+    // the next connection, so this record is what keeps its slot counted (see mergeDials)
+    rememberDial(id, name, preview, watch!.serial);
+    // …and only now does the merged dial list know about it, so refresh it
+    watch!.mergeDials();
     return id;
   },
 );
