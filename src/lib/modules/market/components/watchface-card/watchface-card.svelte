@@ -3,6 +3,7 @@
   import { Button } from "$lib/shared/components/button";
   import { Card } from "$lib/shared/components/card";
   import { Icon } from "$lib/shared/components/icon";
+  import { Menu, MenuItem } from "$lib/shared/components/menu";
   import { fileUrl, downloadUrl } from "$lib/shared/api";
   import type { RecordModel } from "pocketbase";
 
@@ -12,11 +13,13 @@
     liked?: boolean;
     canLike?: boolean;
     canRemove?: boolean;
-    // off on a creator's own profile page, where every card would repeat the same name
     showAuthor?: boolean;
+    manage?: boolean;
     onOpen?: () => void;
     onLike?: () => void;
     onRemove?: () => void;
+    onEdit?: () => void;
+    onPublishToggle?: () => void;
   }
 
   let {
@@ -26,12 +29,14 @@
     canLike = false,
     canRemove = false,
     showAuthor = true,
+    manage = false,
     onOpen,
     onLike,
     onRemove,
+    onEdit,
+    onPublishToggle,
   }: Props = $props();
 
-  // the whole card is a click target (onOpen) — every action inside it has to keep its click
   const stop = (fn?: () => void) => (e: MouseEvent) => {
     e.stopPropagation();
     fn?.();
@@ -40,17 +45,23 @@
 
 <Card onClick={onOpen}>
   <div class="content">
+    <h3 class="name">{wf.name}</h3>
     <div class="preview" title="Open">
       <img src={fileUrl(wf, "preview")} alt={wf.name} loading="lazy" />
     </div>
     <div class="title-row">
-      <h3 class="name">{wf.name}</h3>
-      {#if wf.type}<Badge>{wf.type}</Badge>{/if}
+      {#if manage}
+        <Badge>{wf.published ? "Published" : "Draft"}</Badge>
+      {:else if wf.type}
+        <Badge>{wf.type}</Badge>
+      {/if}
     </div>
     {#if wf.owner && showAuthor}
-      <!-- nested in the card's <button>, like the download link below — the click has to be
-           kept from opening the editor -->
-      <a class="author" href="/user/{wf.owner}" onclick={(e) => e.stopPropagation()}>
+      <a
+        class="author"
+        href="/user/{wf.owner}"
+        onclick={(e) => e.stopPropagation()}
+      >
         by {wf.expand?.owner?.name || "—"}
       </a>
     {/if}
@@ -69,20 +80,43 @@
           <span class="count">{likeCount}</span>
         </Button>
       </span>
-      <a
-        class="link-action"
-        href={downloadUrl(wf)}
-        title="Download .bin"
-        onclick={(e) => e.stopPropagation()}
-      >
-        <Icon name="download" size={16} />
+      <span class="downloads" title="Downloads">
+        <Icon name="download" size={14} />
         <span class="count">{wf.downloads || 0}</span>
-      </a>
-      {#if canRemove}
-        <span class="action-slot remove-slot" title="Delete">
-          <Button kind="ghost" onClick={stop(onRemove)}>
-            <Icon name="trash" size={16} color="var(--color-error)" />
-          </Button>
+      </span>
+      {#if manage || canRemove}
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <!-- svelte-ignore a11y_click_events_have_key_events -->
+        <span class="menu-slot" onclick={(e) => e.stopPropagation()}>
+          <Menu>
+            {#snippet trigger({ toggle })}
+              <span class="action-slot" title="More">
+                <Button kind="ghost" onClick={toggle}>
+                  <Icon name="ellipsis" size={16} />
+                </Button>
+              </span>
+            {/snippet}
+            <MenuItem href={downloadUrl(wf)}>
+              <Icon name="download" size={16} />
+              Download .bin
+            </MenuItem>
+            {#if manage}
+              <MenuItem onClick={onEdit}>
+                <Icon name="pencil" size={16} />
+                Edit
+              </MenuItem>
+              <MenuItem onClick={onPublishToggle}>
+                <Icon name={wf.published ? "globe-lock" : "globe"} size={16} />
+                {wf.published ? "Unpublish" : "Publish"}
+              </MenuItem>
+            {/if}
+            {#if canRemove}
+              <MenuItem danger onClick={onRemove}>
+                <Icon name="trash" size={16} />
+                Delete
+              </MenuItem>
+            {/if}
+          </Menu>
         </span>
       {/if}
     </div>
@@ -100,7 +134,6 @@
     display: block;
     width: 100%;
     aspect-ratio: 1 / 1;
-    /* flex item in a height-constrained column: without this the circle squashes into a pill */
     flex-shrink: 0;
     padding: 0;
     border: none;
@@ -128,7 +161,9 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 1.125rem;
+    font-size: 1.2rem;
+    line-height: 1;
+    font-weight: 600;
   }
   .author {
     align-self: flex-start;
@@ -159,28 +194,17 @@
   .action-slot {
     display: inline-flex;
   }
-  .remove-slot {
+  .downloads {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    color: oklch(from var(--color-text) l c h / 55%);
+  }
+  .menu-slot {
+    display: inline-flex;
     margin-inline-start: auto;
   }
   .count {
     font-size: 0.625rem;
-  }
-  .link-action {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    height: 1.875rem;
-    padding: 0 0.625rem;
-    border-radius: var(--border-radius);
-    color: var(--color-text);
-    text-decoration: none;
-    font-size: 0.75rem;
-    transition: background-color 0.15s ease;
-
-    @media (hover: hover) {
-      &:hover {
-        background-color: oklch(from var(--color-text) l c h / 20%);
-      }
-    }
   }
 </style>

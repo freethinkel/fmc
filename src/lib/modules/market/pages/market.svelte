@@ -1,23 +1,16 @@
 <script lang="ts">
   import { Input } from "$lib/shared/components/input";
   import { Select } from "$lib/shared/components/select";
-  import { Skeleton } from "$lib/shared/components/skeleton";
   import { Icon } from "$lib/shared/components/icon";
-  import type { RecordModel } from "pocketbase";
-  import { authModel } from "$lib/modules/auth/model";
   import { marketModel } from "../model";
-  import { WatchfaceCard } from "../components/watchface-card";
+  import { WatchfaceList } from "../components/watchface-list";
 
-  const { $user: user } = authModel;
   const {
     $items: items,
     $likes: likes,
     $marketErr: marketErr,
     $marketLoading: marketLoading,
     marketLoadRequested,
-    likeToggleRequested,
-    removeRequested,
-    showcaseRequested,
   } = marketModel;
 
   marketLoadRequested();
@@ -31,24 +24,12 @@
   ];
 
   const likeCount = (id: string) => $likes.filter((l) => l.watchface === id).length;
-  const myLike = (id: string) => $likes.find((l) => l.watchface === id && l.user === $user?.id);
-
-  function remove(wf: RecordModel) {
-    if (!confirm(`Delete "${wf.name}"?`)) return;
-    removeRequested(wf);
-  }
 
   const shown = $derived(
     $items
-      // community only — ownerless catalog records aren't served any more
-      // (fmc_pocketbase 1753500000_hide_catalog.js); the guard stays so a stale
-      // cached list can't render them either
       .filter((wf) => Boolean(wf.owner))
       .filter((wf) => wf.name.toLowerCase().includes(query.trim().toLowerCase()))
       .toSorted((a, b) =>
-        // popular = most liked; downloads used to be mixed in here, which just made this
-        // a duplicate of "Most downloaded" (downloads dwarf likes). Ties keep the
-        // newest-first order the api returns — toSorted is stable.
         sort === "popular"
           ? likeCount(b.id) - likeCount(a.id)
           : sort === "downloads"
@@ -57,28 +38,17 @@
       ),
   );
 
-  // all data is already loaded in full (getFullList in the model) — we progressively
-  // reveal the grid so the screen doesn't get flooded with cards at once.
-  // Resets on search/sort change since that changes shown.
   const PAGE = 60;
   let visibleCount = $state(PAGE);
+
   /* oxlint-disable no-unused-expressions -- bare refs register these as $effect deps */
   $effect(() => {
     query;
     sort;
     visibleCount = PAGE;
   });
-  /* oxlint-enable no-unused-expressions */
+
   const visible = $derived(shown.slice(0, visibleCount));
-
-  function loadMore(node: HTMLElement) {
-    const io = new IntersectionObserver(([e]) => {
-      if (e.isIntersecting) visibleCount = Math.min(visibleCount + PAGE, shown.length);
-    });
-
-    io.observe(node);
-    return { destroy: () => io.disconnect() };
-  }
 </script>
 
 <div class="page">
@@ -94,37 +64,16 @@
     </div>
   </div>
 
-  {#if $marketLoading}
-    <main class="grid">
-      {#each Array(8) as _, i (i)}
-        <div class="skeleton-card">
-          <Skeleton height="8.75rem" />
-          <Skeleton height="0.875rem" width="70%" />
-          <Skeleton height="0.75rem" width="40%" />
-        </div>
-      {/each}
-    </main>
-  {:else}
-    <main class="grid">
-      {#each visible as wf (wf.id)}
-        <WatchfaceCard
-          {wf}
-          likeCount={likeCount(wf.id)}
-          liked={!!myLike(wf.id)}
-          canLike={!!$user}
-          canRemove={$user?.id === wf.owner}
-          onOpen={() => showcaseRequested(wf)}
-          onLike={() => $user && likeToggleRequested({ wf, userId: $user.id })}
-          onRemove={() => remove(wf)}
-        />
-      {:else}
-        <p class="empty full">No community watchfaces yet — publish yours from the editor.</p>
-      {/each}
-      {#if visibleCount < shown.length}
-        <div class="sentinel" use:loadMore></div>
-      {/if}
-    </main>
-  {/if}
+  <main>
+    <WatchfaceList
+      items={visible}
+      loading={$marketLoading}
+      empty="No community watchfaces yet — publish yours from the editor."
+      onMore={visibleCount < shown.length
+        ? () => (visibleCount = Math.min(visibleCount + PAGE, shown.length))
+        : undefined}
+    />
+  </main>
 </div>
 
 <style>
@@ -167,8 +116,7 @@
   .sort {
     width: 8.125rem;
   }
-  /* a phone can't fit both fixed widths, and wrapping left the search pinned right on a row
-     of its own — let it take whatever the sort doesn't */
+
   @media (max-width: 767px) {
     .toolbar {
       flex-wrap: nowrap;
@@ -186,42 +134,7 @@
     }
   }
   main {
+    flex: 1;
     overflow-y: auto;
-  }
-  .grid {
-    display: grid;
-    /* the min() keeps two columns on a phone, where a fixed 8.875rem would drop to one */
-    grid-template-columns: repeat(auto-fill, minmax(min(8.875rem, 50%), 1fr));
-    align-items: start;
-    gap: 1rem;
-    padding: 1rem;
-
-    & > :global(*) {
-      min-height: auto;
-      height: 100%;
-    }
-
-    @media (max-width: 767px) {
-      gap: 0.5rem;
-      padding: 0.5rem;
-    }
-  }
-  .skeleton-card {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-  .empty {
-    padding: 4rem 0;
-    text-align: center;
-    font-size: 0.75rem;
-    color: oklch(from var(--color-text) l c h / 55%);
-  }
-  .empty.full {
-    grid-column: 1 / -1;
-  }
-  .sentinel {
-    grid-column: 1 / -1;
-    height: 1px;
   }
 </style>
