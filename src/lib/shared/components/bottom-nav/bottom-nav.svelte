@@ -49,8 +49,8 @@
     bottom: 0;
     z-index: 50;
     display: flex;
-    height: calc(3.5rem + env(safe-area-inset-bottom));
-    padding-bottom: env(safe-area-inset-bottom);
+    height: calc(3.5rem + var(--safe-area-bottom));
+    padding-bottom: var(--safe-area-bottom);
     background: var(--color-background);
     border-top: 1px solid oklch(from var(--color-text) l c h / 10%);
   }

@@ -9,12 +9,17 @@
   /* The one scale knob: every size in the app is `rem`, so this multiplies the whole UI.
      It is the sizing grid, not the text size — body text sits at 0.875rem (global.css). */
   font-size: 16px;
-  --color-accent: oklch(from #ffc700 0.54 c h);
+  --color-accent: #ffc700;
   --color-text: #1c1c1c;
   --color-background: #f2f2f2;
   --color-error: #d71921;
 
   --border-radius: 0.5rem;
+
+  /* home indicator / notch insets, as tokens so a component never spells env() twice
+     (and so they can be overridden in devtools to test the standalone layout) */
+  --safe-area-top: env(safe-area-inset-top, 0px);
+  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
 
   --font-family: "Inter", system-ui, -apple-system, sans-serif;
   --font-display: "Instrument Serif", Georgia, serif;

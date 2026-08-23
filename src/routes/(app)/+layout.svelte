@@ -1,6 +1,6 @@
 <script lang="ts">
   import AppHeader from "$lib/shared/components/app-header/app-header.svelte";
-  import BottomNav from "$lib/shared/components/bottom-nav.svelte";
+  import { BottomNav } from "$lib/shared/components/bottom-nav";
 
   let { children } = $props();
 </script>
@@ -17,7 +17,7 @@
   .shell {
     display: flex;
     flex-direction: column;
-    height: 100svh;
+    height: 100%;
   }
   main {
     flex: 1;
@@ -26,7 +26,7 @@
   @media (max-width: 767px) {
     main {
       /* keep content clear of the fixed bottom tab bar */
-      padding-bottom: calc(3.5rem + env(safe-area-inset-bottom));
+      padding-bottom: calc(3.5rem + var(--safe-area-bottom));
     }
   }
 </style>

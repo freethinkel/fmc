@@ -69,6 +69,8 @@
     margin: 0 0 0 auto;
     height: 100svh;
     max-height: 100svh;
+    /* a full-height drawer spans the status bar and the home indicator */
+    padding-block: var(--safe-area-top) var(--safe-area-bottom);
     width: min(26.25rem, 90vw);
     border-radius: 0;
     display: flex;

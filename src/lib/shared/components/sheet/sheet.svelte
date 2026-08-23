@@ -145,7 +145,7 @@
     width: min(30rem, 100%);
     max-height: 90svh;
     margin-inline: auto;
-    padding-bottom: env(safe-area-inset-bottom);
+    padding-bottom: var(--safe-area-bottom);
     translate: 0 0;
     transition: translate 0.4s cubic-bezier(0.32, 0.72, 0, 1);
     @starting-style {

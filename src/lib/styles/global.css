@@ -19,6 +19,13 @@ html {
   overscroll-behavior-y: none;
 }
 
+/* the app shell measures itself against the window: in standalone the page is the whole
+   screen, insets included, so the frame has to reach the bottom edge */
+html,
+body {
+  height: 100vh;
+}
+
 body {
   margin: 0;
   background: var(--color-background);

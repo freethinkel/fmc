@@ -67,8 +67,10 @@
     display: flex;
     align-items: center;
     gap: 1.5rem;
-    height: 3.5rem;
-    padding: 0 1rem;
+    /* the status bar sits on top of the page in standalone (black-translucent), so the bar
+       grows by the inset instead of starting under the clock */
+    height: calc(3.5rem + var(--safe-area-top));
+    padding: var(--safe-area-top) 1rem 0;
     border-bottom: 1px solid oklch(from var(--color-text) l c h / 10%);
   }
   .logo {
