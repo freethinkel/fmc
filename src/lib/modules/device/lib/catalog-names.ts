@@ -17,7 +17,11 @@ interface Flashed {
   preview?: string;
   // serial of the watch it went to — a055 doesn't list side-loaded dials, so this record is the
   // only thing that knows the slot is taken (see mergeDials in ble.ts). Absent on entries
-  // written before it existed; those count for nothing but still carry a name and a preview.
+  // written before it existed, and on dials unclaimDial'd since; those count for nothing but
+  // still carry a name and a preview. ponytail: absent too when fetchInfo couldn't read the
+  // serial (it's optional there) — that dial then never counts, on any later connection either.
+  // Key it off something always available (BluetoothDevice.id is per-origin stable) if a watch
+  // shows up that won't report its serial.
   serial?: string;
 }
 // localStorage is the single source of truth and the parsed copy is only a cache of one exact
@@ -56,12 +60,14 @@ const write = (next: Record<string, Flashed>) => {
 export const rememberDial = (id: number, name: string, preview?: string, serial?: string | null) =>
   write({ ...flashed(), [id]: { name, preview, serial: serial || undefined } });
 
-// the watch says it doesn't have that dial after all — deleted on the watch, or the record
-// outlived a factory reset. Drop it, or it inflates the slot count forever.
-export const forgetDial = (id: number) => {
-  const { [id]: gone, ...rest } = flashed();
+// that dial no longer occupies a slot on that watch — deleted on the watch, replaced by the
+// upload that just landed, or the record outlived a factory reset. Only the claim goes: the name
+// and the preview cost nothing and still label the id if it turns out to be there after all,
+// which matters because the claim is also dropped on refusals we can't fully explain.
+export const unclaimDial = (id: number) => {
+  const e = flashed()[id];
 
-  if (gone) write(rest);
+  if (e?.serial) write({ ...flashed(), [id]: { ...e, serial: undefined } });
 };
 
 // ids this browser put on that particular watch — what a055 leaves out of the installed list

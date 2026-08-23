@@ -4,7 +4,7 @@
 // gap; these check it does, and that a dial the watch turns out not to have stops counting.
 import { beforeEach, expect, test } from "vitest";
 import { Watch, WF_CAPACITY } from "$lib/modules/device/lib/ble";
-import { forgetDial, rememberDial } from "$lib/modules/device/lib/catalog-names";
+import { dialLabel, rememberDial, unclaimDial } from "$lib/modules/device/lib/catalog-names";
 
 const SERIAL = "TESTSERIAL01";
 const OTHER = "TESTSERIAL02";
@@ -46,11 +46,13 @@ test("without a serial only what the watch reported counts", () => {
   expect(watchWith([1, 2], null).installedWf).toEqual([1, 2]);
 });
 
-test("forgetting a dial the watch doesn't have frees its slot", () => {
+test("unclaiming a dial the watch doesn't have frees its slot but keeps its name", () => {
   rememberDial(4242, "mine", undefined, SERIAL);
   const w = watchWith([1, 2, 3, 4, 5]);
 
-  forgetDial(4242); // what the stale-old_wf_id retry does
+  unclaimDial(4242); // what the stale-old_wf_id retry, and a successful overwrite, do
   w.mergeDials();
   expect(w.installedWf).toEqual([1, 2, 3, 4, 5]);
+  // the watch may still have it — 0a doesn't say why — so the label has to survive the guess
+  expect(dialLabel(4242, 0)).toBe("mine");
 });

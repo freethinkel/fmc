@@ -3,7 +3,7 @@
 // upload watchfaces. The wire format it speaks lives in ble-protocol.ts.
 // Chromium only (no Web Bluetooth in Firefox/Safari); requires a user gesture and
 // localhost or HTTPS.
-import { flashedOn, forgetDial } from "./catalog-names";
+import { flashedOn, unclaimDial } from "./catalog-names";
 import {
   cat,
   CMD,
@@ -421,7 +421,7 @@ export class Watch {
     if (!oldId && this.installedWf.length >= WF_CAPACITY)
       throw new NoFreeSlotError(`all ${WF_CAPACITY} slots taken`);
 
-    const attempt = async (oldId: number) => {
+    const attempt = async (oldId: number, retry = false) => {
       dbg("upload ids:", {
         newId: id,
         oldId,
@@ -501,6 +501,10 @@ export class Watch {
               const i = this.reportedWf.indexOf(oldId);
 
               if (i >= 0) this.reportedWf[i] = id;
+              // a side-loaded dial isn't in reportedWf — it was counted through catalog-names,
+              // and this upload has just written over it, so drop its claim or it goes on
+              // holding a slot that no longer exists (and keeps showing up in the slot dialog)
+              else if (oldId && oldId !== id) unclaimDial(oldId);
               // the new id joins the list through catalog-names, which the caller writes the
               // moment this resolves — it calls mergeDials() again right after
               this.mergeDials();
@@ -514,16 +518,22 @@ export class Watch {
               // way — leaving it a plain Error is what made every flash after the first one a
               // dead end on a full watch (#43). With a real old_wf_id it means that dial isn't
               // installed, which attempt() below retries as an append.
+              // `retry` is the append that already followed one refusal: 0a a second time on
+              // the same file isn't about slots, so let it surface as a plain error instead of
+              // reopening the slot dialog on a loop the user can't see the reason for.
               const kb = Math.round(data.length / 1024);
 
-              if (p[0] === 0x0a)
+              if (p[0] === 0x0a && !retry)
                 reject(
                   oldId
                     ? new StaleSlotError(`dial ${oldId} not installed (finish: 0a)`)
                     : new NoFreeSlotError(`append refused (finish: 0a; ${kb} KB)`),
                 );
-              else
-                reject(new Error(`watch did not accept the file (finish: ${toHex(p)}; ${kb} KB)`));
+              else {
+                const why = p[0] === 0x0a ? "stored but not activated" : `finish: ${toHex(p)}`;
+
+                reject(new Error(`watch did not accept the file (${why}; ${kb} KB)`));
+              }
             }
           });
         });
@@ -538,15 +548,16 @@ export class Watch {
     await attempt(oldId).catch((e) => {
       if (!(e instanceof StaleSlotError)) throw e;
       dbg("stale old_wf_id", oldId, "→ retrying as append:", (e as Error).message);
-      // it isn't on the watch, so stop counting it as a taken slot — otherwise a face deleted
-      // on the watch keeps the count at six and every later flash goes through this same
-      // wasted round trip
+      // stop counting it as a taken slot — otherwise a face deleted on the watch keeps the
+      // count at six and every later flash pays this same wasted round trip. The claim is all
+      // that goes: the watch may have refused for a reason we can't read off 0a, and dropping a
+      // real dial's name and preview over a guess is not a trade worth making.
       this.reportedWf = this.reportedWf.filter((x) => x !== oldId);
-      forgetDial(oldId);
+      unclaimDial(oldId);
       this.mergeDials();
       if (this.installedWf.length >= WF_CAPACITY)
         throw new NoFreeSlotError(`all ${WF_CAPACITY} slots taken`);
-      return attempt(0);
+      return attempt(0, true);
     });
     onProgress(100);
     this.status("connected");
