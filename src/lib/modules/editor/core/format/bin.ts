@@ -98,6 +98,10 @@ function parseRefTail(
   return null;
 }
 
+// Fixed-layout leaves the speculative TLV descent must not split: a slot's `00 06 00 …` reads as
+// a zero tag of length 6 (seen on the Watch Pro 3), and the document reads these by `hex`.
+const LEAF = new Set<number>([TAG.bind, TAG.fmt, TAG.frame, TAG.arc, TAG.arcClipped, TAG.slot]);
+
 function allZero(b: Uint8Array): boolean {
   for (const c of b) if (c !== 0) return false;
   return true;
@@ -154,7 +158,7 @@ function nodeToJSON(
     j.pivotY = u16(v, 3);
     return j;
   }
-  if (n.children) {
+  if (n.children && !LEAF.has(n.tag)) {
     j.subs = n.children.map((c) => nodeToJSON(c, resources, resOffset, n.tag));
     return j;
   }

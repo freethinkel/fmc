@@ -46,14 +46,14 @@
 
 <AdaptivePopover
   {open}
-  title={$bleInfo ? "CMF Watch Pro 2" : "Connect your watch"}
+  title={$bleInfo ? ($bleInfo.name ?? "CMF Watch") : "Connect your watch"}
   anchor="--watch-trigger"
   {onClose}
 >
   <!-- ponytail: don't gate on navigator.bluetooth at render time — the Safari polyfill injects later; the real check is in ble.ts on click -->
   {#if !$bleInfo}
     <div class="section">
-      <p class="desc">CMF Watch Pro 2 over Web Bluetooth.</p>
+      <p class="desc">CMF Watch Pro 2 / Pro 3 over Web Bluetooth.</p>
       <div class="row">
         <Button onClick={() => connectRequested()} disabled={$connecting}>
           <Icon name="bluetooth" size={16} />
