@@ -15,6 +15,14 @@ const NAME_STORE = "fmc_dial_names";
 interface Flashed {
   name: string;
   preview?: string;
+  // serial of the watch it went to — a055 doesn't list side-loaded dials, so this record is the
+  // only thing that knows the slot is taken (see mergeDials in ble.ts). Absent on entries
+  // written before it existed, and on dials unclaimDial'd since; those count for nothing but
+  // still carry a name and a preview. ponytail: absent too when fetchInfo couldn't read the
+  // serial (it's optional there) — that dial then never counts, on any later connection either.
+  // Key it off something always available (BluetoothDevice.id is per-origin stable) if a watch
+  // shows up that won't report its serial.
+  serial?: string;
 }
 // localStorage is the single source of truth and the parsed copy is only a cache of one exact
 // string — a lazily-filled cache that never invalidated meant a reader who ran before the first
@@ -43,11 +51,30 @@ const flashed = () => {
   return cache;
 };
 
-export const rememberDial = (id: number, name: string, preview?: string) => {
-  raw = JSON.stringify({ ...flashed(), [id]: { name, preview } });
+const write = (next: Record<string, Flashed>) => {
+  raw = JSON.stringify(next);
   localStorage.setItem(NAME_STORE, raw);
   cache = JSON.parse(raw) as Record<string, Flashed>;
 };
+
+export const rememberDial = (id: number, name: string, preview?: string, serial?: string | null) =>
+  write({ ...flashed(), [id]: { name, preview, serial: serial || undefined } });
+
+// that dial no longer occupies a slot on that watch — deleted on the watch, replaced by the
+// upload that just landed, or the record outlived a factory reset. Only the claim goes: the name
+// and the preview cost nothing and still label the id if it turns out to be there after all,
+// which matters because the claim is also dropped on refusals we can't fully explain.
+export const unclaimDial = (id: number) => {
+  const e = flashed()[id];
+
+  if (e?.serial) write({ ...flashed(), [id]: { ...e, serial: undefined } });
+};
+
+// ids this browser put on that particular watch — what a055 leaves out of the installed list
+export const flashedOn = (serial: string) =>
+  Object.entries(flashed())
+    .filter(([, v]) => v.serial === serial)
+    .map(([id]) => Number(id));
 
 // i = position in the list the watch reported, which is the order its own carousel shows them
 // in — the only handle a user has on a dial nothing can name. Real hardware reports ids like
