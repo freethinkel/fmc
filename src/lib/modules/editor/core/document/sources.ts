@@ -221,6 +221,14 @@ export function defaultSim(): Sim {
   };
 }
 
+/** The clock every preview is rendered at — Mon 2024-01-08, 10:09:36. Previews must be a
+ *  function of the face alone, so they never follow the live simulator: the classic watch-ad
+ *  pose, with hands apart and a weekday/date that reads well. */
+export const PREVIEW_TIME = new Date(2024, 0, 8, 10, 9, 36).getTime();
+
+/** The simulator a preview is drawn with: the user's own metric values, at PREVIEW_TIME. */
+export const previewSim = (sim: Sim): Sim => ({ ...sim, live: false, time: PREVIEW_TIME });
+
 export function timeParts(sim: Sim): TimeParts {
   const d = sim.live ? new Date() : new Date(sim.time);
 
