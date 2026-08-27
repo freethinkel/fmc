@@ -1,82 +1,7 @@
 <script module lang="ts">
-  /** One file per name in ./icons — tabler outline, inlined so the set is ours, not a dependency. */
-  export type IconName =
-    | "abc"
-    | "align-bottom"
-    | "align-center"
-    | "align-left"
-    | "align-middle"
-    | "align-right"
-    | "align-top"
-    | "battery-full"
-    | "bluetooth"
-    | "box"
-    | "braces"
-    | "check"
-    | "chevron-right"
-    | "circle"
-    | "clipboard"
-    | "clipboard-check"
-    | "clock-3"
-    | "contrast"
-    | "copy"
-    | "cpu"
-    | "crosshair"
-    | "download"
-    | "ellipsis"
-    | "eraser"
-    | "eye"
-    | "eye-off"
-    | "file-plus"
-    | "film"
-    | "folder"
-    | "folder-heart"
-    | "folder-input"
-    | "folder-open"
-    | "git-branch"
-    | "globe"
-    | "globe-lock"
-    | "google"
-    | "grip"
-    | "hash"
-    | "heart"
-    | "help"
-    | "image"
-    | "image-plus"
-    | "link"
-    | "list-tree"
-    | "loader"
-    | "lock"
-    | "lock-open"
-    | "log-out"
-    | "monitor"
-    | "moon"
-    | "pencil"
-    | "play"
-    | "plus"
-    | "redo"
-    | "save"
-    | "scissors"
-    | "search"
-    | "sliders-horizontal"
-    | "square-dashed"
-    | "store"
-    | "trash"
-    | "type"
-    | "undo"
-    | "unlink"
-    | "upload"
-    | "upload-cloud"
-    | "watch"
-    | "x"
-    | "zap";
-
-  // eager: the whole set is ~20 kB of markup, and a lazily fetched icon pops in a frame late
-  const ICONS = import.meta.glob("./icons/*.svg", {
-    query: "?raw",
-    import: "default",
-    eager: true,
-  }) as Record<string, string>;
+  /** A Material Symbols Rounded ligature — the whole set is loaded, so any name Google lists
+      works as-is: https://fonts.google.com/icons */
+  export type IconName = string;
 </script>
 
 <script lang="ts">
@@ -84,34 +9,49 @@
     name: IconName;
     size?: number;
     color?: string;
-    /** the outline set carries no fill — the liked heart asks for one */
-    fill?: string;
+    /** the FILL axis — the liked heart is the solid one */
+    fill?: boolean;
     class?: string;
     // the tree panel's chevron is an icon that toggles a node
     onclick?: (event: MouseEvent) => void;
   }
 
-  const { name, size = 24, color, fill = "none", class: cls, onclick }: Props = $props();
+  const {
+    name,
+    size = 24,
+    color,
+    fill = false,
+    class: cls,
+    onclick,
+  }: Props = $props();
 </script>
 
 <span
   class="icon {cls ?? ''}"
-  style:--size="{size}px"
-  style:--fill={fill}
+  style:--size="{size / 16}rem"
+  style:font-variation-settings="'FILL' {fill ? 1 : 0}, 'opsz' {size}, 'wght'
+  300"
   style:color
   aria-hidden="true"
-  {onclick}
+  {onclick}>{name}</span
 >
-  {@html ICONS[`./icons/${name}.svg`]}
-</span>
 
 <style>
   .icon {
-    display: inline-flex;
-  }
-  .icon :global(svg) {
-    width: var(--size);
-    height: var(--size);
-    fill: var(--fill);
+    font-family: "Material Symbols Rounded";
+    font-size: var(--icon-size, var(--size));
+    line-height: 1;
+    font-weight: 100;
+    display: inline-block;
+    font-weight: normal;
+    font-style: normal;
+    letter-spacing: normal;
+    text-transform: none;
+    white-space: nowrap;
+    word-wrap: normal;
+    direction: ltr;
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: "liga";
+    user-select: none;
   }
 </style>

@@ -69,11 +69,11 @@
     align-items: center;
     gap: 0.375rem;
     width: 100%;
-    height: 1.875rem;
-    padding: 0 0.625rem;
+    height: 2.25rem;
+    padding: 0 0.75rem;
     background: oklch(from var(--color-text) l c h / 5%);
     border: 1px solid transparent;
-    border-radius: var(--border-radius);
+    border-radius: 10em;
     transition: border-color 0.15s ease;
     cursor: text;
 
@@ -98,7 +98,7 @@
     border: none;
     background: transparent;
     font: inherit;
-    font-size: 0.75rem;
+    font-size: 1rem;
     color: var(--color-text);
 
     &::placeholder {

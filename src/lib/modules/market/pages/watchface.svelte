@@ -11,6 +11,7 @@
   import { bleModel } from "$lib/modules/device/model";
   import { marketModel } from "../model";
   import { LiveDial } from "../components/live-dial";
+  import { BackBtn } from "$lib/shared/components/back-btn";
 
   interface Props {
     id: string;
@@ -48,7 +49,9 @@
   const wf = $derived($watchface);
   const owner = $derived(wf?.expand?.owner);
   const likeCount = $derived($likes.filter((l) => l.watchface === id).length);
-  const liked = $derived($likes.some((l) => l.watchface === id && l.user === $user?.id));
+  const liked = $derived(
+    $likes.some((l) => l.watchface === id && l.user === $user?.id),
+  );
   const day = (v: string) => new Date(v).toLocaleDateString();
 
   // ponytail: Web Share where it exists, clipboard everywhere else — no share-sheet dependency
@@ -67,14 +70,17 @@
   }
 </script>
 
-<svelte:head><title>{wf?.name || "Watchface"} — FMC Watchfaces</title></svelte:head>
+<svelte:head
+  ><title>{wf?.name || "Watchface"} — FMC Watchfaces</title></svelte:head
+>
 
 <div class="page">
   {#if $marketErr}<p class="error">{$marketErr}</p>{/if}
 
   <main>
     <!-- ponytail: no back-arrow glyph in the icon registry, and "←" needs no import -->
-    <a class="back" href="/">← Marketplace</a>
+    <!-- <a class="back" href="/">← Marketplace</a> -->
+    <BackBtn href="/" />
 
     {#if wf}
       <article class="face">
@@ -91,9 +97,13 @@
           {#if $hasAod}
             <Button
               kind="secondary"
-              onClick={() => dialScreenSet($dialScreen === "aod" ? "main" : "aod")}
+              onClick={() =>
+                dialScreenSet($dialScreen === "aod" ? "main" : "aod")}
             >
-              <Icon name={$dialScreen === "aod" ? "monitor" : "moon"} size={16} />
+              <Icon
+                name={$dialScreen === "aod" ? "monitor" : "dark_mode"}
+                size={22}
+              />
               {$dialScreen === "aod" ? "Show normal" : "Show always-on"}
             </Button>
           {/if}
@@ -106,7 +116,11 @@
           </div>
 
           {#if owner}
-            <a class="creator" href="/user/{wf.owner}" title="Watchfaces by this creator">
+            <a
+              class="creator"
+              href="/user/{wf.owner}"
+              title="Watchfaces by this creator"
+            >
               <Avatar name={owner.name || "?"} size={36} />
               <span class="creator-text">
                 <span class="creator-name">{owner.name || "Unknown"}</span>
@@ -124,19 +138,26 @@
           <div class="cta">
             {#if !$bleInfo}
               <Button onClick={() => connectRequested()} disabled={$connecting}>
-                <Icon name="bluetooth" size={16} />
+                <Icon name="bluetooth" size={22} />
                 {$connecting ? "Connecting…" : "Connect watch"}
               </Button>
             {:else if $installed}
               <Button disabled>
-                <Icon name="check" size={16} /> Installed
+                <Icon name="check" size={22} /> Installed
               </Button>
-              <Button kind="secondary" onClick={() => installRequested(wf)} disabled={$installing}>
+              <Button
+                kind="secondary"
+                onClick={() => installRequested(wf)}
+                disabled={$installing}
+              >
                 Install again
               </Button>
             {:else}
-              <Button onClick={() => installRequested(wf)} disabled={$installing}>
-                <Icon name="watch" size={16} />
+              <Button
+                onClick={() => installRequested(wf)}
+                disabled={$installing}
+              >
+                <Icon name="watch" size={22} />
                 {$installing ? "Installing…" : "Install watchface"}
               </Button>
             {/if}
@@ -168,30 +189,34 @@
 
           <div class="actions">
             <Button onClick={() => editRequested(wf)}>
-              <Icon name="pencil" size={16} />
+              <Icon name="edit" size={22} />
               Open in editor
             </Button>
-            <a class="link-action" href={downloadUrl(wf)}>
-              <Icon name="download" size={16} />
+            <Button kind="secondary" href={downloadUrl(wf)}>
+              <Icon name="download" size={22} />
               Download .bin
-            </a>
-            <span class="action-slot" title={$user ? "Like" : "Sign in to like"}>
+            </Button>
+            <span
+              class="action-slot"
+              title={$user ? "Like" : "Sign in to like"}
+            >
               <Button
                 kind="secondary"
                 disabled={!$user}
-                onClick={() => $user && likeToggleRequested({ wf, userId: $user.id })}
+                onClick={() =>
+                  $user && likeToggleRequested({ wf, userId: $user.id })}
               >
                 <Icon
-                  name="heart"
-                  size={16}
+                  name="favorite"
+                  size={22}
                   color={liked ? "var(--color-error)" : undefined}
-                  fill={liked ? "var(--color-error)" : "none"}
+                  fill={liked}
                 />
                 {likeCount}
               </Button>
             </span>
             <Button kind="secondary" onClick={share}>
-              <Icon name="link" size={16} />
+              <Icon name="link" size={22} />
               {copied ? "Link copied" : "Share"}
             </Button>
           </div>
@@ -286,7 +311,6 @@
     margin: 0;
     font-family: var(--font-display);
     font-size: 2rem;
-    font-weight: 400;
   }
   .creator {
     display: inline-flex;
@@ -360,26 +384,6 @@
   }
   .action-slot {
     display: inline-flex;
-  }
-  .link-action {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    height: 1.875rem;
-    padding: 0 0.625rem;
-    border-radius: var(--border-radius);
-    color: var(--color-text);
-    background-color: oklch(from var(--color-text) l c h / 12%);
-    text-decoration: none;
-    font-size: 0.75rem;
-    font-weight: 500;
-    transition: background-color 0.15s ease;
-
-    @media (hover: hover) {
-      &:hover {
-        background-color: oklch(from var(--color-text) l c h / 20%);
-      }
-    }
   }
   .empty {
     padding: 4rem 0;

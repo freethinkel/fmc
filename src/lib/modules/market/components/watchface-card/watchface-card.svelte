@@ -6,6 +6,7 @@
   import { Menu, MenuItem } from "$lib/shared/components/menu";
   import { fileUrl, downloadUrl } from "$lib/shared/api";
   import type { RecordModel } from "pocketbase";
+  import { Avatar } from "$lib/shared/components/avatar";
 
   interface Props {
     wf: RecordModel;
@@ -41,20 +42,37 @@
     e.stopPropagation();
     fn?.();
   };
+
+  const authorName = $derived(wf.expand?.owner?.name || "—");
+
+  const avatar = $derived(
+    wf.expand?.owner ? fileUrl(wf.expand?.owner, "avatar") : undefined,
+  );
 </script>
 
 <Card onClick={onOpen}>
   <div class="content">
-    <h3 class="name">{wf.name}</h3>
+    <div class="top-line">
+      <h3 title={wf.name} class="name">{wf.name}</h3>
+      <div class="stats">
+        <div class="stats-btn" title="Downloads">
+          <span class="count">[ {wf.downloads || 0} ]</span>
+          <Icon name="download" size={20} />
+        </div>
+
+        <button class="stats-btn" disabled={!canLike} onclick={stop(onLike)}>
+          <span class="count">[ {likeCount} ]</span>
+          <Icon
+            name="favorite"
+            size={20}
+            color={liked ? "var(--color-error)" : undefined}
+            fill={liked}
+          />
+        </button>
+      </div>
+    </div>
     <div class="preview" title="Open">
       <img src={fileUrl(wf, "preview")} alt={wf.name} loading="lazy" />
-    </div>
-    <div class="title-row">
-      {#if manage}
-        <Badge>{wf.published ? "Published" : "Draft"}</Badge>
-      {:else if wf.type}
-        <Badge>{wf.type}</Badge>
-      {/if}
     </div>
     {#if wf.owner && showAuthor}
       <a
@@ -62,39 +80,29 @@
         href="/user/{wf.owner}"
         onclick={(e) => e.stopPropagation()}
       >
-        by {wf.expand?.owner?.name || "—"}
+        <Avatar name={authorName} src={avatar} />
+        {authorName}
       </a>
     {/if}
-    {#if wf.description}
-      <p class="desc">{wf.description}</p>
-    {/if}
+    <!-- {#if wf.description} -->
+    <!--   <p class="desc">{wf.description}</p> -->
+    <!-- {/if} -->
     <div class="actions">
-      <span class="action-slot" title={canLike ? "Like" : "Sign in to like"}>
-        <Button kind="ghost" disabled={!canLike} onClick={stop(onLike)}>
-          <Icon
-            name="heart"
-            size={16}
-            color={liked ? "var(--color-error)" : undefined}
-            fill={liked ? "var(--color-error)" : "none"}
-          />
-          <span class="count">{likeCount}</span>
-        </Button>
-      </span>
-      <span class="downloads" title="Downloads">
-        <Icon name="download" size={14} />
-        <span class="count">{wf.downloads || 0}</span>
-      </span>
+      {#if manage}
+        <Badge>{wf.published ? "Published" : "Draft"}</Badge>
+      {:else if wf.type}
+        <Badge>{wf.type}</Badge>
+      {/if}
+
       {#if manage || canRemove}
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <!-- svelte-ignore a11y_click_events_have_key_events -->
         <span class="menu-slot" onclick={(e) => e.stopPropagation()}>
           <Menu>
             {#snippet trigger({ toggle })}
-              <span class="action-slot" title="More">
-                <Button kind="ghost" onClick={toggle}>
-                  <Icon name="ellipsis" size={16} />
-                </Button>
-              </span>
+              <button class="action-btn" onclick={toggle}>
+                <Icon name="more_horiz" size={22} />
+              </button>
             {/snippet}
             <MenuItem href={downloadUrl(wf)}>
               <Icon name="download" size={16} />
@@ -102,17 +110,17 @@
             </MenuItem>
             {#if manage}
               <MenuItem onClick={onEdit}>
-                <Icon name="pencil" size={16} />
+                <Icon name="edit" size={16} />
                 Edit
               </MenuItem>
               <MenuItem onClick={onPublishToggle}>
-                <Icon name={wf.published ? "globe-lock" : "globe"} size={16} />
+                <Icon name={wf.published ? "public_off" : "public"} size={16} />
                 {wf.published ? "Unpublish" : "Publish"}
               </MenuItem>
             {/if}
             {#if canRemove}
               <MenuItem danger onClick={onRemove}>
-                <Icon name="trash" size={16} />
+                <Icon name="delete" size={16} />
                 Delete
               </MenuItem>
             {/if}
@@ -131,28 +139,31 @@
     height: 100%;
   }
   .preview {
-    display: block;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex: 1;
     width: 100%;
-    aspect-ratio: 1 / 1;
     flex-shrink: 0;
     padding: 0;
     border: none;
     overflow: hidden;
     cursor: pointer;
-    border-radius: 625rem;
-    background: oklch(0 0 0);
 
     img {
+      max-height: 100%;
+      max-width: 15rem;
       display: block;
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
+      aspect-ratio: 1;
+      background: oklch(0 0 0);
+      border-radius: 50%;
     }
   }
-  .title-row {
+
+  .top-line {
     display: flex;
-    align-items: baseline;
     justify-content: space-between;
+    align-items: center;
     gap: 0.5rem;
   }
   .name {
@@ -162,28 +173,24 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     font-size: 1.2rem;
-    line-height: 1;
+    line-height: 1.5;
     font-weight: 600;
+    flex: 1;
+    transition: var(--spring-transition);
   }
   .author {
+    gap: 0.5rem;
+    display: flex;
+    align-items: center;
     align-self: flex-start;
-    font-size: 0.625rem;
+    font-size: 0.9rem;
     text-decoration: none;
     color: oklch(from var(--color-text) l c h / 55%);
+    --avatar-size: 1.6rem;
 
     &:hover {
       color: var(--color-accent);
     }
-  }
-  .desc {
-    margin: 0;
-    display: -webkit-box;
-    -webkit-line-clamp: 1;
-    line-clamp: 1;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-    font-size: 0.625rem;
-    color: oklch(from var(--color-text) l c h / 55%);
   }
   .actions {
     display: flex;
@@ -191,20 +198,51 @@
     gap: 0.25rem;
     margin-top: auto;
   }
-  .action-slot {
-    display: inline-flex;
+
+  :global(.open) .action-btn {
+    background: oklch(from var(--color-background) calc(l + 0.1) c h);
   }
-  .downloads {
-    display: inline-flex;
+
+  .action-btn {
+    appearance: none;
+    display: flex;
+    height: 2rem;
     align-items: center;
-    gap: 0.25rem;
+    justify-content: center;
+    width: 2rem;
+    border-radius: var(--border-radius);
+    border: none;
+    background: var(--color-background);
+    transition: var(--spring-transition);
+
+    &:hover {
+      background: oklch(from var(--color-background) calc(l + 0.1) c h);
+    }
+  }
+  .stats {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+  .stats-btn {
+    cursor: pointer;
+    appearance: none;
+    border: none;
+    background: none;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
     color: oklch(from var(--color-text) l c h / 55%);
+
+    & :global(.icon) {
+      line-height: 1em;
+    }
   }
   .menu-slot {
     display: inline-flex;
     margin-inline-start: auto;
   }
   .count {
-    font-size: 0.625rem;
+    font-size: 0.8rem;
   }
 </style>

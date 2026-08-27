@@ -33,7 +33,7 @@
   {#if $doc}
     <div class="row">
       <Button kind="secondary" onClick={() => invertColorsRequested()}>
-        <Icon name="contrast" size={14} />
+        <Icon name="contrast" size={22} />
         invert {layer ? "layer" : "screen"}
       </Button>
     </div>

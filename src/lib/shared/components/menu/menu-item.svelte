@@ -37,7 +37,7 @@
     border: none;
     background: transparent;
     font: inherit;
-    font-size: 0.75rem;
+    font-size: 1rem;
     color: var(--color-text);
     cursor: pointer;
     padding: 0.5rem 0.625rem;

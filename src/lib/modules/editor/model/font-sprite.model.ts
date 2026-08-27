@@ -29,7 +29,7 @@ export type GlyphForm = Omit<GlyphSpec, "labels"> & { labelsText: string };
  *  since that is what a canvas font shorthand takes. */
 export const APP_FAMILIES: FontOption[] = [
   { value: '"Geist Mono", ui-monospace, monospace', label: "Geist Mono (app)" },
-  { value: '"Instrument Serif", Georgia, serif', label: "Instrument Serif (display)" },
+  { value: '"Noto Serif", Georgia, serif', label: "Noto Serif (display)" },
   { value: "system-ui, sans-serif", label: "System sans" },
   { value: "ui-monospace, monospace", label: "System mono" },
 ];

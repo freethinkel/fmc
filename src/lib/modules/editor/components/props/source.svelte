@@ -181,7 +181,7 @@
     <p class="hint-xs">this source freezes a ring on the watch — it only animates a hand</p>
     <div class="row">
       <Button kind="secondary" onClick={() => setSourceId(0x0f)}>
-        <Icon name="undo" size={14} /> use the ticking second
+        <Icon name="undo" size={22} /> use the ticking second
       </Button>
     </div>
   </div>
@@ -222,7 +222,7 @@
           disabled={slot.metrics.length < 2}
           onclick={() => slotMetricRemoved({ id: layer.id, metric: m })}
         >
-          <Icon name="x" size={14} />
+          <Icon name="close" size={14} />
         </button>
       </div>
     {/each}
@@ -280,7 +280,7 @@
           class="icon-btn"
           onclick={() => dropCondition(i)}
         >
-          <Icon name="trash" size={14} />
+          <Icon name="delete" size={14} />
         </button>
       </div>
       <p class="hint-xs">{bindLines[i]}</p>
@@ -293,7 +293,7 @@
 {#if conditions.length || layer.kind !== "raw"}
   <div class="row">
     <Button kind="secondary" onClick={() => conditionAdded(layer.id)}>
-      <Icon name="git-branch" size={14} /> add condition
+      <Icon name="call_split" size={22} /> add condition
     </Button>
   </div>
 {/if}

@@ -4,8 +4,10 @@
   interface Props {
     type?: "submit" | "reset" | "button";
     kind?: "primary" | "secondary" | "ghost" | "danger";
-    size?: "large" | "default";
+    size?: "default" | "small" | "large";
     disabled?: boolean;
+    /** renders an <a> instead of a <button> — a download or an outbound link that looks like one */
+    href?: string;
     onClick?: (e: MouseEvent) => void;
     children?: Snippet;
   }
@@ -14,14 +16,24 @@
     kind = "primary",
     size = "default",
     disabled,
+    href,
     onClick,
     children,
   }: Props = $props();
 </script>
 
-<button class="btn kind__{kind} size__{size}" {type} {disabled} onclick={onClick}>
+<svelte:element
+  this={href ? "a" : "button"}
+  class="btn kind__{kind} size__{size}"
+  href={disabled ? undefined : href}
+  type={href ? undefined : type}
+  disabled={href ? undefined : disabled}
+  aria-disabled={href && disabled ? "true" : undefined}
+  role={href ? "link" : "button"}
+  onclick={onClick}
+>
   {@render children?.()}
-</button>
+</svelte:element>
 
 <style>
   .btn {
@@ -32,8 +44,9 @@
     border: none;
     cursor: pointer;
     font: inherit;
+    text-decoration: none;
     font-weight: 500;
-    border-radius: var(--border-radius);
+    border-radius: 10em;
     color: var(--color, var(--color-text));
     background-color: oklch(from var(--color, var(--color-text)) l c h / 12%);
     transition:
@@ -41,32 +54,45 @@
       background-color 0.15s ease;
 
     @media (hover: hover) {
-      &:hover:not(:disabled) {
-        background-color: oklch(from var(--color, var(--color-text)) l c h / 20%);
+      &:hover:not(:disabled, [aria-disabled="true"]) {
+        background-color: oklch(
+          from var(--color, var(--color-text)) l c h / 20%
+        );
       }
     }
-    &:active:not(:disabled) {
+    &:active:not(:disabled, [aria-disabled="true"]) {
       transform: scale(0.97);
     }
-    &:disabled {
+    &:disabled,
+    &[aria-disabled="true"] {
       opacity: 0.5;
       cursor: default;
     }
   }
-  .size__large {
+  .size__default {
     height: 2.5rem;
     padding: 0 1rem;
+    font-size: 0.875rem;
+
+    & :global(.icon) {
+      --icon-size: 1.2rem;
+    }
   }
-  .size__default {
-    height: 1.875rem;
-    padding: 0 0.625rem;
-    font-size: 0.75rem;
+  .size__small {
+    height: 1.75rem;
+    padding: 0 0.5rem;
   }
+  .size__large {
+    height: 3rem;
+    padding: 0 1.2rem;
+  }
+
   .kind__primary {
     background-color: var(--color-accent);
-    color: var(--color-background);
+    color: var(--color-on-accent);
+
     @media (hover: hover) {
-      &:hover:not(:disabled) {
+      &:hover:not(:disabled, [aria-disabled="true"]) {
         background-color: oklch(from var(--color-accent) calc(l * 1.08) c h);
       }
     }

@@ -9,11 +9,8 @@
     items: RecordModel[];
     loading?: boolean;
     empty?: string;
-    // off on a creator's profile page, where every card would repeat the same name
     showAuthor?: boolean;
-    // the owner's own shelf: draft/published badge plus edit and publish beside delete
     manage?: boolean;
-    // infinite scroll: fired when the end of the list scrolls into view
     onMore?: () => void;
   }
 
@@ -36,8 +33,10 @@
     showcaseRequested,
   } = marketModel;
 
-  const likeCount = (id: string) => $likes.filter((l) => l.watchface === id).length;
-  const liked = (id: string) => $likes.some((l) => l.watchface === id && l.user === $user?.id);
+  const likeCount = (id: string) =>
+    $likes.filter((l) => l.watchface === id).length;
+  const liked = (id: string) =>
+    $likes.some((l) => l.watchface === id && l.user === $user?.id);
 
   function remove(wf: RecordModel) {
     if (!confirm(`Delete "${wf.name}"?`)) return;
@@ -89,15 +88,13 @@
 <style>
   .grid {
     display: grid;
-    /* the min() keeps two columns on a phone, where a fixed 10rem would drop to one */
-    grid-template-columns: repeat(auto-fill, minmax(min(10rem, 50%), 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
     align-items: start;
     gap: 1rem;
     padding: 1rem;
 
     & > :global(*) {
-      min-height: auto;
-      height: 100%;
+      aspect-ratio: 1;
     }
 
     @media (max-width: 767px) {

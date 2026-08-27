@@ -31,7 +31,7 @@
   <header>
     {#if title}<h2>{title}</h2>{/if}
     <button class="close" aria-label="Close" onclick={() => el?.close()}>
-      <Icon name="x" size={18} />
+      <Icon name="close" size={18} />
     </button>
   </header>
   <div class="body">{@render children?.()}</div>

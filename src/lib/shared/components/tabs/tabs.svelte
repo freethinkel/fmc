@@ -45,7 +45,7 @@
   button {
     border: none;
     font: inherit;
-    font-size: 0.75rem;
+    font-size: 1rem;
     cursor: pointer;
     padding: 0.375rem 0.875rem;
     border-radius: calc(var(--border-radius) - 0.25rem);

@@ -872,12 +872,12 @@
     <Menu align="start">
       {#snippet trigger({ toggle })}
         <Button kind="secondary" onClick={toggle}>
-          <Icon name="folder-input" size={16} />
+          <Icon name="drive_folder_upload" size={22} />
           <span class="btn-label">Import</span>
         </Button>
       {/snippet}
       <MenuItem onClick={() => fileInput?.click()}>
-        <Icon name="file-plus" size={16} />
+        <Icon name="note_add" size={16} />
         <span class="route">Watchface file <span>.bin, .aab</span></span>
       </MenuItem>
       <MenuItem onClick={() => dirInput?.click()}>
@@ -896,7 +896,7 @@
           newFaceRequested();
         }}
       >
-        <Icon name="file-plus" size={16} /> <span class="btn-label">New</span>
+        <Icon name="note_add" size={22} /> <span class="btn-label">New</span>
       </Button>
     </span>
     {#if $doc}
@@ -918,17 +918,17 @@
       />
       <span class="tool-slot" title="Undo (⌘Z)">
         <Button kind="ghost" disabled={!$undoN} onClick={() => undo()}>
-          <Icon name="undo" size={16} />
+          <Icon name="undo" size={22} />
         </Button>
       </span>
       <span class="tool-slot" title="Redo (⇧⌘Z)">
         <Button kind="ghost" disabled={!$redoN} onClick={() => redo()}>
-          <Icon name="redo" size={16} />
+          <Icon name="redo" size={22} />
         </Button>
       </span>
       <span class="tool-slot" title="Export .bin">
         <Button kind="primary" onClick={() => exportBin()}>
-          <Icon name="download" size={16} />
+          <Icon name="download" size={22} />
           <span class="btn-label">Export .bin</span>
         </Button>
       </span>
@@ -948,7 +948,7 @@
             onClick={saveDraft}
             disabled={$saving || $foreignWf}
           >
-            <Icon name="save" size={16} />
+            <Icon name="save" size={22} />
             <span class="btn-label"
               >{$saving ? "Saving…" : isPublishedMine ? "Update" : "Save"}</span
             >
@@ -957,7 +957,7 @@
         {#if !isPublishedMine}
           <span class="tool-slot" title={$foreignWf ? FOREIGN_HINT : "Publish"}>
             <Button kind="secondary" onClick={() => publishDialogOpened()} disabled={$foreignWf}>
-              <Icon name="upload-cloud" size={16} />
+              <Icon name="cloud_upload" size={22} />
               <span class="btn-label">Publish</span>
             </Button>
           </span>
@@ -967,7 +967,7 @@
     {#if $bleInfo && $doc}
       <span class="tool-slot" title="Upload to the watch">
         <Button kind="primary" onClick={flashWatch} disabled={$flashing}>
-          <Icon name="zap" size={16} />
+          <Icon name="bolt" size={22} />
           {$flashing ? "Flashing…" : "Flash"}
         </Button>
       </span>
@@ -1037,13 +1037,13 @@
     {#if $doc}
       <div class="mobile-actions">
         <Button kind="secondary" onClick={() => (mobilePanel = "tree")}>
-          <Icon name="list-tree" size={16} /> Tree
+          <Icon name="account_tree" size={22} /> Tree
         </Button>
         <Button kind="secondary" onClick={() => (mobilePanel = "props")}>
-          <Icon name="sliders-horizontal" size={16} /> Props
+          <Icon name="tune" size={22} /> Props
         </Button>
         <Button kind="secondary" onClick={() => (mobilePanel = "sim")}>
-          <Icon name="play" size={16} /> Sim
+          <Icon name="play_arrow" size={22} /> Sim
         </Button>
       </div>
     {/if}

@@ -38,7 +38,7 @@
   input:checked + .box {
     background: var(--color-accent);
     border-color: var(--color-accent);
-    color: var(--color-background);
+    color: var(--color-on-accent);
   }
   input:focus-visible + .box {
     outline: 2px solid var(--color-accent);

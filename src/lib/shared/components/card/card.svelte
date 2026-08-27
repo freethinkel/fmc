@@ -26,11 +26,12 @@
     padding: 0.8rem;
     border-radius: var(--border-radius);
     background: oklch(from var(--color-text) l c h / 5%);
-    border: 1px solid oklch(from var(--color-text) l c h / 5%);
   }
   .clickable {
     cursor: pointer;
-    transition: transform var(--spring-transition);
+    transition:
+      transform var(--spring-transition),
+      background-color var(--spring-transition);
 
     &:active {
       transform: scale(0.98);

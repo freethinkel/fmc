@@ -118,7 +118,6 @@
     margin: 0;
     font-family: var(--font-display);
     font-size: 1.5rem;
-    font-weight: 400;
   }
   .bio {
     margin: 0;

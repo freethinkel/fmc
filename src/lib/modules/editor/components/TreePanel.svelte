@@ -47,12 +47,12 @@
   };
   const kindIcons: Record<Layer["kind"], IconName> = {
     image: "image",
-    number: "hash",
-    hand: "clock-3",
-    ring: "loader",
-    slot: "square-dashed",
+    number: "tag",
+    hand: "schedule",
+    ring: "progress_activity",
+    slot: "highlight_alt",
     group: "folder",
-    raw: "box",
+    raw: "deployed_code",
   };
   // the handful of raw tags that do turn up, so their rows aren't all called "Node"
   const rawNames: Record<number, string> = {
@@ -248,7 +248,7 @@
       {#snippet trigger({ toggle })}
         <span class="tool-slot" title="Add a layer">
           <Button kind="secondary" disabled={!$doc} onClick={toggle}>
-            <Icon name="plus" size={16} />
+            <Icon name="add" size={22} />
           </Button>
         </span>
       {/snippet}
@@ -263,19 +263,19 @@
       <!-- ten blank frames: the art comes from the inspector, either "regenerate from a font"
            or a PNG dropped on a single frame — no ten-file picker any more -->
       <MenuItem onClick={() => numberAdded()}>
-        <Icon name="hash" size={14} /> Number
+        <Icon name="tag" size={14} /> Number
       </MenuItem>
       <MenuItem onClick={() => fileInput.hand?.click()}>
-        <Icon name="clock-3" size={14} /> Hand…
+        <Icon name="schedule" size={14} /> Hand…
       </MenuItem>
       <MenuItem onClick={() => nodeAdded("ring")}>
-        <Icon name="loader" size={14} /> Progress ring
+        <Icon name="progress_activity" size={14} /> Progress ring
       </MenuItem>
       <MenuItem onClick={() => nodeAdded("group")}>
         <Icon name="folder" size={14} /> Group
       </MenuItem>
       <MenuItem onClick={() => slotAdded()}>
-        <Icon name="square-dashed" size={14} /> Widget slot
+        <Icon name="highlight_alt" size={14} /> Widget slot
       </MenuItem>
     </Menu>
     <div class="spacer"></div>
@@ -283,7 +283,7 @@
       {#snippet trigger({ toggle })}
         <span class="tool-slot" title="Selected layer">
           <Button kind="ghost" disabled={!$sel} onClick={toggle}>
-            <Icon name="ellipsis" size={16} />
+            <Icon name="more_horiz" size={22} />
           </Button>
         </span>
       {/snippet}
@@ -308,7 +308,7 @@
     >
       {#if ctx.screen}
         <MenuItem danger onClick={aodRemoved}>
-          <Icon name="trash" size={14} /> Delete AOD screen
+          <Icon name="delete" size={14} /> Delete AOD screen
         </MenuItem>
       {:else}
         {@render layerActions()}
@@ -327,26 +327,26 @@
 {#snippet layerActions()}
   {#if $sel && $selected.length === 1}
     <MenuItem onClick={() => (renaming = $sel)}>
-      <Icon name="pencil" size={14} /> Rename
+      <Icon name="edit" size={14} /> Rename
     </MenuItem>
   {/if}
   <MenuItem keys={capsFor("mod+d")} onClick={duplicateRequested}>
-    <Icon name="copy" size={14} /> Duplicate
+    <Icon name="content_copy" size={14} /> Duplicate
   </MenuItem>
   <MenuItem keys={capsFor("mod+c")} onClick={copyRequested}>
-    <Icon name="clipboard" size={14} /> Copy
+    <Icon name="content_paste" size={14} /> Copy
   </MenuItem>
   <MenuItem keys={capsFor("mod+x")} onClick={cutRequested}>
-    <Icon name="scissors" size={14} /> Cut
+    <Icon name="content_cut" size={14} /> Cut
   </MenuItem>
   {#if $clipboard}
     <MenuItem keys={capsFor("mod+v")} onClick={pasteRequested}>
-      <Icon name="clipboard-check" size={14} /> Paste
+      <Icon name="assignment_turned_in" size={14} /> Paste
     </MenuItem>
   {/if}
   {#if selIsGroup}
     <MenuItem onClick={ungroupRequested}>
-      <Icon name="folder-open" size={14} /> Ungroup
+      <Icon name="folder_open" size={14} /> Ungroup
     </MenuItem>
   {:else if canGroup}
     <MenuItem onClick={groupRequested}>
@@ -354,15 +354,15 @@
     </MenuItem>
   {/if}
   <MenuItem onClick={() => flagOfSelection("hidden")}>
-    <Icon name={$selected[0]?.hidden ? "eye" : "eye-off"} size={14} />
+    <Icon name={$selected[0]?.hidden ? "visibility" : "visibility_off"} size={14} />
     {$selected[0]?.hidden ? "Show" : "Hide"}
   </MenuItem>
   <MenuItem onClick={() => flagOfSelection("locked")}>
-    <Icon name={$selected[0]?.locked ? "lock-open" : "lock"} size={14} />
+    <Icon name={$selected[0]?.locked ? "lock_open" : "lock"} size={14} />
     {$selected[0]?.locked ? "Unlock" : "Lock"}
   </MenuItem>
   <MenuItem danger keys={capsFor("delete")} onClick={deleteRequested}>
-    <Icon name="trash" size={14} /> Delete
+    <Icon name="delete" size={14} /> Delete
   </MenuItem>
 {/snippet}
 
@@ -380,7 +380,7 @@
   >
     {#if kids.length}
       <Icon
-        name="chevron-right"
+        name="chevron_right"
         size={12}
         class={openNodes.has(s.id) ? "chevron open" : "chevron"}
         onclick={(e: MouseEvent) => toggleOpen(s.id, e)}
@@ -388,7 +388,7 @@
     {:else}
       <span class="chevron-spacer"></span>
     {/if}
-    <Icon name={s.kind === "aod" ? "moon" : "monitor"} size={14} class="node-icon" />
+    <Icon name={s.kind === "aod" ? "dark_mode" : "monitor"} size={14} class="node-icon" />
     <span class="label">{s.kind === "aod" ? "AOD" : "Screen"}</span>
   </button>
   {#if kids.length && openNodes.has(s.id)}
@@ -443,7 +443,7 @@
     >
       {#if kids.length}
         <Icon
-          name="chevron-right"
+          name="chevron_right"
           size={12}
           class={openNodes.has(l.id) ? "chevron open" : "chevron"}
           onclick={(e: MouseEvent) => toggleOpen(l.id, e)}
@@ -456,13 +456,13 @@
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <span class="flags">
         <Icon
-          name={l.hidden ? "eye-off" : "eye"}
+          name={l.hidden ? "visibility_off" : "visibility"}
           size={12}
           class={l.hidden ? "flag on" : "flag"}
           onclick={(e: MouseEvent) => toggleFlag(e, l, "hidden")}
         />
         <Icon
-          name={l.locked ? "lock" : "lock-open"}
+          name={l.locked ? "lock" : "lock_open"}
           size={12}
           class={l.locked ? "flag on" : "flag"}
           onclick={(e: MouseEvent) => toggleFlag(e, l, "locked")}

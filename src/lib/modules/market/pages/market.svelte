@@ -1,19 +1,35 @@
 <script lang="ts">
-  import { Input } from "$lib/shared/components/input";
+  import { page } from "$app/state";
+  import { goto } from "$app/navigation";
+  import { SearchInput } from "$lib/shared/components/search-input";
   import { Select } from "$lib/shared/components/select";
-  import { Icon } from "$lib/shared/components/icon";
+  import { Tabs } from "$lib/shared/components/tabs";
+  import { authModel } from "$lib/modules/auth/model";
   import { marketModel } from "../model";
   import { WatchfaceList } from "../components/watchface-list";
 
+  const { $user: user } = authModel;
   const {
     $items: items,
+    $myItems: myItems,
     $likes: likes,
     $marketErr: marketErr,
     $marketLoading: marketLoading,
+    $myLoading: myLoading,
     marketLoadRequested,
+    myLoadRequested,
   } = marketModel;
 
   marketLoadRequested();
+
+  // one page, two shelves: everyone's published faces, or the signed-in user's own (drafts
+  // included). The shelf is in the URL (?mine) so it survives a reload and can be linked.
+  const mine = $derived(Boolean($user) && page.url.searchParams.has("mine"));
+  const uid = $derived($user?.id);
+
+  $effect(() => {
+    if (mine && uid) myLoadRequested(uid);
+  });
 
   let query = $state("");
   let sort = $state("new"); // new | popular | downloads
@@ -23,12 +39,14 @@
     { value: "downloads", label: "Most downloaded" },
   ];
 
-  const likeCount = (id: string) => $likes.filter((l) => l.watchface === id).length;
+  const likeCount = (id: string) =>
+    $likes.filter((l) => l.watchface === id).length;
 
   const shown = $derived(
-    $items
-      .filter((wf) => Boolean(wf.owner))
-      .filter((wf) => wf.name.toLowerCase().includes(query.trim().toLowerCase()))
+    (mine ? $myItems : $items.filter((wf) => Boolean(wf.owner)))
+      .filter((wf) =>
+        wf.name.toLowerCase().includes(query.trim().toLowerCase()),
+      )
       .toSorted((a, b) =>
         sort === "popular"
           ? likeCount(b.id) - likeCount(a.id)
@@ -45,6 +63,7 @@
   $effect(() => {
     query;
     sort;
+    mine;
     visibleCount = PAGE;
   });
 
@@ -55,10 +74,18 @@
   {#if $marketErr}<p class="error">{$marketErr}</p>{/if}
 
   <div class="toolbar">
-    <div class="search">
-      <Icon name="search" size={14} />
-      <Input bind:value={query} placeholder="Search…" />
-    </div>
+    {#if $user}
+      <Tabs
+        items={[
+          { value: "all", label: "All" },
+          { value: "mine", label: "Mine" },
+        ]}
+        value={mine ? "mine" : "all"}
+        onChange={(v) =>
+          goto(v === "mine" ? "/?mine" : "/", { replaceState: true })}
+      />
+    {/if}
+    <SearchInput bind:value={query} />
     <div class="sort">
       <Select bind:value={sort} options={SORT_OPTIONS} />
     </div>
@@ -67,8 +94,12 @@
   <main>
     <WatchfaceList
       items={visible}
-      loading={$marketLoading}
-      empty="No community watchfaces yet — publish yours from the editor."
+      loading={mine ? $myLoading : $marketLoading}
+      manage={mine}
+      showAuthor={!mine}
+      empty={mine
+        ? "Nothing here yet — create a watchface in the editor and hit Save."
+        : "No community watchfaces yet — publish yours from the editor."}
       onMore={visibleCount < shown.length
         ? () => (visibleCount = Math.min(visibleCount + PAGE, shown.length))
         : undefined}
@@ -96,22 +127,9 @@
     padding: 0.75rem 1rem;
     border-bottom: 1px solid oklch(from var(--color-text) l c h / 10%);
   }
-  .search {
-    position: relative;
+  .toolbar > :global(.search) {
     width: 13.75rem;
     margin-inline-start: auto;
-
-    :global(svg) {
-      position: absolute;
-      top: 50%;
-      left: 0.625rem;
-      transform: translateY(-50%);
-      color: oklch(from var(--color-text) l c h / 55%);
-      pointer-events: none;
-    }
-    :global(input) {
-      padding-inline-start: 2.125rem;
-    }
   }
   .sort {
     width: 8.125rem;
@@ -119,11 +137,17 @@
 
   @media (max-width: 767px) {
     .toolbar {
-      flex-wrap: nowrap;
       gap: 0.5rem;
       padding: 0.5rem;
     }
-    .search {
+    .toolbar > :global(.tabs) {
+      width: 100%;
+
+      :global(button) {
+        flex: 1;
+      }
+    }
+    .toolbar > :global(.search) {
       flex: 1;
       width: auto;
       margin-inline-start: 0;
