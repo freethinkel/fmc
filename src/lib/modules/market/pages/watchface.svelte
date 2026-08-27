@@ -12,6 +12,7 @@
   import { marketModel } from "../model";
   import { LiveDial } from "../components/live-dial";
   import { BackBtn } from "$lib/shared/components/back-btn";
+  import { List, ListItem } from "$lib/shared/components/list";
 
   interface Props {
     id: string;
@@ -78,15 +79,12 @@
   {#if $marketErr}<p class="error">{$marketErr}</p>{/if}
 
   <main>
-    <!-- ponytail: no back-arrow glyph in the icon registry, and "←" needs no import -->
-    <!-- <a class="back" href="/">← Marketplace</a> -->
     <BackBtn href="/" />
 
     {#if wf}
       <article class="face">
         <div class="dial">
           <div class="preview">
-            <!-- the still preview holds the spot until the file is parsed, and stays if it can't be -->
             {#if $live}
               <LiveDial face={$live} screen={$dialScreen} />
             {:else}
@@ -115,31 +113,17 @@
             {#if wf.type}<Badge>{wf.type}</Badge>{/if}
           </div>
 
-          {#if owner}
-            <a
-              class="creator"
-              href="/user/{wf.owner}"
-              title="Watchfaces by this creator"
-            >
-              <Avatar name={owner.name || "?"} size={36} />
-              <span class="creator-text">
-                <span class="creator-name">{owner.name || "Unknown"}</span>
-                <span class="creator-hint">See all their watchfaces</span>
-              </span>
-            </a>
-          {/if}
-
           {#if wf.description}
             <p class="desc">{wf.description}</p>
           {:else}
             <p class="desc muted">No description.</p>
           {/if}
 
-          <div class="cta">
+          <div class="actions">
             {#if !$bleInfo}
               <Button onClick={() => connectRequested()} disabled={$connecting}>
-                <Icon name="bluetooth" size={22} />
                 {$connecting ? "Connecting…" : "Connect watch"}
+                <Icon name="bluetooth" size={22} />
               </Button>
             {:else if $installed}
               <Button disabled>
@@ -157,67 +141,92 @@
                 onClick={() => installRequested(wf)}
                 disabled={$installing}
               >
-                <Icon name="watch" size={22} />
                 {$installing ? "Installing…" : "Install watchface"}
+                <Icon name="watch" size={22} />
               </Button>
             {/if}
-          </div>
-          {#if $bleStatus}<span class="status">{$bleStatus}</span>{/if}
 
-          <dl class="stats">
-            <div>
-              <dt>Likes</dt>
-              <dd>{likeCount}</dd>
-            </div>
-            <div>
-              <dt>Downloads</dt>
-              <dd>{wf.downloads || 0}</dd>
-            </div>
-            <div>
-              <dt>Flashed</dt>
-              <dd>{wf.flashes || 0}</dd>
-            </div>
-            <div>
-              <dt>Published</dt>
-              <dd>{day(wf.created)}</dd>
-            </div>
-            <div>
-              <dt>Updated</dt>
-              <dd>{day(wf.updated)}</dd>
-            </div>
-          </dl>
+            <Button kind="secondary" onClick={share}>
+              {copied ? "Link copied" : "Share"}
+              <Icon name="link" size={22} />
+            </Button>
+          </div>
+
+          <List>
+            {#if owner}
+              <ListItem clickable>
+                <a
+                  class="list-item"
+                  href="/user/{wf.owner}"
+                  title="Watchfaces by this creator"
+                >
+                  <div class="list-key">Author</div>
+                  <div class="list-value">
+                    <span class="creator-name">
+                      {owner.name || "Unknown"}
+                    </span>
+                    <Avatar name={owner.name || "?"} />
+                  </div>
+                </a>
+              </ListItem>
+            {/if}
+            <ListItem>
+              <div class="list-item">
+                <div class="list-key">Likes</div>
+                <div class="list-value">{likeCount}</div>
+              </div>
+            </ListItem>
+            <ListItem>
+              <div class="list-item">
+                <div class="list-key">Downloads</div>
+                <div class="list-value">{wf.downloads || 0}</div>
+              </div>
+            </ListItem>
+            <ListItem>
+              <div class="list-item">
+                <div class="list-key">Flashed</div>
+                <div class="list-value">{wf.flashes || 0}</div>
+              </div>
+            </ListItem>
+            <ListItem>
+              <div class="list-item">
+                <div class="list-key">Published</div>
+                <div class="list-value">{day(wf.created)}</div>
+              </div>
+            </ListItem>
+
+            <ListItem>
+              <div class="list-item">
+                <div class="list-key">Updated</div>
+                <div class="list-value">{day(wf.updated)}</div>
+              </div>
+            </ListItem>
+          </List>
 
           <div class="actions">
             <Button onClick={() => editRequested(wf)}>
-              <Icon name="edit" size={22} />
               Open in editor
+              <Icon name="edit" size={22} />
             </Button>
             <Button kind="secondary" href={downloadUrl(wf)}>
-              <Icon name="download" size={22} />
               Download .bin
+              <Icon name="download" size={22} />
             </Button>
-            <span
-              class="action-slot"
-              title={$user ? "Like" : "Sign in to like"}
+
+            <Button
+              class="actions--small-btn"
+              kind="secondary"
+              disabled={!$user}
+              onClick={() =>
+                $user && likeToggleRequested({ wf, userId: $user.id })}
             >
-              <Button
-                kind="secondary"
-                disabled={!$user}
-                onClick={() =>
-                  $user && likeToggleRequested({ wf, userId: $user.id })}
-              >
-                <Icon
-                  name="favorite"
-                  size={22}
-                  color={liked ? "var(--color-error)" : undefined}
-                  fill={liked}
-                />
-                {likeCount}
-              </Button>
-            </span>
-            <Button kind="secondary" onClick={share}>
-              <Icon name="link" size={22} />
-              {copied ? "Link copied" : "Share"}
+              {likeCount}
+              <Icon
+                name="favorite"
+                size={22}
+                color={liked ? "var(--color-error)" : undefined}
+                fill={liked}
+              />
             </Button>
           </div>
         </div>
@@ -252,30 +261,13 @@
   main {
     flex: 1;
     overflow-y: auto;
-    /* the extra bottom padding keeps the action row clear of the mobile tab bar */
     padding: 1rem 1rem 2rem;
   }
-  .back {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.375rem;
-    font-size: 0.75rem;
-    color: oklch(from var(--color-text) l c h / 55%);
-    text-decoration: none;
-
-    @media (hover: hover) {
-      &:hover {
-        color: var(--color-text);
-      }
-    }
-  }
   .face {
-    display: grid;
-    grid-template-columns: minmax(0, 20rem) minmax(0, 1fr);
-    align-items: start;
-    gap: 2rem;
-    max-width: 56rem;
-    margin: 1rem auto 0;
+    max-width: 500px;
+    width: 50%;
+    margin: 0 auto;
+    min-width: 390px;
   }
   .dial {
     display: flex;
@@ -284,7 +276,7 @@
     gap: 0.75rem;
   }
   .preview {
-    width: 100%;
+    width: 20rem;
     aspect-ratio: 1 / 1;
     overflow: hidden;
     border-radius: 625rem;
@@ -312,34 +304,30 @@
     font-family: var(--font-display);
     font-size: 2rem;
   }
-  .creator {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.625rem;
-    align-self: flex-start;
-    padding: 0.375rem 0.75rem 0.375rem 0.375rem;
-    border-radius: var(--border-radius);
-    color: var(--color-text);
-    text-decoration: none;
-    background: oklch(from var(--color-text) l c h / 6%);
 
-    @media (hover: hover) {
-      &:hover {
-        background: oklch(from var(--color-text) l c h / 12%);
-      }
-    }
-  }
-  .creator-text {
+  .list-item {
     display: flex;
-    flex-direction: column;
+    justify-content: space-between;
+    align-items: center;
+    text-decoration: none;
+    color: var(--color-text);
+    height: 100%;
+    min-height: 100%;
+    width: 100%;
   }
+
+  .list-key {
+    font-weight: bold;
+  }
+
+  .list-value {
+    font-size: 0.9rem;
+    color: oklch(var(--color-text) l c h / 60%);
+  }
+
   .creator-name {
     font-size: 0.875rem;
     font-weight: 500;
-  }
-  .creator-hint {
-    font-size: 0.625rem;
-    color: oklch(from var(--color-text) l c h / 55%);
   }
   .desc {
     margin: 0;
@@ -349,41 +337,27 @@
   .muted {
     color: oklch(from var(--color-text) l c h / 55%);
   }
-  .cta {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.75rem;
-  }
   .status {
     font-size: 0.625rem;
     color: oklch(from var(--color-text) l c h / 55%);
   }
-  .stats {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(6rem, 1fr));
-    gap: 0.75rem;
-    margin: 0;
-    padding: 0.75rem 0;
-    border-top: 1px solid oklch(from var(--color-text) l c h / 12%);
-    border-bottom: 1px solid oklch(from var(--color-text) l c h / 12%);
-
-    dt {
-      font-size: 0.625rem;
-      color: oklch(from var(--color-text) l c h / 55%);
-    }
-    dd {
-      margin: 0;
-      font-size: 0.875rem;
-    }
-  }
   .actions {
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
     gap: 0.5rem;
-  }
-  .action-slot {
-    display: inline-flex;
+
+    & :global(.actions--small-btn) {
+      flex: 0 0 min-content;
+    }
+
+    & > :global(*) {
+      flex: 1;
+      min-width: 0;
+
+      &:has(:global(.icon)) {
+        justify-content: space-between;
+      }
+    }
   }
   .empty {
     padding: 4rem 0;
@@ -399,12 +373,6 @@
     .preview {
       max-width: 15rem;
       margin-inline: auto;
-    }
-    /* one full-width row per button — a 30px pill floating in a phone-wide column reads as
-       a secondary link, not as the thing the page is for */
-    .cta :global(button) {
-      flex: 1 1 100%;
-      height: 2.25rem;
     }
   }
 </style>

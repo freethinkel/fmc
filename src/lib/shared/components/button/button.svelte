@@ -5,8 +5,8 @@
     type?: "submit" | "reset" | "button";
     kind?: "primary" | "secondary" | "ghost" | "danger";
     size?: "default" | "small" | "large";
+    class?: string;
     disabled?: boolean;
-    /** renders an <a> instead of a <button> — a download or an outbound link that looks like one */
     href?: string;
     onClick?: (e: MouseEvent) => void;
     children?: Snippet;
@@ -15,6 +15,7 @@
     type = "button",
     kind = "primary",
     size = "default",
+    class: className,
     disabled,
     href,
     onClick,
@@ -24,7 +25,7 @@
 
 <svelte:element
   this={href ? "a" : "button"}
-  class="btn kind__{kind} size__{size}"
+  class="btn kind__{kind} size__{size} {className}"
   href={disabled ? undefined : href}
   type={href ? undefined : type}
   disabled={href ? undefined : disabled}
