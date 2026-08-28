@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Snippet } from "svelte";
+  import { onMount, type Snippet } from "svelte";
 
   interface Props {
     open?: boolean;
@@ -39,6 +39,10 @@
     travel = max > 0 ? Math.min(Math.max(scroller.scrollTop / max, 0), 1) : 0;
     if (armed && scroller.scrollTop <= 0) el?.close();
   }
+
+  onMount(() => {
+    el?.blur();
+  });
 </script>
 
 <!-- autofocus on the dialog itself: otherwise showModal() focuses the first button inside,
@@ -116,7 +120,7 @@
   }
   .scroll {
     position: relative;
-    height: calc(100svh + 50svh);
+    height: calc(100vh + 50vh);
     overflow-y: scroll;
     overscroll-behavior-y: contain;
     overflow-x: hidden;
@@ -128,11 +132,11 @@
     }
   }
   .spacer {
-    height: 100svh;
+    height: 100vh;
     scroll-snap-align: start;
   }
   .dock {
-    height: 100svh;
+    height: 100vh;
     height: 100vh;
     display: flex;
     flex-direction: column;

@@ -62,7 +62,7 @@
       }
     }
     &:active:not(:disabled, [aria-disabled="true"]) {
-      transform: scale(0.97);
+      transform: translateY(0.2rem);
     }
     &:disabled,
     &[aria-disabled="true"] {

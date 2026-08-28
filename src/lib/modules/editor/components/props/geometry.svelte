@@ -2,7 +2,12 @@
   import { Input } from "$lib/shared/components/input";
   import { Slider } from "$lib/shared/components/slider";
   import { Icon, type IconName } from "$lib/shared/components/icon";
-  import { framesOf, isPlaced, type Frame, type Layer } from "../../core/document/doc";
+  import {
+    framesOf,
+    isPlaced,
+    type Frame,
+    type Layer,
+  } from "../../core/document/doc";
   import { FULL_BLEED_R, type ArcSpec } from "../../core/render/arc";
   import { ringRadius } from "../../core/document/edits";
   import { CENTER } from "../../core/render/screen";
@@ -22,14 +27,11 @@
     alignRequested,
   } = editorModel;
 
-  // frame byte 8's main-axis alignment — only these two values occur across the corpus, so
-  // END/SPACE_* aren't offered. [value, icon, title]
   const FLEX_ALIGN: [number, IconName, string][] = [
     [0, "align_horizontal_left", "Pack children at the frame start"],
     [2, "align_horizontal_center", "Center children in the frame"],
   ];
 
-  // Figma-style position buttons: [dir, icon, title] — two groups of three
   const alignH: [AlignDir, IconName, string][] = [
     ["left", "align_horizontal_left", "Align left"],
     ["hcenter", "align_horizontal_center", "Align horizontal centers"],
@@ -41,8 +43,6 @@
     ["bottom", "align_vertical_bottom", "Align bottom"],
   ];
 
-  // The document is immutable, so `layer` is a fresh object on every edit and plain deriveds off
-  // it invalidate on their own — no snapshot juggling needed to see a drag or an undo.
   const placed = $derived(isPlaced(layer) ? layer : null);
   const frame = $derived(layer.kind === "group" ? layer.frame : null);
   const hand = $derived(layer.kind === "hand" ? layer : null);
@@ -55,10 +55,12 @@
   const bareRing = $derived(ring && !ring.frames.length ? ring : null);
 
   const setSpec = (patch: Partial<ArcSpec>) =>
-    ring && set(ring.id, { spec: { ...ring.spec, ...patch } } as Partial<Layer>);
+    ring &&
+    set(ring.id, { spec: { ...ring.spec, ...patch } } as Partial<Layer>);
 
   const setRingSize = (d: number) =>
-    ring && ringResized({ layer: ring.id, kw: d / (2 * ringR), kh: d / (2 * ringR) });
+    ring &&
+    ringResized({ layer: ring.id, kw: d / (2 * ringR), kh: d / (2 * ringR) });
 
   // size of the widget's first frame — the asset IS the widget's size, there's no draw-time
   // scale in the format, so resizing rescales the pixels (see assets.model)
@@ -87,7 +89,10 @@
   const adjust = $derived(first?.adjust ?? NEUTRAL);
 
   function setAdjust(key: keyof typeof NEUTRAL, value: number) {
-    adjustImageRequested({ layer: layer.id, adjust: { ...adjust, [key]: value } });
+    adjustImageRequested({
+      layer: layer.id,
+      adjust: { ...adjust, [key]: value },
+    });
   }
 
   const setFrame = (patch: Partial<Frame>) =>
@@ -99,7 +104,12 @@
     {#each [alignH, alignV] as group}
       <div class="btn-group">
         {#each group as [dir, iconName, title] (dir)}
-          <button type="button" {title} class="icon-btn" onclick={() => alignRequested(dir)}>
+          <button
+            type="button"
+            {title}
+            class="icon-btn"
+            onclick={() => alignRequested(dir)}
+          >
             <Icon name={iconName} size={16} />
           </button>
         {/each}
@@ -132,7 +142,12 @@
       max={2047}
       value={String(resSize.w)}
       onChange={(v) =>
-        resize(num(v), $lockAspect ? Math.round((num(v) * resSize.h) / resSize.w) : resSize.h)}
+        resize(
+          num(v),
+          $lockAspect
+            ? Math.round((num(v) * resSize.h) / resSize.w)
+            : resSize.h,
+        )}
     />
     <Input
       label="h"
@@ -141,7 +156,12 @@
       max={2047}
       value={String(resSize.h)}
       onChange={(v) =>
-        resize($lockAspect ? Math.round((num(v) * resSize.w) / resSize.h) : resSize.w, num(v))}
+        resize(
+          $lockAspect
+            ? Math.round((num(v) * resSize.w) / resSize.h)
+            : resSize.w,
+          num(v),
+        )}
     />
     <button
       type="button"
@@ -153,14 +173,17 @@
       <Icon name={$lockAspect ? "link" : "link_off"} size={16} />
     </button>
   </div>
-  <p class="hint-xs">rescaled from the original — re-encoded only on save/flash</p>
+  <p class="hint-xs">
+    rescaled from the original — re-encoded only on save/flash
+  </p>
   <div class="row">
     <span class="field-label w-md">angle</span>
     <Input
       type="number"
       step={15}
       value={String(angle)}
-      onChange={(v) => rotateImageRequested({ layer: layer.id, deg: num(v) - angle })}
+      onChange={(v) =>
+        rotateImageRequested({ layer: layer.id, deg: num(v) - angle })}
     />
   </div>
   <p class="hint-xs">baked into the pixels — the format itself has no angle</p>
@@ -212,9 +235,9 @@
       onInput={(v) => setSpec({ end: num(v) })}
     />
   </div>
-  <!-- the gap an icon sits in: start after 0 and end before 360 leaves the rest of the circle
-       empty, and the fill still runs the whole way from start to end -->
-  <p class="hint-xs">degrees clockwise from 12 o'clock — 20 → 340 leaves a 40° gap at the top</p>
+  <p class="hint-xs">
+    degrees clockwise from 12 o'clock — 20 → 340 leaves a 40° gap at the top
+  </p>
 {/if}
 {#if frame}
   <div class="row">
@@ -261,7 +284,9 @@
       {/each}
     </div>
   </div>
-  <p class="hint-xs">where the group's auto-laid-out children sit along the row</p>
+  <p class="hint-xs">
+    where the group's auto-laid-out children sit along the row
+  </p>
 {/if}
 {#if hand}
   <div class="row">

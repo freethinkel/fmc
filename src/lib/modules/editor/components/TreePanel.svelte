@@ -6,7 +6,7 @@
   import { TAG } from "../core/format";
   import { pickerLabel, describeConditions } from "../core/document/sources";
   import { contains, parentOf } from "../core/document/edits";
-  import { framesOf, type Layer, type NodeId, type Screen } from "../core/document/doc";
+  import { type Layer, type NodeId, type Screen } from "../core/document/doc";
   import { capsFor } from "../shared/shortcuts";
   import { editorModel } from "../model";
   const {
@@ -34,8 +34,6 @@
     moveRequested,
   } = editorModel;
 
-  // A Doc layer is already interpreted, so the tree lists layers only — the struct/pivot/fmt/frame
-  // rows the old TLV tree showed are fields on the layer now, edited in the inspector.
   const kindNames: Record<Layer["kind"], string> = {
     image: "Image",
     number: "Number",
@@ -63,13 +61,17 @@
 
   /** The derived label — what a layer is called until it is renamed. */
   export function layerLabel(l: Layer) {
-    let s = l.kind === "raw" ? (rawNames[l.tag] ?? `0x${l.tag.toString(16)}`) : kindNames[l.kind];
+    let s =
+      l.kind === "raw"
+        ? (rawNames[l.tag] ?? `0x${l.tag.toString(16)}`)
+        : kindNames[l.kind];
 
     if (l.kind !== "group" && l.kind !== "raw" && l.meta.source)
       s += ` · ${pickerLabel(l.meta.source)}`;
     if (l.kind === "slot") s += ` · ${pickerLabel(l.metrics[l.active])}`;
     if (l.kind === "hand" && l.meta.source) s += ` · hand`;
-    if (l.conditions.length) s += ` · ${describeConditions(l.conditions).join(", ")}`;
+    if (l.conditions.length)
+      s += ` · ${describeConditions(l.conditions).join(", ")}`;
     return s;
   }
 
@@ -85,7 +87,9 @@
     t.value = "";
   }
 
-  const currentScreen = $derived($doc?.screens.find((s) => s.kind === $screen) ?? null);
+  const currentScreen = $derived(
+    $doc?.screens.find((s) => s.kind === $screen) ?? null,
+  );
   const pickedIds = $derived(new Set($selected.map((l) => l.id)));
   const isPicked = (id: NodeId) => pickedIds.has(id);
 
@@ -94,7 +98,9 @@
     if (!$doc || !$selected.length) return false;
     return $selected.every((l) => parentOf($doc, l.id) === null);
   });
-  const selIsGroup = $derived($selected.length === 1 && $selected[0].kind === "group");
+  const selIsGroup = $derived(
+    $selected.length === 1 && $selected[0].kind === "group",
+  );
 
   // ponytail: a modifier click toggles one layer — shift does the same as ctrl rather than
   // selecting a range, which would need the visible rows flattened into a list first
@@ -108,7 +114,9 @@
   let ctx = $state<{ x: number; y: number; screen?: boolean } | null>(null);
 
   const menuAt = (e: MouseEvent, screen = false) => {
-    const r = (e.currentTarget as HTMLElement).closest(".tree-panel")!.getBoundingClientRect();
+    const r = (e.currentTarget as HTMLElement)
+      .closest(".tree-panel")!
+      .getBoundingClientRect();
 
     ctx = { x: e.clientX - r.left, y: e.clientY - r.top, screen };
   };
@@ -149,7 +157,8 @@
     const name = value.trim();
 
     renaming = null;
-    if (name !== (l.name ?? "")) layerFlagsSet({ ids: [l.id], patch: { name: name || undefined } });
+    if (name !== (l.name ?? ""))
+      layerFlagsSet({ ids: [l.id], patch: { name: name || undefined } });
   }
 
   // accordion: closed by default, keyed by layer id — ids survive an immutable edit, object
@@ -160,7 +169,8 @@
   // row, otherwise the selected layer isn't even mounted
   $effect(() => {
     if (!$doc || !$sel) return;
-    for (let p = parentOf($doc, $sel); p; p = parentOf($doc, p.id)) openNodes.add(p.id);
+    for (let p = parentOf($doc, $sel); p; p = parentOf($doc, p.id))
+      openNodes.add(p.id);
     if (currentScreen) openNodes.add(currentScreen.id);
   });
 
@@ -174,7 +184,9 @@
   // it (across parents too — the model fixes the coordinates up), the middle of a *group* row
   // drops into that group.
   let drag = $state.raw<NodeId | null>(null);
-  let dropAt = $state.raw<{ id: NodeId; after: boolean; into: boolean } | null>(null);
+  let dropAt = $state.raw<{ id: NodeId; after: boolean; into: boolean } | null>(
+    null,
+  );
 
   function onDragStart(id: NodeId, e: DragEvent) {
     drag = id;
@@ -200,7 +212,9 @@
   }
 
   const findDragged = () =>
-    $doc && drag ? ($selected.find((l) => l.id === drag) ?? layerById(drag)) : null;
+    $doc && drag
+      ? ($selected.find((l) => l.id === drag) ?? layerById(drag))
+      : null;
 
   function layerById(id: NodeId): Layer | null {
     const walk = (ls: readonly Layer[]): Layer | null => {
@@ -217,13 +231,22 @@
   }
 
   const childrenOf = (l: Layer): readonly Layer[] =>
-    l.kind === "group" ? l.children : l.kind === "raw" ? (l.children ?? []) : [];
+    l.kind === "group"
+      ? l.children
+      : l.kind === "raw"
+        ? (l.children ?? [])
+        : [];
 
   function onDrop(l: Layer, e: DragEvent) {
     e.preventDefault();
     // the list is reversed, so dropping visually below the target means earlier in layer order
     if (drag && dropAt?.id === l.id)
-      moveRequested({ id: drag, target: l.id, after: !dropAt.after, into: dropAt.into });
+      moveRequested({
+        id: drag,
+        target: l.id,
+        after: !dropAt.after,
+        into: dropAt.into,
+      });
     drag = dropAt = null;
   }
 </script>
@@ -253,29 +276,29 @@
         </span>
       {/snippet}
       <MenuItem onClick={() => fileInput.image?.click()}>
-        <Icon name="image" size={14} /> Image…
+        <Icon name="image" size={22} /> Image…
       </MenuItem>
       <!-- one transparent frame: the art comes later, from the inspector — a dropped file
            or the font generator -->
       <MenuItem onClick={() => imageAdded()}>
-        <Icon name="image" size={14} /> Empty image
+        <Icon name="image" size={22} /> Empty image
       </MenuItem>
       <!-- ten blank frames: the art comes from the inspector, either "regenerate from a font"
            or a PNG dropped on a single frame — no ten-file picker any more -->
       <MenuItem onClick={() => numberAdded()}>
-        <Icon name="tag" size={14} /> Number
+        <Icon name="tag" size={22} /> Number
       </MenuItem>
       <MenuItem onClick={() => fileInput.hand?.click()}>
-        <Icon name="schedule" size={14} /> Hand…
+        <Icon name="schedule" size={22} /> Hand…
       </MenuItem>
       <MenuItem onClick={() => nodeAdded("ring")}>
-        <Icon name="progress_activity" size={14} /> Progress ring
+        <Icon name="progress_activity" size={22} /> Progress ring
       </MenuItem>
       <MenuItem onClick={() => nodeAdded("group")}>
-        <Icon name="folder" size={14} /> Group
+        <Icon name="folder" size={22} /> Group
       </MenuItem>
       <MenuItem onClick={() => slotAdded()}>
-        <Icon name="highlight_alt" size={14} /> Widget slot
+        <Icon name="highlight_alt" size={22} /> Widget slot
       </MenuItem>
     </Menu>
     <div class="spacer"></div>
@@ -308,7 +331,8 @@
     >
       {#if ctx.screen}
         <MenuItem danger onClick={aodRemoved}>
-          <Icon name="delete" size={14} /> Delete AOD screen
+          <Icon name="delete" size={22} />
+          Delete AOD screen
         </MenuItem>
       {:else}
         {@render layerActions()}
@@ -327,42 +351,45 @@
 {#snippet layerActions()}
   {#if $sel && $selected.length === 1}
     <MenuItem onClick={() => (renaming = $sel)}>
-      <Icon name="edit" size={14} /> Rename
+      <Icon name="edit" size={20} /> Rename
     </MenuItem>
   {/if}
   <MenuItem keys={capsFor("mod+d")} onClick={duplicateRequested}>
-    <Icon name="content_copy" size={14} /> Duplicate
+    <Icon name="content_copy" size={20} /> Duplicate
   </MenuItem>
   <MenuItem keys={capsFor("mod+c")} onClick={copyRequested}>
-    <Icon name="content_paste" size={14} /> Copy
+    <Icon name="content_paste" size={20} /> Copy
   </MenuItem>
   <MenuItem keys={capsFor("mod+x")} onClick={cutRequested}>
-    <Icon name="content_cut" size={14} /> Cut
+    <Icon name="content_cut" size={20} /> Cut
   </MenuItem>
   {#if $clipboard}
     <MenuItem keys={capsFor("mod+v")} onClick={pasteRequested}>
-      <Icon name="assignment_turned_in" size={14} /> Paste
+      <Icon name="assignment_turned_in" size={20} /> Paste
     </MenuItem>
   {/if}
   {#if selIsGroup}
     <MenuItem onClick={ungroupRequested}>
-      <Icon name="folder_open" size={14} /> Ungroup
+      <Icon name="folder_open" size={20} /> Ungroup
     </MenuItem>
   {:else if canGroup}
     <MenuItem onClick={groupRequested}>
-      <Icon name="folder" size={14} /> Group
+      <Icon name="folder" size={20} /> Group
     </MenuItem>
   {/if}
   <MenuItem onClick={() => flagOfSelection("hidden")}>
-    <Icon name={$selected[0]?.hidden ? "visibility" : "visibility_off"} size={14} />
+    <Icon
+      name={$selected[0]?.hidden ? "visibility" : "visibility_off"}
+      size={20}
+    />
     {$selected[0]?.hidden ? "Show" : "Hide"}
   </MenuItem>
   <MenuItem onClick={() => flagOfSelection("locked")}>
-    <Icon name={$selected[0]?.locked ? "lock_open" : "lock"} size={14} />
+    <Icon name={$selected[0]?.locked ? "lock_open" : "lock"} size={20} />
     {$selected[0]?.locked ? "Unlock" : "Lock"}
   </MenuItem>
   <MenuItem danger keys={capsFor("delete")} onClick={deleteRequested}>
-    <Icon name="delete" size={14} /> Delete
+    <Icon name="delete" size={20} /> Delete
   </MenuItem>
 {/snippet}
 
@@ -381,14 +408,18 @@
     {#if kids.length}
       <Icon
         name="chevron_right"
-        size={12}
+        size={20}
         class={openNodes.has(s.id) ? "chevron open" : "chevron"}
         onclick={(e: MouseEvent) => toggleOpen(s.id, e)}
       />
     {:else}
       <span class="chevron-spacer"></span>
     {/if}
-    <Icon name={s.kind === "aod" ? "dark_mode" : "monitor"} size={14} class="node-icon" />
+    <Icon
+      name={s.kind === "aod" ? "dark_mode" : "monitor"}
+      size={20}
+      class="node-icon"
+    />
     <span class="label">{s.kind === "aod" ? "AOD" : "Screen"}</span>
   </button>
   {#if kids.length && openNodes.has(s.id)}
@@ -405,7 +436,7 @@
     <!-- an <input> can't live inside the row's own <button>, so the whole row swaps -->
     <div class="node-row" style="padding-inline-start: {0.5 + depth * 0.75}rem">
       <span class="chevron-spacer"></span>
-      <Icon name={kindIcons[l.kind]} size={14} class="node-icon" />
+      <Icon name={kindIcons[l.kind]} size={20} class="node-icon" />
       <input
         class="rename"
         value={l.name ?? ""}
@@ -444,26 +475,26 @@
       {#if kids.length}
         <Icon
           name="chevron_right"
-          size={12}
+          size={20}
           class={openNodes.has(l.id) ? "chevron open" : "chevron"}
           onclick={(e: MouseEvent) => toggleOpen(l.id, e)}
         />
       {:else}
         <span class="chevron-spacer"></span>
       {/if}
-      <Icon name={kindIcons[l.kind]} size={14} class="node-icon" />
+      <Icon name={kindIcons[l.kind]} size={20} class="node-icon" />
       <span class="label">{l.name || layerLabel(l)}</span>
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <span class="flags">
         <Icon
           name={l.hidden ? "visibility_off" : "visibility"}
-          size={12}
+          size={20}
           class={l.hidden ? "flag on" : "flag"}
           onclick={(e: MouseEvent) => toggleFlag(e, l, "hidden")}
         />
         <Icon
           name={l.locked ? "lock" : "lock_open"}
-          size={12}
+          size={20}
           class={l.locked ? "flag on" : "flag"}
           onclick={(e: MouseEvent) => toggleFlag(e, l, "locked")}
         />
@@ -496,6 +527,7 @@
     background: var(--color-background);
     border: 1px solid oklch(from var(--color-text) l c h / 10%);
     box-shadow: 0 8px 24px oklch(0 0 0 / 12%);
+    white-space: nowrap;
   }
   .toolbar {
     display: flex;
@@ -514,7 +546,7 @@
     flex: 1;
     overflow-y: auto;
     padding-block: 0.25rem;
-    font-size: 0.75rem;
+    font-size: 0.9rem;
   }
   .empty {
     margin: 0;
@@ -528,8 +560,9 @@
     gap: 0.375rem;
     border: none;
     background: transparent;
-    padding-block: 0.125rem;
+    padding-block: 0.2rem;
     padding-inline-end: 0.5rem;
+    height: 2rem;
     font: inherit;
     color: var(--color-text);
     text-align: start;
@@ -542,7 +575,7 @@
     }
     &.selected {
       background: oklch(from var(--color-accent) l c h / 12%);
-      color: var(--color-accent);
+      /* color: var(--color-accent); */
     }
     /* the primary pick — the one the props panel edits — reads a notch stronger */
     &.primary {
@@ -564,7 +597,7 @@
     }
     &:not(.selected) :global(.node-icon) {
       color: oklch(from var(--color-text) l c h);
-      opacity: 0.55;
+      opacity: 0.7;
     }
   }
   .flags {

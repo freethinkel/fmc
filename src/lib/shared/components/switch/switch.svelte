@@ -8,13 +8,19 @@
 </script>
 
 <label class="root">
-  <input type="checkbox" bind:checked {disabled} onchange={() => onChange?.(checked)} />
+  <input
+    type="checkbox"
+    bind:checked
+    {disabled}
+    onchange={() => onChange?.(checked)}
+  />
   <span class="switch"><span class="thumb"></span></span>
 </label>
 
 <style>
   .root {
     display: inline-flex;
+    -webkit-tap-highlight-color: transparent;
     cursor: pointer;
   }
   input {
@@ -23,27 +29,53 @@
     width: 0;
     height: 0;
   }
+  /* an iOS-style pill: the thumb is wider than tall and squishes wider still while pressed */
   .switch {
-    width: 2.5rem;
-    height: 1.5rem;
-    padding: 0.125rem;
-    border-radius: 0.75rem;
-    background: oklch(from var(--color-text) l c h / 15%);
-    transition: background-color 0.2s ease;
+    --size: 1.4rem;
+    --track: 2;
+    --knob: 1;
+    --squish: 1.1;
+    --padding: 0.2rem;
+
+    padding: var(--padding);
+    width: calc(var(--size) * var(--track));
+    border-radius: 10em;
+    background: oklch(from var(--color-text) l c h / 18%);
+    transition: background-color 0.1s linear;
   }
   .thumb {
     display: block;
-    width: 1.25rem;
-    height: 1.25rem;
-    border-radius: 50%;
+    height: var(--size);
+    width: calc(var(--size) * var(--knob));
+    border-radius: 10em;
     background: oklch(1 0 0);
-    transition: transform var(--spring-transition);
+    box-shadow: 0 2px 4px oklch(0 0 0 / 10%);
+    transition:
+      transform var(--spring-transition),
+      width var(--spring-transition),
+      box-shadow 0.1s linear;
+  }
+  .root:active .thumb {
+    width: calc(var(--size) * var(--knob) * var(--squish));
   }
   input:checked + .switch {
     background: var(--color-accent);
+
     .thumb {
-      transform: translateX(1rem);
+      /* the squished thumb starts further left, so its right edge stays pinned to the track */
+      transform: translateX(
+        calc(var(--size) * (var(--track) - var(--knob)) - var(--padding) * 2)
+      );
+      box-shadow: 0 2px 6px oklch(0 0 0 / 20%);
     }
+  }
+  .root:active input:checked + .switch .thumb {
+    transform: translateX(
+      calc(
+        var(--size) * (var(--track) - var(--knob) * var(--squish)) -
+          var(--padding) * 2
+      )
+    );
   }
   input:disabled + .switch {
     opacity: 0.5;

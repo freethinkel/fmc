@@ -50,8 +50,13 @@
     <aside class="drawer" class:open bind:this={drawer}>
       <header>
         {#if title}<h2>{title}</h2>{/if}
-        <button class="close" aria-label="Close" onclick={() => onClose?.()}>
-          <Icon name="close" size={18} />
+        <button
+          tabindex="-1"
+          class="close"
+          aria-label="Close"
+          onclick={() => onClose?.()}
+        >
+          <Icon name="close" />
         </button>
       </header>
       {@render children?.()}
@@ -59,11 +64,10 @@
   </div>
 {:else}
   <Sheet {open} {onClose}>
-    <!-- the sheet is headless, so its title and close button live here -->
     <header>
       {#if title}<h2>{title}</h2>{/if}
       <button class="close" aria-label="Close" onclick={() => onClose?.()}>
-        <Icon name="close" size={18} />
+        <Icon name="close" />
       </button>
     </header>
     {@render children?.()}
@@ -116,8 +120,8 @@
     position: absolute;
     top: 0.5rem;
     right: 0.5rem;
-    height: 2rem;
-    width: 2rem;
+    height: 2.5rem;
+    width: 2.5rem;
     display: flex;
     justify-content: center;
     align-items: center;
@@ -127,11 +131,10 @@
     background: transparent;
     color: oklch(from var(--color-text) l c h / 55%);
     cursor: pointer;
+    background: oklch(from var(--color-text) l c h / 8%);
 
-    @media (hover: hover) {
-      &:hover {
-        background: oklch(from var(--color-text) l c h / 8%);
-      }
+    &:hover {
+      background: oklch(from var(--color-text) calc(l+0.1) c h / 8%);
     }
   }
 </style>

@@ -7,7 +7,8 @@
 
   interface Props {
     value?: string;
-    options: { value: string; label: string }[];
+    // `short` — what the trigger shows when the full label only makes sense in the open list
+    options: { value: string; label: string; short?: string }[];
     disabled?: boolean;
     onChange?: (value: string) => void;
   }
@@ -22,7 +23,7 @@
 </script>
 
 <span class="field">
-  <Menu align="start">
+  <Menu align="end">
     {#snippet trigger({ open, toggle })}
       <button
         type="button"
@@ -33,14 +34,14 @@
         aria-expanded={open}
         onclick={toggle}
       >
-        <span class="label">{current?.label ?? ""}</span>
-        <Icon name="chevron_right" size={18} class="chevron" />
+        <span class="label">{current?.short ?? current?.label ?? ""}</span>
+        <Icon name="chevron_right" size={20} class="chevron" />
       </button>
     {/snippet}
     {#each options as opt (opt.value)}
       <MenuItem onClick={() => pick(opt.value)}>
         <span class="check" class:on={opt.value === value}>
-          <Icon name="check" size={18} />
+          <Icon name="check" size={20} />
         </span>
         {opt.label}
       </MenuItem>
@@ -71,12 +72,8 @@
     border: 1px solid transparent;
     border-radius: 10em;
     cursor: pointer;
+    outline: none;
 
-    &:focus-visible,
-    &.open {
-      outline: none;
-      border-color: var(--color-accent);
-    }
     &:disabled {
       opacity: 0.5;
       cursor: default;

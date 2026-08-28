@@ -9,8 +9,13 @@
 </script>
 
 <label class="root">
-  <input type="checkbox" bind:checked {disabled} onchange={() => onChange?.(checked)} />
-  <span class="box"><Icon name="check" size={14} /></span>
+  <input
+    type="checkbox"
+    bind:checked
+    {disabled}
+    onchange={() => onChange?.(checked)}
+  />
+  <span class="box"><Icon name="check" size={22} /></span>
 </label>
 
 <style>
@@ -28,8 +33,8 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 1.25rem;
-    height: 1.25rem;
+    width: 1.4rem;
+    height: 1.4rem;
     border-radius: 0.375rem;
     border: 1.5px solid oklch(from var(--color-text) l c h / 25%);
     color: transparent;

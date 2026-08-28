@@ -1,6 +1,4 @@
 <script lang="ts">
-  // One watchface on its own page: everything the market card shows, plus the one thing that
-  // used to require a detour through the editor — installing it on the watch.
   import { Avatar } from "$lib/shared/components/avatar";
   import { Badge } from "$lib/shared/components/badge";
   import { Button } from "$lib/shared/components/button";
@@ -13,6 +11,7 @@
   import { LiveDial } from "../components/live-dial";
   import { BackBtn } from "$lib/shared/components/back-btn";
   import { List, ListItem } from "$lib/shared/components/list";
+  import { blur } from "svelte/transition";
 
   interface Props {
     id: string;
@@ -83,6 +82,23 @@
 
     {#if wf}
       <article class="face">
+        {#if $hasAod}
+          <button
+            class="toggle-aod"
+            class:on={$dialScreen === "aod"}
+            onclick={() =>
+              dialScreenSet($dialScreen === "aod" ? "main" : "aod")}
+          >
+            {#key $dialScreen}
+              <div transition:blur={{ duration: 200 }}>
+                <Icon
+                  name={$dialScreen === "aod" ? "monitor" : "dark_mode"}
+                  size={22}
+                />
+              </div>
+            {/key}
+          </button>
+        {/if}
         <div class="dial">
           <div class="preview">
             {#if $live}
@@ -91,20 +107,6 @@
               <img src={fileUrl(wf, "preview")} alt={wf.name} />
             {/if}
           </div>
-
-          {#if $hasAod}
-            <Button
-              kind="secondary"
-              onClick={() =>
-                dialScreenSet($dialScreen === "aod" ? "main" : "aod")}
-            >
-              <Icon
-                name={$dialScreen === "aod" ? "monitor" : "dark_mode"}
-                size={22}
-              />
-              {$dialScreen === "aod" ? "Show normal" : "Show always-on"}
-            </Button>
-          {/if}
         </div>
 
         <div class="info">
@@ -205,11 +207,11 @@
 
           <div class="actions">
             <Button onClick={() => editRequested(wf)}>
-              Open in editor
+              <span> Open in editor </span>
               <Icon name="edit" size={22} />
             </Button>
             <Button kind="secondary" href={downloadUrl(wf)}>
-              Download .bin
+              <span> Download .bin </span>
               <Icon name="download" size={22} />
             </Button>
 
@@ -233,12 +235,23 @@
       </article>
     {:else if $loading}
       <div class="face">
-        <Skeleton height="17.5rem" />
-        <div class="info">
-          <Skeleton height="1.75rem" width="60%" />
-          <Skeleton height="2.25rem" width="40%" />
-          <Skeleton height="3rem" />
+        <div
+          style="overflow: hidden; border-radius: 10em; display: flex; width: min-content; margin: 0 auto;"
+        >
+          <Skeleton height="18rem" width="18rem" />
         </div>
+        <div style="height: 2rem"></div>
+        <Skeleton height="1.75rem" width="60%" />
+        <div style="height: 1rem"></div>
+        <Skeleton height="2.25rem" width="40%" />
+        <div style="height: 1rem"></div>
+        <Skeleton height="3rem" />
+        <div style="height: 0.2rem"></div>
+        <Skeleton height="3rem" />
+        <div style="height: 0.2rem"></div>
+        <Skeleton height="3rem" />
+        <div style="height: 0.2rem"></div>
+        <Skeleton height="3rem" />
       </div>
     {:else}
       <p class="empty">Watchface not found.</p>
@@ -247,6 +260,39 @@
 </div>
 
 <style>
+  .toggle-aod {
+    position: absolute;
+    right: 0;
+    top: 0;
+    border: 1px solid oklch(from var(--color-text) l c h / 10%);
+    appearance: none;
+    padding: 0;
+    height: 2.5rem;
+    width: 2.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10em;
+    background-color: var(--color-text);
+    color: var(--color-background);
+    transition: var(--spring-transition);
+    cursor: pointer;
+    & :global(.icon) {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: absolute;
+      top: 0;
+      right: 0;
+      left: 0;
+      bottom: 0;
+    }
+
+    &.on {
+      background-color: transparent;
+      color: var(--color-text);
+    }
+  }
   .page {
     display: flex;
     flex-direction: column;
@@ -264,10 +310,11 @@
     padding: 1rem 1rem 2rem;
   }
   .face {
+    position: relative;
     max-width: 500px;
     width: 50%;
     margin: 0 auto;
-    min-width: 390px;
+    min-width: 350px;
   }
   .dial {
     display: flex;
@@ -337,14 +384,19 @@
   .muted {
     color: oklch(from var(--color-text) l c h / 55%);
   }
-  .status {
-    font-size: 0.625rem;
-    color: oklch(from var(--color-text) l c h / 55%);
-  }
   .actions {
     display: flex;
     align-items: center;
     gap: 0.5rem;
+
+    & :global(button),
+    & :global(a) {
+      & span:first-child {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+    }
 
     & :global(.actions--small-btn) {
       flex: 0 0 min-content;

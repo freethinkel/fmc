@@ -12,12 +12,9 @@
     min?: number | string;
     max?: number | string;
     step?: number | string;
-    /** muted tag inside the box, before the value: [x 12] */
     label?: string;
-    /** muted suffix inside the box, after the value: [100 %] */
     unit?: string;
     onInput?: (value: string) => void;
-    // native `change` — fires on blur/Enter/stepper, for edits too expensive to run per keystroke
     onChange?: (value: string) => void;
   }
   let {
@@ -63,7 +60,6 @@
 </label>
 
 <style>
-  /* same box as Button's default size, so a field and the button beside it line up */
   .box {
     display: flex;
     align-items: center;
@@ -72,21 +68,17 @@
     height: 2.25rem;
     padding: 0 0.75rem;
     background: oklch(from var(--color-text) l c h / 5%);
-    border: 1px solid transparent;
     border-radius: 10em;
     transition: border-color 0.15s ease;
     cursor: text;
 
-    &:focus-within {
-      border-color: var(--color-accent);
-    }
     &:has(input:disabled) {
       opacity: 0.5;
     }
   }
   .tag {
     flex-shrink: 0;
-    font-size: 0.75rem;
+    font-size: 0.9rem;
     color: oklch(from var(--color-text) l c h / 45%);
     user-select: none;
   }
@@ -100,14 +92,17 @@
     font: inherit;
     font-size: 1rem;
     color: var(--color-text);
+    outline: none;
 
     &::placeholder {
       color: oklch(from var(--color-text) l c h / 40%);
     }
-    &:focus {
-      outline: none;
+
+    caret-color: var(--color-accent);
+    &::selection {
+      background-color: oklch(from var(--color-accent) l c h / 20%);
     }
-    /* spinners crowd a compact field; arrow keys still step */
+
     &::-webkit-outer-spin-button,
     &::-webkit-inner-spin-button {
       appearance: none;

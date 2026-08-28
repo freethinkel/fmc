@@ -9,7 +9,13 @@
     onClose?: () => void;
     children?: Snippet;
   }
-  const { open = false, title, side = false, onClose, children }: Props = $props();
+  const {
+    open = false,
+    title,
+    side = false,
+    onClose,
+    children,
+  }: Props = $props();
 
   let el = $state<HTMLDialogElement>();
 
@@ -20,8 +26,12 @@
   });
 </script>
 
+<!-- autofocus on the dialog itself, like sheet/: otherwise showModal() focuses the first
+     focusable child, which is the close button -->
+<!-- svelte-ignore a11y_autofocus -->
 <dialog
   bind:this={el}
+  autofocus
   class:side
   onclose={() => onClose?.()}
   onclick={(e) => {
@@ -31,7 +41,7 @@
   <header>
     {#if title}<h2>{title}</h2>{/if}
     <button class="close" aria-label="Close" onclick={() => el?.close()}>
-      <Icon name="close" size={18} />
+      <Icon name="close" />
     </button>
   </header>
   <div class="body">{@render children?.()}</div>
@@ -40,6 +50,7 @@
 <style>
   dialog {
     border: none;
+    outline: none;
     padding: 0;
     color: var(--color-text);
     background: var(--color-background);
@@ -56,6 +67,7 @@
     &[open] {
       opacity: 1;
       transform: none;
+
       @starting-style {
         opacity: 0;
         transform: translateY(0.75rem) scale(0.98);
@@ -67,9 +79,8 @@
   }
   dialog.side {
     margin: 0 0 0 auto;
-    height: 100svh;
-    max-height: 100svh;
-    /* a full-height drawer spans the status bar and the home indicator */
+    height: 100vh;
+    max-height: 100vh;
     padding-block: var(--safe-area-top) var(--safe-area-bottom);
     width: min(26.25rem, 90vw);
     border-radius: 0;
@@ -104,17 +115,20 @@
     }
   }
   .close {
-    margin-inline-start: auto;
+    height: 2.5rem;
+    width: 2.5rem;
+    display: flex;
+    justify-content: center;
+    align-items: center;
     border: none;
-    background: transparent;
-    cursor: pointer;
+    border-radius: 10rem;
+    padding: 0;
     color: oklch(from var(--color-text) l c h / 55%);
-    padding: 0.25rem;
-    border-radius: 0.375rem;
-    @media (hover: hover) {
-      &:hover {
-        background: oklch(from var(--color-text) l c h / 8%);
-      }
+    cursor: pointer;
+    background: oklch(from var(--color-text) l c h / 8%);
+
+    &:hover {
+      background: oklch(from var(--color-text) calc(l+0.1) c h / 8%);
     }
   }
   .body {

@@ -1,5 +1,7 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
+  import { backIn, bounceOut, cubicIn, cubicInOut } from "svelte/easing";
+  import { fly, slide } from "svelte/transition";
 
   interface Props {
     trigger: Snippet<[{ open: boolean; toggle: () => void }]>;
@@ -47,43 +49,43 @@
   style={anchored ? `anchor-name: ${anchor}` : undefined}
 >
   {@render trigger({ open, toggle: () => (open = !open) })}
-  <!-- always in the tree: the close animation needs the node to outlive `open` -->
-  <div
-    class="menu align__{align}"
-    class:anchored
-    class:open
-    role="menu"
-    tabindex="-1"
-    bind:this={menu}
-    popover={anchored ? "manual" : undefined}
-    style={anchored ? `position-anchor: ${anchor}` : undefined}
-    onclick={() => (open = false)}
-    onkeydown={(e) => {
-      if (e.key === "Escape") open = false;
-    }}
-  >
-    {@render children?.()}
-  </div>
+  {#if open}
+    <div
+      class="menu align__{align}"
+      class:anchored
+      role="menu"
+      tabindex="-1"
+      bind:this={menu}
+      popover={anchored ? "manual" : undefined}
+      style={anchored ? `position-anchor: ${anchor}` : undefined}
+      onclick={() => (open = false)}
+      transition:fly={{ y: -10, easing: cubicInOut, duration: 100 }}
+      onkeydown={(e) => {
+        if (e.key === "Escape") open = false;
+      }}
+    >
+      {@render children?.()}
+    </div>
+  {/if}
 </div>
 
 <style>
   .root {
     position: relative;
     display: inline-flex;
-    /* a trigger that is a form control (Select) spans its field; the menu takes at least that */
     min-width: 0;
   }
+
   .root > :global(:first-child) {
     flex: 1;
     min-width: 0;
   }
+
   .menu {
     position: absolute;
     top: calc(100% + 0.375rem);
     z-index: 50;
     min-width: 11.25rem;
-    /* a long list (the editor's data sources run to dozens) scrolls inside the menu rather
-       than growing past the viewport */
     max-height: min(20rem, calc(100vh - 2rem));
     overflow-y: auto;
     padding: 0.25rem;
@@ -92,64 +94,29 @@
     background: var(--color-background);
     border: 1px solid oklch(from var(--color-text) l c h / 10%);
     box-shadow: 0 8px 24px oklch(0 0 0 / 12%);
-
-    /* grows out of the trigger's edge and fades; the same curve shrinks it back — allow-discrete
-       keeps the node displayed until the close transition lands, so it must stop catching
-       clicks the moment it starts leaving (the trigger sits right under it) */
-    display: none;
-    pointer-events: none;
-    opacity: 0;
-    transform: translateY(-0.25rem) scale(0.96);
-    transform-origin: top;
-    transition:
-      opacity 0.15s ease,
-      transform var(--spring-transition),
-      display 0.25s allow-discrete,
-      overlay 0.25s allow-discrete;
-
-    &.open {
-      display: flex;
-      pointer-events: auto;
-      opacity: 1;
-      transform: none;
-      @starting-style {
-        opacity: 0;
-        transform: translateY(-0.25rem) scale(0.96);
-      }
-    }
+    display: flex;
   }
+
   .align__end {
     inset-inline-end: 0;
   }
   .align__start {
     inset-inline-start: 0;
   }
-  /* the anchored menu animates on :popover-open, not .open: hidePopover() drops the element
-     out of the top layer and the UA's own display rule wins over .open — `overlay` with
-     allow-discrete is what holds it on screen while the close transition runs */
-  .anchored:popover-open {
+
+  .anchored {
     display: flex;
-    pointer-events: auto;
-    opacity: 1;
-    transform: none;
     position: fixed;
-    inset: auto;
     margin: 0.375rem 0;
     min-width: max(11.25rem, anchor-size(width));
-    position-try-fallbacks:
-      flip-block,
-      flip-inline,
-      flip-block flip-inline;
-
-    @starting-style {
-      opacity: 0;
-      transform: translateY(-0.25rem) scale(0.96);
-    }
+    top: 100%;
+    inset: 0;
   }
-  .anchored.align__end:popover-open {
+
+  .anchored.align__end {
     position-area: block-end span-inline-start;
   }
-  .anchored.align__start:popover-open {
+  .anchored.align__start {
     position-area: block-end span-inline-end;
   }
 </style>
