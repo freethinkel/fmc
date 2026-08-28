@@ -54,15 +54,18 @@ test("dragging a widget snaps its edge onto another widget's edge", async () => 
   expect(isPlaced(me.layer)).toBe(true);
 
   const r = canvas.getBoundingClientRect();
-  const k = r.width / SCREEN; // canvas units -> client px
+  // canvas units -> client px, per axis: the frame's aspect-ratio yields to max-height when the
+  // page is short, so the canvas box isn't always square — onDown maps each axis on its own too
+  const kx = r.width / SCREEN;
+  const ky = r.height / SCREEN;
   const tol = (SNAP_THRESHOLD * SCREEN) / r.width;
   const off = 3; // inside the snap window, so the drag must land flush instead
 
   expect(off).toBeLessThan(tol);
   const dx = other.x + off - me.x; // aim my left edge just short of the other box's left edge
   const at = (cx: number, cy: number) => ({
-    clientX: r.left + cx * k,
-    clientY: r.top + cy * k,
+    clientX: r.left + cx * kx,
+    clientY: r.top + cy * ky,
     pointerId: 1,
     bubbles: true,
   });

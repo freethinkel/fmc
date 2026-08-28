@@ -12,7 +12,7 @@
   import { bleModel } from "$lib/modules/device/model";
   import { renderDoc, type ResizePreview } from "../core/render/render";
   import { CENTER, SCREEN } from "../core/render/screen";
-  import type { ImageStore, LayerHit } from "../core/render/canvas";
+  import type { LayerHit } from "../core/render/canvas";
   import { framesOf, isPlaced, type Layer, type NodeId } from "../core/document/doc";
   import { containerOrigin, findLayer, parentOf } from "../core/document/edits";
   import { snapAxis, snapTargets, type SnapTargets } from "../core/render/snap";
@@ -93,19 +93,19 @@
   let helpOpen = $state(false); // the `?` overlay
   let hits: LayerHit[] = [];
 
-  // ---- resizable side panels (desktop only — below 768px both are drawers) ----
-  // Widths live in rem, like every other size here, so they keep following the :root scale knob;
-  // the drag delta is in px and gets divided by the current root font size. Persisted, because a
-  // panel that springs back on every reload isn't really resizable.
   const PANEL_KEY = "fmc.panel-widths";
-  const SIDE_MIN = 12,
-    SIDE_MAX = 35;
+  const SIDE_MIN = 12;
+  const SIDE_MAX = 35;
   const savedWidths: { tree?: number; right?: number } = JSON.parse(
     localStorage.getItem(PANEL_KEY) || "{}",
   );
   let treeW = $state(savedWidths.tree ?? 17.5);
   let rightW = $state(savedWidths.right ?? 20.625);
-  let gutter = $state.raw<{ side: "tree" | "right"; x: number; from: number } | null>(null);
+  let gutter = $state.raw<{
+    side: "tree" | "right";
+    x: number;
+    from: number;
+  } | null>(null);
 
   const rootRem = () => parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
   const setSide = (side: "tree" | "right", w: number) => {
@@ -119,10 +119,6 @@
     localStorage.setItem(PANEL_KEY, JSON.stringify({ tree: treeW, right: rightW }));
   });
 
-  // The whole drag lives on the window (see <svelte:window> below) rather than on pointer
-  // capture: capture drops the moves the moment it fails to engage, and it doesn't survive the
-  // pointer being released outside the browser. preventDefault here is what stops the drag from
-  // turning into a text selection, which is the only thing capture was buying.
   function gutterDown(side: "tree" | "right", e: PointerEvent) {
     e.preventDefault();
     gutter = { side, x: e.clientX, from: side === "tree" ? treeW : rightW };
@@ -130,7 +126,6 @@
 
   function gutterMove(e: PointerEvent) {
     if (!gutter) return;
-    // the right panel grows leftwards, so its delta is mirrored
     const dx = gutter.side === "tree" ? e.clientX - gutter.x : gutter.x - e.clientX;
 
     setSide(gutter.side, gutter.from + dx / rootRem());
@@ -145,8 +140,6 @@
     setSide(side, (side === "tree" ? treeW : rightW) + (side === "tree" ? step : -step));
   }
 
-  // At a clamp the handle can only go one way, so say so with a single-headed cursor. The tree
-  // panel grows to the right and the right panel to the left, hence the mirrored arms.
   function gutterCursor(side: "tree" | "right") {
     const w = side === "tree" ? treeW : rightW;
     const grow = side === "tree" ? "e-resize" : "w-resize";
@@ -164,14 +157,9 @@
       (e as DragEvent).dataTransfer?.files?.[0];
 
     if (t instanceof HTMLInputElement) t.value = "";
-    // this is also the window-level ondrop, so every in-app drag ends up here (layer reorder,
-    // frame reorder) — only a drop carrying a file is an import. Detaching unconditionally
-    // made the toolbar forget which record is open the moment you dragged anything.
     if (!f) return;
     e.preventDefault();
-    // A Wear OS bundle is a single file, so it comes in through the same picker and drop target
-    // as a .bin. Told apart by the zip magic rather than the extension — a downloaded bundle
-    // does not reliably keep its .aab, and a .bin never starts with "PK".
+
     f.arrayBuffer().then((buf) => {
       const head = new Uint8Array(buf, 0, 2);
 
@@ -192,18 +180,11 @@
     faceDetached();
   }
 
-  // see marketModel's $foreignWf — the rule itself lives there, this is what the greyed-out
-  // Save/Publish say when you hover them
   const FOREIGN_HINT =
     "Someone else's watchface — edit and flash it freely, but it can't be re-uploaded under your name. Export the .bin and open that file to start your own from it.";
 
-  // An own, already-published watchface updates in place on Save (saveFx keeps its published
-  // flag), so Publish would only open a dialog that does the same thing under another name.
   const isPublishedMine = $derived(Boolean($openedWf?.published) && $openedWf?.owner === $user?.id);
 
-  // Save: new watchface → draft; already-open own watchface → update, keeping its status.
-  // buildCurrentBin re-encodes and self-checks the whole file, so it can throw — without the
-  // catch that reads as a dead button: no request, no message.
   async function saveDraft() {
     const u = $user;
 
@@ -221,10 +202,6 @@
     }
   }
 
-  // ---- dev frame meter ----
-  // The canvas redraws every rAF whether or not anything changed (the clock moves), so this is
-  // the editor's steady-state cost. `draw` is time inside render() alone — that's the number
-  // worth watching, since the gap to 16.7ms is everything else the browser is doing.
   const perf = import.meta.env.DEV;
   let fps = $state(0);
   let drawMs = $state(0);
@@ -246,10 +223,6 @@
     }
   }
 
-  // ---- rendering ----
-  // A plain (non-$state) mirror of the stores: the rAF loop reads them every frame, and reading
-  // them inside the render effect would make the effect re-run — tearing down and restarting the
-  // loop — on every update.
   const snapshot = () => ({
     doc: $doc,
     store: $store,
@@ -293,18 +266,19 @@
 
   const hitOf = (id: NodeId | null) => (id ? hits.findLast((h) => h.layer.id === id) : undefined);
 
-  /** Where a layer WOULD sit when the render skipped it: a widget slot with placeholders turned
-   *  off draws nothing at all, and a layer a condition hides this frame is in the same boat — so
-   *  selecting one from the tree left no box anywhere and no way to tell where it is. */
   function ghostBox(id: NodeId | null) {
     const l = id && $doc ? findLayer($doc, id) : null;
 
     if (!l || !isPlaced(l) || !l.meta.w || !l.meta.h) return null;
-    // containerOrigin counts the layer it is given, so ask about the PARENT — a group child's
-    // own x/y is measured from its group's frame
     const o = containerOrigin($doc!, parentOf($doc!, l.id)?.id ?? null);
 
-    return { x: o.x + l.x, y: o.y + l.y, w: l.meta.w, h: l.meta.h, ghost: true as const };
+    return {
+      x: o.x + l.x,
+      y: o.y + l.y,
+      w: l.meta.w,
+      h: l.meta.h,
+      ghost: true as const,
+    };
   }
 
   const boxOf = (id: NodeId | null) => hitOf(id) ?? ghostBox(id);
@@ -317,7 +291,6 @@
     ctx.save();
     ctx.strokeStyle = "#4af";
     ctx.lineWidth = 2;
-    // a longer dash for the ghost, so "here, but not drawn" doesn't read as an ordinary selection
     ctx.setLineDash(ghost ? [2, 5] : [6, 4]);
     ctx.strokeRect(b.x - 1, b.y - 1, b.w + 2, b.h + 2);
     ctx.restore();
@@ -340,7 +313,7 @@
     }
     outline(ctx, h);
     ctx.save();
-    // a locked layer gets the outline and nothing else: no handles to grab, no pivot to aim
+
     if (h.layer.locked) {
       ctx.restore();
       return;
@@ -380,20 +353,14 @@
     ctx.restore();
   }
 
-  // ---- resize handles ----
-  // Any widget drawn from images gets corner handles, on its selection box. The box isn't
-  // always the resource rect (a NUMBER's is the composed digits, a HAND's is the rotated
-  // AABB), so the drag works in scale factors: the box is scaled uniformly and the resource
-  // follows by the same factor. Groups (frame w/h, not pixels) and procedural arcs are out.
-  const HANDLE = 10; // canvas units (SCREEN-space)
+  const HANDLE = 10;
   const CORNERS = [
     [0, 0],
     [1, 0],
     [0, 1],
     [1, 1],
   ] as const;
-  // the canvas frame is a circle (border-radius 50%, see .canvas-frame), so a corner of a
-  // full-screen image sits in clipped-away pixels — pull handles onto the visible disc
+
   const onDisc = (x: number, y: number): XY => {
     const dx = x - CENTER,
       dy = y - CENTER,
@@ -408,20 +375,13 @@
     return ids.length ? $doc?.images.get(ids[0]) : undefined;
   };
 
-  /** Does anything under this layer have pixels to scale? A group has none of its own. */
   const hasArt = (l: Layer): boolean =>
     framesOf(l).length > 0 || (l.kind === "group" && l.children.some(hasArt));
-  /** A ring with no art still resizes — its size is the 0x5a spec, not pixels (see ringResized). */
   const isBareRing = (l: Layer): boolean => l.kind === "ring" && !l.frames.length;
-  // locked is editor-only (see doc.ts): the layer still draws, it just stops answering the canvas
   const resizable = (l: Layer | null): boolean =>
     Boolean(l) && (hasArt(l!) || isBareRing(l!)) && !l!.locked;
-  /** A rotation is baked into the pixels (see rotateAsset), so it needs pixels OF ITS OWN: a
-   *  group's children would each turn about their own centre, which is not what rotating a group
-   *  looks like, and a bare ring is a spec, not art — its angle is start/end in the inspector. */
   const rotatable = (l: Layer | null): boolean =>
     Boolean(l) && framesOf(l!).length > 0 && !l!.locked;
-  /** Above the top edge, pulled onto the visible disc like the corners are. */
   const rotateHandle = (h: LayerHit): XY => onDisc(h.x + h.w / 2, h.y - HANDLE * 1.5);
 
   type Rz = {
@@ -448,37 +408,49 @@
   };
   let rz: Rz | null = null;
 
-  // The rotate drag, in the same shape: an angle accumulated around the box centre, applied once
-  // on pointerup. `deg` is the delta from where the gesture started, which is what the model wants.
-  type Rot = { layer: Layer; cx: number; cy: number; a0: number; deg: number; started: boolean };
+  type Rot = {
+    layer: Layer;
+    cx: number;
+    cy: number;
+    a0: number;
+    deg: number;
+    started: boolean;
+  };
   let rot: Rot | null = null;
   const ROT_STEP = 15; // ⇧ snap, the usual increment
 
-  // What the canvas draws mid-drag: the layer scaled around its anchor, or turned around its
-  // centre — no assets touched. The real re-bake happens once, on pointerup.
   const resizePreview = (): ResizePreview | null =>
     rz && rz.started
-      ? { id: rz.layer.id, kw: rz.gw / rz.w0, kh: rz.gh / rz.h0, ax: rz.ax, ay: rz.ay }
+      ? {
+          id: rz.layer.id,
+          kw: rz.gw / rz.w0,
+          kh: rz.gh / rz.h0,
+          ax: rz.ax,
+          ay: rz.ay,
+        }
       : rot && rot.started
-        ? { id: rot.layer.id, kw: 1, kh: 1, ax: rot.cx, ay: rot.cy, deg: rot.deg }
+        ? {
+            id: rot.layer.id,
+            kw: 1,
+            kh: 1,
+            ax: rot.cx,
+            ay: rot.cy,
+            deg: rot.deg,
+          }
         : null;
 
-  // Rescale the assets to the target box (g*) — one call, at the end of the drag.
   function applyResize(z: Rz) {
-    // the box and the asset scale by the same factors — separately per axis, so a corner drag
-    // can change the aspect ratio
     const kw = z.gw / z.w0,
       kh = z.gh / z.h0;
-    // a hand's x/y is owned by the pivot math in resizeImageFx — don't fight it. Everything else
-    // keeps the anchored corner: delta-based, like alignRequested, since a layer's x/y is
-    // container-local while the hit box is screen space.
     const pinned = z.layer.kind === "hand";
 
     const at = pinned
       ? undefined
-      : { x: z.x0 + Math.round(z.gx - z.bx), y: z.y0 + Math.round(z.gy - z.by) };
+      : {
+          x: z.x0 + Math.round(z.gx - z.bx),
+          y: z.y0 + Math.round(z.gy - z.by),
+        };
 
-    // a group has no pixels of its own: resizing it scales everything under it, by factor
     if (z.layer.kind === "group") {
       resizeGroupRequested({ layer: z.layer.id, kw, kh, at });
       return;
@@ -514,9 +486,6 @@
     return null;
   };
 
-  // ---- snapping ----
-  // Targets are collected once on pointerdown: hits is rebuilt every frame, and the dragged
-  // node's own box would otherwise snap to itself. ⌥ holds the drag off the guides.
   let snapT: SnapTargets | null = null;
   let cvScale = 1; // canvas units per screen px — the thresholds are in screen px
   let box0: LayerHit | null = null;
@@ -542,8 +511,6 @@
 
   // ---- selection and drag ----
   type XY = { x: number; y: number };
-  // one entry per dragged layer — a multi-selection moves as a block. The layer is captured when
-  // the drag starts, so x0/y0 stay the origin the whole gesture measures from.
   type DragItem = { layer: Layer; x0: number; y0: number };
   let drag: { p: XY; items: DragItem[]; moved: boolean } | null = null;
   const canvasXY = (e: PointerEvent): XY => {
@@ -555,16 +522,12 @@
     };
   };
 
-  /** What a layer moves by: its own x/y, or its frame's when it is a group. */
   function dragItem(l: Layer): DragItem | null {
     if (l.locked) return null;
     if (l.kind === "group") return { layer: l, x0: l.frame.x, y0: l.frame.y };
     return l.kind === "raw" ? null : { layer: l, x0: l.x, y0: l.y };
   }
 
-  // No clamp on either kind: x/y is int16 for a widget and for a group's frame alike, so a layer
-  // may hang off the left or top edge — stock faces do it, and the inspector has always let you
-  // type it. See shiftLayer, which is the same move by a delta.
   const moveItem = (it: DragItem, x: number, y: number) =>
     layerPatched({
       id: it.layer.id,
@@ -582,7 +545,14 @@
       const cx = sh.x + sh.w / 2,
         cy = sh.y + sh.h / 2;
 
-      rot = { layer: sh.layer, cx, cy, a0: Math.atan2(p.y - cy, p.x - cx), deg: 0, started: false };
+      rot = {
+        layer: sh.layer,
+        cx,
+        cy,
+        a0: Math.atan2(p.y - cy, p.x - cx),
+        deg: 0,
+        started: false,
+      };
       canvas?.setPointerCapture(e.pointerId);
       return;
     }
@@ -592,11 +562,6 @@
       // a group scales by factor, so its base size is the box itself
       const r0 = firstAsset(sh.layer) ?? { w: sh.w, h: sh.h };
       const origin = dragItem(sh.layer);
-      // The point that stays put while the box grows: normally the corner opposite the dragged
-      // one, but a hand scales around its rotation centre — that's the invariant resizeImageFx
-      // keeps, and the preview has to agree with it or the hand jumps on release.
-      // ponytail: a hand's x/y is container-local, so this is off for one nested in a group —
-      // no corpus face does that; read the centre off the hit box if one ever turns up.
       const hand = sh.layer.kind === "hand" ? sh.layer : null;
       const ax = hand ? hand.x + hand.pivotX : c.cx ? sh.x : sh.x + sh.w;
       const ay = hand ? hand.y + hand.pivotY : c.cy ? sh.y : sh.y + sh.h;
@@ -666,14 +631,8 @@
     }
     if (rz) {
       const p = canvasXY(e);
-      // The dragged corner follows the pointer on BOTH axes, each measured against the grab
-      // point (dx0/dy0), so the box starts at 1:1 wherever the handle happened to be drawn.
-      // Free w/h when the aspect lock is off: a uniform scale is driven by the long side, so on a
-      // wide layer pulling the short side barely moved it. Shift inverts the lock, as usual.
       const rx = Math.abs(p.x - rz.ax) / rz.dx0,
         ry = Math.abs(p.y - rz.ay) / rz.dy0;
-      // a ring is a circle: scaling it per axis would show a preview the model can't reproduce,
-      // and `at` below anchors the corner for whatever factors the preview used
       const locked = isBareRing(rz.layer) || $lockAspect !== e.shiftKey;
       const [sw, sh] = locked ? [Math.max(rx, ry), Math.max(rx, ry)] : [rx, ry];
 
@@ -729,7 +688,6 @@
   }
   function onUp() {
     if (rot) {
-      // the whole gesture lands as one bake, like a resize does
       if (rot.started && rot.deg % 360) rotateImageRequested({ layer: rot.layer.id, deg: rot.deg });
       rot = null;
     }
@@ -741,8 +699,6 @@
     guides = { x: [], y: [] };
   }
 
-  // ---- keyboard ----
-  // The whole keymap lives in shared/shortcuts.ts; this file only says what each action means.
   function nudgeMove(dx: number, dy: number) {
     checkpoint();
     for (const l of $selected) {
@@ -752,10 +708,6 @@
     }
   }
 
-  // The keyboard twin of applyResize: the box grows from its top-left, so unlike a corner drag
-  // there is no anchor to correct for and the layer's x/y are left alone.
-  // ponytail: the primary selection only — resizing N layers by 1px each needs N async rescales
-  // and a way to keep them in one undo step. Nobody has asked for it yet.
   function nudgeResize(dw: number, dh: number) {
     const l = $selected[0];
 
@@ -866,26 +818,22 @@
 
 <div class="page">
   <div class="toolbar">
-    <!-- One entry point, because "bin" vs "folder" only made sense once you knew which format
-         ships as which. The two pickers still have to be separate inputs: a directory picker is
-         a fixed attribute on the input, and no picker offers files and folders at once. -->
     <Menu align="start">
       {#snippet trigger({ toggle })}
         <Button kind="secondary" onClick={toggle}>
-          <Icon name="folder-input" size={16} />
+          <Icon name="arrow_upload_ready" />
           <span class="btn-label">Import</span>
         </Button>
       {/snippet}
       <MenuItem onClick={() => fileInput?.click()}>
-        <Icon name="file-plus" size={16} />
+        <Icon name="note_add" />
         <span class="route">Watchface file <span>.bin, .aab</span></span>
       </MenuItem>
       <MenuItem onClick={() => dirInput?.click()}>
-        <Icon name="watch" size={16} />
+        <Icon name="watch" />
         <span class="route">Export folder <span>Facer, WatchMaker</span></span>
       </MenuItem>
     </Menu>
-    <!-- outside the menu: it unmounts its children on select, before the click could land -->
     <input bind:this={fileInput} type="file" accept=".bin,.aab,.zip" hidden onchange={openFile} />
     <input bind:this={dirInput} type="file" webkitdirectory hidden onchange={openFacer} />
     <span class="tool-slot" title="New">
@@ -896,7 +844,7 @@
           newFaceRequested();
         }}
       >
-        <Icon name="file-plus" size={16} /> <span class="btn-label">New</span>
+        <Icon name="note_add" /> <span class="btn-label">New</span>
       </Button>
     </span>
     {#if $doc}
@@ -918,17 +866,17 @@
       />
       <span class="tool-slot" title="Undo (⌘Z)">
         <Button kind="ghost" disabled={!$undoN} onClick={() => undo()}>
-          <Icon name="undo" size={16} />
+          <Icon name="undo" size={22} />
         </Button>
       </span>
       <span class="tool-slot" title="Redo (⇧⌘Z)">
         <Button kind="ghost" disabled={!$redoN} onClick={() => redo()}>
-          <Icon name="redo" size={16} />
+          <Icon name="redo" size={22} />
         </Button>
       </span>
       <span class="tool-slot" title="Export .bin">
         <Button kind="primary" onClick={() => exportBin()}>
-          <Icon name="download" size={16} />
+          <Icon name="download" size={22} />
           <span class="btn-label">Export .bin</span>
         </Button>
       </span>
@@ -948,7 +896,7 @@
             onClick={saveDraft}
             disabled={$saving || $foreignWf}
           >
-            <Icon name="save" size={16} />
+            <Icon name="save" size={22} />
             <span class="btn-label"
               >{$saving ? "Saving…" : isPublishedMine ? "Update" : "Save"}</span
             >
@@ -957,7 +905,7 @@
         {#if !isPublishedMine}
           <span class="tool-slot" title={$foreignWf ? FOREIGN_HINT : "Publish"}>
             <Button kind="secondary" onClick={() => publishDialogOpened()} disabled={$foreignWf}>
-              <Icon name="upload-cloud" size={16} />
+              <Icon name="cloud_upload" size={22} />
               <span class="btn-label">Publish</span>
             </Button>
           </span>
@@ -967,7 +915,7 @@
     {#if $bleInfo && $doc}
       <span class="tool-slot" title="Upload to the watch">
         <Button kind="primary" onClick={flashWatch} disabled={$flashing}>
-          <Icon name="zap" size={16} />
+          <Icon name="bolt" size={22} />
           {$flashing ? "Flashing…" : "Flash"}
         </Button>
       </span>
@@ -1006,7 +954,9 @@
         </div>
       </div>
       {#if perf && $doc}
-        <p class="fps" class:slow={fps > 0 && fps < 50}>{fps} fps · {drawMs} ms draw</p>
+        <p class="fps" class:slow={fps > 0 && fps < 50}>
+          {fps} fps · {drawMs} ms draw
+        </p>
       {/if}
       <p class="hint">
         click — select · drag / arrow keys (⇧ ×10) — move · ⌥ drag — no snap · corners — resize (⇧
@@ -1037,13 +987,13 @@
     {#if $doc}
       <div class="mobile-actions">
         <Button kind="secondary" onClick={() => (mobilePanel = "tree")}>
-          <Icon name="list-tree" size={16} /> Tree
+          <Icon name="account_tree" size={22} /> Tree
         </Button>
         <Button kind="secondary" onClick={() => (mobilePanel = "props")}>
-          <Icon name="sliders-horizontal" size={16} /> Props
+          <Icon name="tune" size={22} /> Props
         </Button>
         <Button kind="secondary" onClick={() => (mobilePanel = "sim")}>
-          <Icon name="play" size={16} /> Sim
+          <Icon name="play_arrow" size={22} /> Sim
         </Button>
       </div>
     {/if}

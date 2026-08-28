@@ -27,9 +27,17 @@
   }
   .clickable {
     cursor: pointer;
-    transition: transform var(--spring-transition);
+    transition:
+      transform var(--spring-transition),
+      background-color var(--spring-transition);
+
     &:active {
       transform: scale(0.98);
+    }
+    /* a press that lands on a control inside the card belongs to that control — the card must
+       not squash under it. :active is a hit-test state, so stopping the event wouldn't clear it */
+    &:has(:global(:where(button, a):active)) {
+      transform: none;
     }
   }
 </style>

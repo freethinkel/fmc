@@ -16,8 +16,6 @@
 
 <div class="panel">
   {#if layer}
-    <!-- A locked layer is read-only, and a disabled fieldset is the platform's own way to say
-         so: one attribute switches off every control inside, no per-input plumbing. -->
     <fieldset class="fields" disabled={Boolean(layer.locked)}>
       {#if layer.locked}
         <p class="hint-xs">locked — unlock it in the layer tree to edit</p>
@@ -29,11 +27,10 @@
   {:else}
     <p class="hint">Nothing selected.</p>
   {/if}
-  <!-- scope follows the selection, same as the effect itself — see invertColorsFx -->
   {#if $doc}
     <div class="row">
       <Button kind="secondary" onClick={() => invertColorsRequested()}>
-        <Icon name="contrast" size={14} />
+        <Icon name="contrast" size={22} />
         invert {layer ? "layer" : "screen"}
       </Button>
     </div>
@@ -41,8 +38,6 @@
 </div>
 
 <style>
-  /* display: contents, so the fieldset carries the disabled state and nothing else — the
-     sections keep the panel's own layout */
   .fields {
     display: contents;
     border: none;
@@ -53,14 +48,13 @@
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
-    font-size: 0.75rem;
+    font-size: 0.85rem;
   }
   .hint {
     margin: 0;
-    font-size: 0.75rem;
+    font-size: 0.9rem;
     color: oklch(from var(--color-text) l c h / 55%);
   }
-  /* shared field chrome — :global so the section components can use the same classes */
   .panel :global {
     .row {
       display: flex;
@@ -81,13 +75,13 @@
     .muted-label {
       display: block;
       margin-bottom: 0.25rem;
-      font-size: 0.625rem;
+      font-size: 0.8rem;
       font-weight: 500;
       color: oklch(from var(--color-text) l c h / 55%);
     }
     .hint-xs {
       margin: 0;
-      font-size: 0.625rem;
+      font-size: 0.8rem;
       color: oklch(from var(--color-text) l c h / 55%);
     }
     .w-num {
@@ -125,13 +119,14 @@
       align-items: center;
       justify-content: center;
       width: 2rem;
+      min-width: 2rem;
       height: 2rem;
-      border: 1px solid oklch(from var(--color-text) l c h / 12%);
+      border: none;
       border-radius: var(--border-radius);
-      background: transparent;
-      color: oklch(from var(--color-text) l c h / 55%);
+      background: oklch(from var(--color-text) l c h / 10%);
+      color: var(--color-text);
       cursor: pointer;
-      transition: background-color 0.15s ease;
+      transition: var(--spring-transition);
 
       @media (hover: hover) {
         &:hover {
@@ -140,8 +135,8 @@
         }
       }
       &.on {
-        border-color: var(--color-accent);
-        color: var(--color-accent);
+        color: var(--color-text);
+        background-color: var(--color-accent);
       }
     }
     .check-row {

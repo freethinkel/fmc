@@ -2,27 +2,22 @@
    Components derive every shade via oklch(from …); never add per-shade tokens. */
 
 :root {
-  /* Nothing palette (playground.nothing.tech): yellow accent on grey monochrome.
-     The brand yellow is built for the dark background — on the light one it sits at 1.4:1
-     against --color-background, so accent text and the light-on-accent primary button are
-     both unreadable. Light mode gets it darkened to 4.5:1 (AA); dark mode keeps the original. */
-  /* The one scale knob: every size in the app is `rem`, so this multiplies the whole UI.
-     It is the sizing grid, not the text size — body text sits at 0.875rem (global.css). */
   font-size: 16px;
-  --color-accent: oklch(from #ffc700 0.54 c h);
+  --color-accent: #ffc700;
   --color-text: #1c1c1c;
   --color-background: #f2f2f2;
   --color-error: #d71921;
 
-  --border-radius: 0.5rem;
+  --color-on-accent: var(--color-text);
+  --border-radius: 0.6rem;
+  --nav-bar-height: 5rem;
+  --nav-rail-width: 6rem;
+  --safe-area-top: env(safe-area-inset-top, 0px);
+  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
 
-  --font-family: "Inter", system-ui, -apple-system, sans-serif;
-  --font-display: "Instrument Serif", Georgia, serif;
-  /* its own stack now that the body text isn't mono — the places that ask for --font-mono
-     (sim panel, shortcuts, frame numbers) mean it literally */
+  --font-family: "Geist", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-display: "Noto Serif", Georgia, serif;
   --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-
-  /* spring easing shared by all micro-interactions (from friendzone) */
   --spring-transition: 0.5s
     linear(
       0,
@@ -136,13 +131,12 @@
     --color-accent: #ffc700;
     --color-text: #f2f2f2;
     --color-background: #131313;
+    --color-on-accent: var(--color-background);
   }
 }
 
-/* Touch: one notch up, so body text lands on 16px. Boxes grow with it — bigger tap
-   targets are the point, and only this line has to change to retune the whole phone UI. */
-@media (max-width: 768px) {
+@media (min-width: 768px) {
   :root {
-    font-size: 18px;
+    font-size: 14px;
   }
 }

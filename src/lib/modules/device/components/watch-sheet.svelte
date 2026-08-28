@@ -1,7 +1,7 @@
 <script lang="ts">
   // The watch panel: connect, what the watch reports about itself, and what is installed on it.
-  // The shell is adaptive — an anchored popover on desktop, the swipeable sheet on the phone —
-  // since it is the same panel from the header and from the phone's tab bar.
+  // The shell is adaptive — a drawer beside the rail on desktop, the swipeable sheet on the
+  // phone — since it is the same panel either way.
   import type { Snippet } from "svelte";
   import { AdaptivePopover } from "$lib/shared/components/adaptive-popover";
   import { Button } from "$lib/shared/components/button";
@@ -17,7 +17,7 @@
   const { trigger }: Props = $props();
 
   let open = $state(false);
-  // The popover light-dismisses on pointerdown; without this guard the click that follows
+  // The drawer light-dismisses on pointerdown; without this guard the click that follows
   // would toggle it straight back open, so a toggle right after a close means "close".
   let closedAt = 0;
   function toggle() {
@@ -47,7 +47,6 @@
 <AdaptivePopover
   {open}
   title={$bleInfo ? ($bleInfo.name ?? "CMF Watch") : "Connect your watch"}
-  anchor="--watch-trigger"
   {onClose}
 >
   <!-- ponytail: don't gate on navigator.bluetooth at render time — the Safari polyfill injects later; the real check is in ble.ts on click -->
@@ -56,14 +55,14 @@
       <p class="desc">CMF Watch Pro 2 / Pro 3 over Web Bluetooth.</p>
       <div class="row">
         <Button onClick={() => connectRequested()} disabled={$connecting}>
-          <Icon name="bluetooth" size={16} />
+          <Icon name="bluetooth" size={22} />
           {$connecting ? "Connecting…" : "Connect"}
         </Button>
         <span
           title="Clear Chrome's device permission and the saved auth key — does not affect pairing state on the watch itself"
         >
           <Button kind="ghost" onClick={() => forgetRequested()} disabled={$forgetting}>
-            <Icon name="eraser" size={16} />
+            <Icon name="ink_eraser" size={22} />
             {$forgetting ? "Forgetting…" : "Forget device"}
           </Button>
         </span>
@@ -75,14 +74,14 @@
       <p class="desc">{$bleStatus}</p>
       <div class="info">
         <p>
-          <Icon name="battery-full" size={16} color="var(--color-accent)" />
+          <Icon name="battery_full" size={16} color="var(--color-accent)" />
           Battery: {$bleInfo.battery ?? "?"}%
         </p>
         <p>
-          <Icon name="cpu" size={16} color={muted} /> Firmware: {$bleInfo.firmware ?? "?"}
+          <Icon name="memory" size={16} color={muted} /> Firmware: {$bleInfo.firmware ?? "?"}
         </p>
         <p>
-          <Icon name="hash" size={16} color={muted} /> Serial: {$bleInfo.serial ?? "?"}
+          <Icon name="tag" size={16} color={muted} /> Serial: {$bleInfo.serial ?? "?"}
         </p>
       </div>
     </div>

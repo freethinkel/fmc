@@ -1,0 +1,26 @@
+{
+  "name": "FMC Watchfaces",
+  "short_name": "FMC·WF",
+  "description": "Watchface editor and marketplace for the CMF Watch Pro 2",
+  "lang": "en",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#ffc700",
+  "theme_color": "#131313",
+  "icons": [
+    { "src": "/icons/icon-192.png", "type": "image/png", "sizes": "192x192" },
+    {
+      "src": "/icons/icon-maskable-512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "maskable"
+    },
+    { "src": "/icons/icon-512.png", "type": "image/png", "sizes": "512x512" }
+  ],
+  "shortcuts": [
+    { "name": "Editor", "url": "/editor" },
+    { "name": "Marketplace", "url": "/market" }
+  ]
+}

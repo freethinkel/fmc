@@ -109,7 +109,7 @@
         aria-label="No accent"
         onclick={() => simPatched({ accentColor: null })}
       >
-        <Icon name="x" size={12} />
+        <Icon name="close" size={12} />
       </button>
       {#each ACCENT_PALETTE as c}
         <button

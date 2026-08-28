@@ -8,8 +8,9 @@ pointing straight at PocketBase — no vite dev-server proxy involved), and fall
 same-origin (`location.origin`) without it, which is what prod uses — through Caddy on the
 same domain as the backend (see `fmc_pocketbase/README.md`).
 
-App: landing page (`/`), marketplace (`/market`, `/market/[id]` — a face's showcase page,
-`/my`), creator profiles (`/user/[id]`), watchface editor (`/editor`,
+App: marketplace at the root (`/`, with `?mine` for the signed-in user's own shelf; `/my`
+redirects there; `/market/[id]` — a face's showcase page), creator profiles (`/user/[id]`),
+watchface editor (`/editor`,
 with a BLE connection to the CMF Watch Pro 2) and auth (`/login`, `/register`).
 
 ## Architecture
@@ -22,7 +23,7 @@ src/lib/
     api/          # PocketBase client (pb, fileUrl, downloadUrl)
     styles/       # tokens.css — design tokens, the only source of colors/type/motion
     components/   # one folder per component (button/, input/, dialog/, …) + barrel index.ts;
-                  # app chrome: app-header/, bottom-nav.svelte
+                  # app chrome: app-nav/ (bottom bar on a phone, left rail on md+)
   modules/<feature>/   # auth, market, editor, device
     model/        # <feature>.model.ts + index.ts (export * as fooModel)
     core/         # editor only: the domain, split by concern (see the map below)
@@ -124,7 +125,8 @@ and `frames` sections; `PropsPanel.svelte` is the container and owns the shared 
 ## UI
 
 - Design tokens in `lib/styles/tokens.css`: `--color-accent` (#ff5c00), `--color-text`,
-  `--color-background`, `--color-error`, `--border-radius`, `--font-family`,
+  `--color-background`, `--color-error`, `--color-on-accent` (ink on an accent surface — the
+  dark shade in both schemes), `--border-radius`, `--font-family`,
   `--font-display` (Unbounded, display headings only), `--font-mono`,
   `--spring-transition`. Never hardcode a hex in a component — derive every shade via
   relative color: `oklch(from var(--color-text) l c h / 55%)` (muted text), `/ 12%`
@@ -133,17 +135,25 @@ and `frames` sections; `PropsPanel.svelte` is the container and owns the shared 
   scale knob for the whole UI (1rem = 16px, so 8px → `0.5rem`, 12px → `0.75rem`). Exceptions
   that stay in `px`: hairline borders/outlines (`1px`, `2px`) and media-query breakpoints
   (they measure the viewport, not the type scale).
-- The 1rem grid sizes boxes; text runs a notch below it — `body { font-size: 0.875rem }`
-  (14px) in global.css, and per-component `font-size` snaps to the same 1px step
-  (`0.75rem` = 12px, `0.625rem` = 10px). Both move together when `:root` changes.
+- Body text and every control — button, input, select, textarea, menu row, tab, field label —
+  run at `1rem` (16px, 18px on a phone); only secondary text goes smaller, snapped to the 1px
+  step (`0.75rem` = 12px, `0.625rem` = 10px). Everything moves together when `:root` changes.
+  Fields are >=16px on their own now, so no iOS zoom guard is needed in global.css.
 - Components: Svelte 5 runes, typed `interface Props` + `$props()`, `Snippet` children
   via `{@render}`, callback props (`onClick`, `onChange`), `$bindable()` for form values;
   no event dispatchers. Scoped `<style>` with native `&`-nesting (Lightning CSS via Vite
   `css.transformer` handles targets/minify — no PostCSS, no Tailwind).
 - Overlays are native-platform: `dialog/` wraps `<dialog>` (modal + `side` drawer),
-  `select/` wraps native `<select>`, `menu/` is absolute-positioned in a relative parent —
+  `select/` is a `menu/` with a check on the chosen row; `menu/` is a popover anchored to its
+  trigger (CSS anchor positioning, top layer), absolute-positioned in a relative parent as the
+  fallback; `adaptive-popover/` is the watch panel's shell — a drawer beside the rail on
+  desktop, the swipeable sheet on the phone —
   no portal/floating-ui deps. Button & co. don't forward arbitrary attrs; for `title`
   tooltips wrap in a `<span title>` (see `tool-slot` in editor.svelte).
+- Icons are Material Symbols Rounded, the whole set from Google Fonts (`app.html`). `name` IS
+  the ligature — `<Icon name="storefront" />`, any name from fonts.google.com/icons works with
+  no map to edit and no build step. A name the font doesn't know renders as its own word, so
+  `tests/ui-icon.browser.test.ts` measures every name the app spells.
 - Theme is automatic via `prefers-color-scheme` (dark overrides in tokens.css). Don't add
   a `.dark` class on `<html>`.
 - The catalog dialog in the editor was removed intentionally — don't restore it. Catalog

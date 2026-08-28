@@ -47,9 +47,6 @@
 </span>
 
 <style>
-  /* Native <input type="range"> under custom paint: keyboard, drag and a11y stay the
-     browser's, only the track/thumb are ours. -webkit- and -moz- thumbs can't be selected
-     in one rule — duplicated on purpose. */
   .root {
     display: flex;
     flex: 1;
@@ -60,7 +57,7 @@
   input {
     flex: 1;
     min-width: 0;
-    height: 1.375rem;
+    height: 1.5rem;
     margin: 0;
     background: transparent;
     appearance: none;
@@ -74,26 +71,21 @@
       cursor: default;
     }
   }
-  /* track: accent fill up to the value, or whatever `track` painted instead */
-  input::-webkit-slider-runnable-track {
-    height: 0.25rem;
-    border-radius: 999px;
-    background: var(--rail);
-  }
+  input::-webkit-slider-runnable-track,
   input::-moz-range-track {
-    height: 0.25rem;
+    height: 0.3rem;
     border-radius: 999px;
     background: var(--rail);
   }
   input::-webkit-slider-thumb {
     appearance: none;
-    width: 1.125rem;
-    height: 1.125rem;
-    margin-top: -7px; /* centres the thumb on the 4px track */
+    width: 1.5rem;
+    height: 1.5rem;
+    margin-top: -8px; /* centres the thumb on the 4px track */
     border: none;
     border-radius: 50%;
-    background: var(--color-background);
-    box-shadow: 0 1px 4px oklch(from var(--color-text) l c h / 45%);
+    background: #fff;
+    box-shadow: 0 1px 4px oklch(from var(--color-background) l c h / 45%);
     transition: transform var(--spring-transition, 0.15s ease);
   }
   input::-moz-range-thumb {
@@ -133,7 +125,7 @@
   .readout {
     flex-shrink: 0;
     width: 4.5ch;
-    font-size: 0.625rem;
+    font-size: 0.8rem;
     text-align: end;
     color: oklch(from var(--color-text) l c h / 55%);
     font-variant-numeric: tabular-nums;

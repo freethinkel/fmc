@@ -33,7 +33,10 @@
     layer.kind === "slot" ? { activeIdx: layer.active, ids: layer.metrics } : null,
   );
   const slotOptions = $derived(
-    slotInfo?.ids.map((id, i) => ({ value: String(i), label: pickerLabel(id) })) ?? [],
+    slotInfo?.ids.map((id, i) => ({
+      value: String(i),
+      label: pickerLabel(id),
+    })) ?? [],
   );
 
   const setSlotActive = (active: number) => set(layer.id, { active } as Partial<Layer>);
@@ -89,7 +92,7 @@
           }}
           ondragend={() => (dragIdx = dropIdx = null)}
         >
-          <Icon name="grip" size={14} class="grip" />
+          <Icon name="drag_indicator" size={14} class="drag_indicator" />
           <span class="frame-idx">{i}</span>
           {@render thumb(ri)}
           {#if frameLabels}<span class="thumb-cap">{frameLabels[i] ?? ""}</span>{/if}
@@ -126,21 +129,17 @@
       }}
     />
     <Button kind="secondary" onClick={() => ringFile?.click()}>
-      <Icon name="image-plus" size={14} />
+      <Icon name="add_photo_alternate" size={22} />
       use a ring bitmap
     </Button>
     <p class="hint-xs">a full ring, drawn at 100% — the watch clips it to the filled sector</p>
   </div>
 {/if}
 
-<!-- A set whose contents are spelled out by the format — the ten digits of a number, the labels
-     of a value-indexed source — can be rasterized from a font instead of drawn by hand. A plain
-     image qualifies too: one label makes a static text sprite (the only way to put a string the
-     watch has no source for, like a year, on the dial). -->
 {#if layer.kind === "number" || layer.kind === "image" || frameLabels}
   <div class="row">
     <Button kind="secondary" onClick={() => glyphDialogOpened(layer.id)}>
-      <Icon name="type" size={14} />
+      <Icon name="text_fields" />
       regenerate from a font
     </Button>
   </div>

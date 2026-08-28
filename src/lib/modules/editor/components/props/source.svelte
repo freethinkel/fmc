@@ -53,11 +53,11 @@
   const bindLines = $derived(describeConditions(conditions));
   const frameLabels = $derived(meta ? FRAME_LABELS[meta.source] : null);
 
-  // meta.source is the data the widget reads — what the watch feeds it. A select over the known
-  // sources (an id we have no label for stays selectable, so an unknown one isn't silently
-  // rewritten); the model also resizes the frame set for value-indexed sources, see sourceIdFx.
   const setSourceId = (source: number) => sourceIdSet({ id: layer.id, source });
-  const sourceOption = (id: number) => ({ value: String(id), label: pickerLabel(id) });
+  const sourceOption = (id: number) => ({
+    value: String(id),
+    label: pickerLabel(id),
+  });
   const sourceOptions = $derived(
     Object.keys(ID_LABELS)
       .map((id) => sourceOption(Number(id)))
@@ -73,7 +73,11 @@
   const setAccent = (on: boolean) =>
     meta &&
     set(layer.id, {
-      meta: { ...meta, flags: on ? 4 : 0, rgb: on ? [meta.rgb[0] || 1, 0, 0] : meta.rgb },
+      meta: {
+        ...meta,
+        flags: on ? 4 : 0,
+        rgb: on ? [meta.rgb[0] || 1, 0, 0] : meta.rgb,
+      },
     } as Partial<Layer>);
 
   const setSpec = (patch: Partial<ArcSpec>) =>
@@ -82,11 +86,6 @@
   const setFmt = (digits: number, padZero: boolean) =>
     set(layer.id, { digits: digits & 0x1f, padZero } as Partial<Layer>);
 
-  // Second-source smoothness, device-verified the hard way (Wavy Seconds experiments):
-  // HANDS on 0x0f/0x12 sweep smoothly; hands on 0x71/0x72 tick once per second (Sundial);
-  // rings/everything else tick at 1 Hz on every id, and 0x71/0x72 on a ring freezes it into a
-  // static bitmap. So: hands get a smooth(0x12)/ticking(0x72) toggle; rings only get a rescue
-  // button back to their native 0x0f if left on a broken smooth-era id.
   const SECOND_IDS = [0x0f, 0x12, 0x72];
   const isSmooth = $derived(meta?.source === 0x0f || meta?.source === 0x12);
   const isSecondHand = $derived(
@@ -122,12 +121,12 @@
   // Conditions are decoded on the layer now, so they are edited per entry rather than as a hex
   // blob. ponytail: no reordering — equality lines OR together and the rest must all hold, so
   // order carries no meaning.
-  const OPS: { value: CondOp; label: string }[] = [
-    { value: "eq", label: "= (show if)" },
-    { value: "ne", label: "≠ (hide if)" },
-    { value: "gte", label: "≥ (only if)" },
-    { value: "lte", label: "≤ (only if)" },
-    { value: "noData", label: "= no-data marker" },
+  const OPS: { value: CondOp; label: string; short: string }[] = [
+    { value: "eq", label: "= (show if)", short: "=" },
+    { value: "ne", label: "≠ (hide if)", short: "≠" },
+    { value: "gte", label: "≥ (only if)", short: "≥" },
+    { value: "lte", label: "≤ (only if)", short: "≤" },
+    { value: "noData", label: "= no-data marker", short: "= ∅" },
   ];
 
   const setCondition = (i: number, patch: Partial<Condition>) =>
@@ -135,7 +134,9 @@
       conditions: conditions.map((c, j) => (i === j ? { ...c, ...patch } : c)),
     } as Partial<Layer>);
   const dropCondition = (i: number) =>
-    set(layer.id, { conditions: conditions.filter((_, j) => j !== i) } as Partial<Layer>);
+    set(layer.id, {
+      conditions: conditions.filter((_, j) => j !== i),
+    } as Partial<Layer>);
 </script>
 
 {#if meta}
@@ -144,7 +145,8 @@
     <Select value={String(meta.source)} options={sourceOptions} onChange={(v) => setSourceId(+v)} />
     {#if frameLabels && images.length && images.length !== frameLabels.length}
       <p class="hint-xs">
-        {ID_LABELS[meta.source]} needs {frameLabels.length} frames, this widget has {images.length}
+        {ID_LABELS[meta.source]} needs {frameLabels.length} frames, this widget has
+        {images.length}
       </p>
     {/if}
   </div>
@@ -181,7 +183,7 @@
     <p class="hint-xs">this source freezes a ring on the watch — it only animates a hand</p>
     <div class="row">
       <Button kind="secondary" onClick={() => setSourceId(0x0f)}>
-        <Icon name="undo" size={14} /> use the ticking second
+        <Icon name="undo" size={22} /> use the ticking second
       </Button>
     </div>
   </div>
@@ -222,7 +224,7 @@
           disabled={slot.metrics.length < 2}
           onclick={() => slotMetricRemoved({ id: layer.id, metric: m })}
         >
-          <Icon name="x" size={14} />
+          <Icon name="close" size={14} />
         </button>
       </div>
     {/each}
@@ -280,7 +282,7 @@
           class="icon-btn"
           onclick={() => dropCondition(i)}
         >
-          <Icon name="trash" size={14} />
+          <Icon name="delete" size={14} />
         </button>
       </div>
       <p class="hint-xs">{bindLines[i]}</p>
@@ -293,7 +295,7 @@
 {#if conditions.length || layer.kind !== "raw"}
   <div class="row">
     <Button kind="secondary" onClick={() => conditionAdded(layer.id)}>
-      <Icon name="git-branch" size={14} /> add condition
+      <Icon name="call_split" size={22} /> add condition
     </Button>
   </div>
 {/if}

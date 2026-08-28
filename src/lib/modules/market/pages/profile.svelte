@@ -2,16 +2,14 @@
   import { Avatar } from "$lib/shared/components/avatar";
   import { Skeleton } from "$lib/shared/components/skeleton";
   import { fileUrl } from "$lib/shared/api";
-  import { authModel } from "$lib/modules/auth/model";
   import { marketModel } from "../model";
-  import { WatchfaceCard } from "../components/watchface-card";
+  import { WatchfaceList } from "../components/watchface-list";
 
   interface Props {
     userId: string;
   }
   const { userId }: Props = $props();
 
-  const { $user: user } = authModel;
   const {
     $profile: profile,
     $profileItems: profileItems,
@@ -19,8 +17,6 @@
     $likes: likes,
     $marketErr: marketErr,
     profileLoadRequested,
-    likeToggleRequested,
-    showcaseRequested,
   } = marketModel;
 
   $effect(() => {
@@ -38,7 +34,6 @@
       : "",
   );
   const likeCount = (id: string) => $likes.filter((l) => l.watchface === id).length;
-  const myLike = (id: string) => $likes.find((l) => l.watchface === id && l.user === $user?.id);
   const totalLikes = $derived($profileItems.reduce((n, wf) => n + likeCount(wf.id), 0));
   const totalDownloads = $derived($profileItems.reduce((n, wf) => n + (wf.downloads || 0), 0));
 </script>
@@ -51,7 +46,7 @@
   <main>
     <header class="profile">
       {#if $profile}
-        <Avatar {name} src={avatar} size={80} />
+        <Avatar {name} src={avatar} />
         <div class="identity">
           <h1>{name}</h1>
           <!-- ponytail: users has no `bio` field yet (see fmc_pocketbase migrations) — the
@@ -82,32 +77,12 @@
       {/if}
     </header>
 
-    {#if $profileLoading}
-      <div class="grid">
-        {#each Array(4) as _, i (i)}
-          <div class="skeleton-card">
-            <Skeleton height="8.75rem" />
-            <Skeleton height="0.875rem" width="70%" />
-          </div>
-        {/each}
-      </div>
-    {:else}
-      <div class="grid">
-        {#each $profileItems as wf (wf.id)}
-          <WatchfaceCard
-            {wf}
-            likeCount={likeCount(wf.id)}
-            liked={!!myLike(wf.id)}
-            canLike={!!$user}
-            showAuthor={false}
-            onOpen={() => showcaseRequested(wf)}
-            onLike={() => $user && likeToggleRequested({ wf, userId: $user.id })}
-          />
-        {:else}
-          <p class="empty">Nothing published yet.</p>
-        {/each}
-      </div>
-    {/if}
+    <WatchfaceList
+      items={$profileItems}
+      loading={$profileLoading}
+      showAuthor={false}
+      empty="Nothing published yet."
+    />
   </main>
 </div>
 
@@ -132,6 +107,7 @@
     gap: 1.25rem;
     padding: 1.5rem 1rem;
     border-bottom: 1px solid oklch(from var(--color-text) l c h / 10%);
+    --avatar-size: 5rem;
   }
   .identity {
     display: flex;
@@ -143,7 +119,6 @@
     margin: 0;
     font-family: var(--font-display);
     font-size: 1.5rem;
-    font-weight: 400;
   }
   .bio {
     margin: 0;
@@ -157,12 +132,15 @@
   }
   .stats {
     display: flex;
-    gap: 1.5rem;
+    gap: 0.3rem;
     margin: 0.5rem 0 0;
 
     div {
       display: flex;
       flex-direction: column-reverse;
+      border-radius: var(--border-radius);
+      background: oklch(from var(--color-text) l c h / 10%);
+      padding: 0.5rem 0.8rem;
     }
     dt {
       font-size: 0.625rem;
@@ -174,29 +152,5 @@
       margin: 0;
       font-size: 1.125rem;
     }
-  }
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(11.875rem, 1fr));
-    align-items: start;
-    gap: 1rem;
-    padding: 1rem;
-
-    & > :global(*) {
-      min-height: auto;
-      height: 100%;
-    }
-  }
-  .skeleton-card {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-  .empty {
-    grid-column: 1 / -1;
-    padding: 4rem 0;
-    text-align: center;
-    font-size: 0.75rem;
-    color: oklch(from var(--color-text) l c h / 55%);
   }
 </style>

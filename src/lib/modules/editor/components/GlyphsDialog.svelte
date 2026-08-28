@@ -62,7 +62,7 @@
         />
         <span class="tool" title="Upload a .ttf / .otf / .woff">
           <Button kind="secondary" onClick={() => fileEl?.click()}>
-            <Icon name="upload" size={14} />
+            <Icon name="upload" size={22} />
           </Button>
         </span>
         <span class="tool" title="Pick from the fonts installed on this machine">
@@ -71,7 +71,7 @@
             disabled={$localPending}
             onClick={() => installedFontsRequested()}
           >
-            <Icon name="abc" size={16} />
+            <Icon name="abc" size={22} />
           </Button>
         </span>
       </div>

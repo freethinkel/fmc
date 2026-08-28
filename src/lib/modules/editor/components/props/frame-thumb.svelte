@@ -51,7 +51,7 @@
     onclick={() => clearImageRequested({ id })}
     class="dl-btn clear"
   >
-    <Icon name="eraser" size={14} />
+    <Icon name="ink_eraser" size={14} />
   </button>
 </div>
 

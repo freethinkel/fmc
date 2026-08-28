@@ -1,12 +1,22 @@
-/* Minimal global base — replaces what Tailwind preflight / app.css @layer base used to do. */
-
-/* Geist Mono self-hosted (OFL), used only where --font-mono is asked for; Inter (body) and
-   Instrument Serif (headings) come from Google Fonts in app.html. */
+@font-face {
+  font-family: "Geist";
+  src: url(/fonts/geist.woff2) format("woff2");
+  font-weight: 100 900;
+  font-display: swap;
+}
 @font-face {
   font-family: "Geist Mono";
   src: url(/fonts/geistmono.ttf) format("truetype");
   font-display: swap;
 }
+
+@font-face {
+  font-family: "Material Symbols Rounded";
+  src: url(/fonts/material-symbols.woff2) format("woff2");
+  font-weight: 100 700;
+  font-display: block;
+}
+
 *,
 *::before,
 *::after {
@@ -14,9 +24,12 @@
 }
 
 html {
-  /* an SPA has no pull-to-refresh to offer — a swipe past the top reloading the whole app
-     mid-edit is pure loss */
   overscroll-behavior-y: none;
+}
+
+html,
+body {
+  height: 100vh;
 }
 
 body {
@@ -24,13 +37,10 @@ body {
   background: var(--color-background);
   color: var(--color-text);
   font-family: var(--font-family);
-  /* type runs a notch below the 1rem sizing grid — see tokens.css */
-  font-size: 0.875rem;
+  font-size: 1rem;
   -webkit-tap-highlight-color: transparent; /* the gray tap flash on mobile */
 }
 
-/* touch papercuts: no double-tap-zoom delay on controls, no long-press text selection on
-   buttons — both keep taps feeling immediate */
 button,
 a,
 input,
@@ -42,16 +52,6 @@ button {
   user-select: none;
 }
 
-/* iOS zooms the page into any focused field whose font-size is under 16px; our fields run
-   12–14px by design. One hardware-constraint override beats retuning every component. */
-@media (pointer: coarse) {
-  input,
-  select,
-  textarea {
-    font-size: 16px !important;
-  }
-}
-
 h1,
 h2,
 h3,
@@ -59,10 +59,10 @@ h4,
 h5,
 h6 {
   font-family: var(--font-display);
-  font-weight: 400; /* Instrument Serif ships 400 only — avoid faux-bold */
+  font-stretch: 62.5%;
+  font-weight: 382;
 }
 
-/* browser defaults ×1.25 — Instrument Serif runs visually small */
 h1 {
   font-size: 2.5em;
 }

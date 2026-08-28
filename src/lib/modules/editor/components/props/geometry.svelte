@@ -22,27 +22,22 @@
     alignRequested,
   } = editorModel;
 
-  // frame byte 8's main-axis alignment — only these two values occur across the corpus, so
-  // END/SPACE_* aren't offered. [value, icon, title]
   const FLEX_ALIGN: [number, IconName, string][] = [
-    [0, "align-left", "Pack children at the frame start"],
-    [2, "align-center", "Center children in the frame"],
+    [0, "align_horizontal_left", "Pack children at the frame start"],
+    [2, "align_horizontal_center", "Center children in the frame"],
   ];
 
-  // Figma-style position buttons: [dir, icon, title] — two groups of three
   const alignH: [AlignDir, IconName, string][] = [
-    ["left", "align-left", "Align left"],
-    ["hcenter", "align-center", "Align horizontal centers"],
-    ["right", "align-right", "Align right"],
+    ["left", "align_horizontal_left", "Align left"],
+    ["hcenter", "align_horizontal_center", "Align horizontal centers"],
+    ["right", "align_horizontal_right", "Align right"],
   ];
   const alignV: [AlignDir, IconName, string][] = [
-    ["top", "align-top", "Align top"],
-    ["vcenter", "align-middle", "Align vertical centers"],
-    ["bottom", "align-bottom", "Align bottom"],
+    ["top", "align_vertical_top", "Align top"],
+    ["vcenter", "align_vertical_center", "Align vertical centers"],
+    ["bottom", "align_vertical_bottom", "Align bottom"],
   ];
 
-  // The document is immutable, so `layer` is a fresh object on every edit and plain deriveds off
-  // it invalidate on their own — no snapshot juggling needed to see a drag or an undo.
   const placed = $derived(isPlaced(layer) ? layer : null);
   const frame = $derived(layer.kind === "group" ? layer.frame : null);
   const hand = $derived(layer.kind === "hand" ? layer : null);
@@ -87,7 +82,10 @@
   const adjust = $derived(first?.adjust ?? NEUTRAL);
 
   function setAdjust(key: keyof typeof NEUTRAL, value: number) {
-    adjustImageRequested({ layer: layer.id, adjust: { ...adjust, [key]: value } });
+    adjustImageRequested({
+      layer: layer.id,
+      adjust: { ...adjust, [key]: value },
+    });
   }
 
   const setFrame = (patch: Partial<Frame>) =>
@@ -150,7 +148,7 @@
       class:on={$lockAspect}
       onclick={() => lockAspectToggled()}
     >
-      <Icon name={$lockAspect ? "link" : "unlink"} size={16} />
+      <Icon name={$lockAspect ? "link" : "link_off"} size={16} />
     </button>
   </div>
   <p class="hint-xs">rescaled from the original — re-encoded only on save/flash</p>
@@ -212,8 +210,6 @@
       onInput={(v) => setSpec({ end: num(v) })}
     />
   </div>
-  <!-- the gap an icon sits in: start after 0 and end before 360 leaves the rest of the circle
-       empty, and the fill still runs the whole way from start to end -->
   <p class="hint-xs">degrees clockwise from 12 o'clock — 20 → 340 leaves a 40° gap at the top</p>
 {/if}
 {#if frame}

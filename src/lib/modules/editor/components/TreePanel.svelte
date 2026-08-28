@@ -6,7 +6,7 @@
   import { TAG } from "../core/format";
   import { pickerLabel, describeConditions } from "../core/document/sources";
   import { contains, parentOf } from "../core/document/edits";
-  import { framesOf, type Layer, type NodeId, type Screen } from "../core/document/doc";
+  import { type Layer, type NodeId, type Screen } from "../core/document/doc";
   import { capsFor } from "../shared/shortcuts";
   import { editorModel } from "../model";
   const {
@@ -34,8 +34,6 @@
     moveRequested,
   } = editorModel;
 
-  // A Doc layer is already interpreted, so the tree lists layers only — the struct/pivot/fmt/frame
-  // rows the old TLV tree showed are fields on the layer now, edited in the inspector.
   const kindNames: Record<Layer["kind"], string> = {
     image: "Image",
     number: "Number",
@@ -47,12 +45,12 @@
   };
   const kindIcons: Record<Layer["kind"], IconName> = {
     image: "image",
-    number: "hash",
-    hand: "clock-3",
-    ring: "loader",
-    slot: "square-dashed",
+    number: "tag",
+    hand: "schedule",
+    ring: "progress_activity",
+    slot: "highlight_alt",
     group: "folder",
-    raw: "box",
+    raw: "deployed_code",
   };
   // the handful of raw tags that do turn up, so their rows aren't all called "Node"
   const rawNames: Record<number, string> = {
@@ -223,7 +221,12 @@
     e.preventDefault();
     // the list is reversed, so dropping visually below the target means earlier in layer order
     if (drag && dropAt?.id === l.id)
-      moveRequested({ id: drag, target: l.id, after: !dropAt.after, into: dropAt.into });
+      moveRequested({
+        id: drag,
+        target: l.id,
+        after: !dropAt.after,
+        into: dropAt.into,
+      });
     drag = dropAt = null;
   }
 </script>
@@ -248,34 +251,34 @@
       {#snippet trigger({ toggle })}
         <span class="tool-slot" title="Add a layer">
           <Button kind="secondary" disabled={!$doc} onClick={toggle}>
-            <Icon name="plus" size={16} />
+            <Icon name="add" size={22} />
           </Button>
         </span>
       {/snippet}
       <MenuItem onClick={() => fileInput.image?.click()}>
-        <Icon name="image" size={14} /> Image…
+        <Icon name="image" size={22} /> Image…
       </MenuItem>
       <!-- one transparent frame: the art comes later, from the inspector — a dropped file
            or the font generator -->
       <MenuItem onClick={() => imageAdded()}>
-        <Icon name="image" size={14} /> Empty image
+        <Icon name="image" size={22} /> Empty image
       </MenuItem>
       <!-- ten blank frames: the art comes from the inspector, either "regenerate from a font"
            or a PNG dropped on a single frame — no ten-file picker any more -->
       <MenuItem onClick={() => numberAdded()}>
-        <Icon name="hash" size={14} /> Number
+        <Icon name="tag" size={22} /> Number
       </MenuItem>
       <MenuItem onClick={() => fileInput.hand?.click()}>
-        <Icon name="clock-3" size={14} /> Hand…
+        <Icon name="schedule" size={22} /> Hand…
       </MenuItem>
       <MenuItem onClick={() => nodeAdded("ring")}>
-        <Icon name="loader" size={14} /> Progress ring
+        <Icon name="progress_activity" size={22} /> Progress ring
       </MenuItem>
       <MenuItem onClick={() => nodeAdded("group")}>
-        <Icon name="folder" size={14} /> Group
+        <Icon name="folder" size={22} /> Group
       </MenuItem>
       <MenuItem onClick={() => slotAdded()}>
-        <Icon name="square-dashed" size={14} /> Widget slot
+        <Icon name="highlight_alt" size={22} /> Widget slot
       </MenuItem>
     </Menu>
     <div class="spacer"></div>
@@ -283,7 +286,7 @@
       {#snippet trigger({ toggle })}
         <span class="tool-slot" title="Selected layer">
           <Button kind="ghost" disabled={!$sel} onClick={toggle}>
-            <Icon name="ellipsis" size={16} />
+            <Icon name="more_horiz" size={22} />
           </Button>
         </span>
       {/snippet}
@@ -308,7 +311,8 @@
     >
       {#if ctx.screen}
         <MenuItem danger onClick={aodRemoved}>
-          <Icon name="trash" size={14} /> Delete AOD screen
+          <Icon name="delete" size={22} />
+          Delete AOD screen
         </MenuItem>
       {:else}
         {@render layerActions()}
@@ -327,42 +331,42 @@
 {#snippet layerActions()}
   {#if $sel && $selected.length === 1}
     <MenuItem onClick={() => (renaming = $sel)}>
-      <Icon name="pencil" size={14} /> Rename
+      <Icon name="edit" size={20} /> Rename
     </MenuItem>
   {/if}
   <MenuItem keys={capsFor("mod+d")} onClick={duplicateRequested}>
-    <Icon name="copy" size={14} /> Duplicate
+    <Icon name="content_copy" size={20} /> Duplicate
   </MenuItem>
   <MenuItem keys={capsFor("mod+c")} onClick={copyRequested}>
-    <Icon name="clipboard" size={14} /> Copy
+    <Icon name="content_paste" size={20} /> Copy
   </MenuItem>
   <MenuItem keys={capsFor("mod+x")} onClick={cutRequested}>
-    <Icon name="scissors" size={14} /> Cut
+    <Icon name="content_cut" size={20} /> Cut
   </MenuItem>
   {#if $clipboard}
     <MenuItem keys={capsFor("mod+v")} onClick={pasteRequested}>
-      <Icon name="clipboard-check" size={14} /> Paste
+      <Icon name="assignment_turned_in" size={20} /> Paste
     </MenuItem>
   {/if}
   {#if selIsGroup}
     <MenuItem onClick={ungroupRequested}>
-      <Icon name="folder-open" size={14} /> Ungroup
+      <Icon name="folder_open" size={20} /> Ungroup
     </MenuItem>
   {:else if canGroup}
     <MenuItem onClick={groupRequested}>
-      <Icon name="folder" size={14} /> Group
+      <Icon name="folder" size={20} /> Group
     </MenuItem>
   {/if}
   <MenuItem onClick={() => flagOfSelection("hidden")}>
-    <Icon name={$selected[0]?.hidden ? "eye" : "eye-off"} size={14} />
+    <Icon name={$selected[0]?.hidden ? "visibility" : "visibility_off"} size={20} />
     {$selected[0]?.hidden ? "Show" : "Hide"}
   </MenuItem>
   <MenuItem onClick={() => flagOfSelection("locked")}>
-    <Icon name={$selected[0]?.locked ? "lock-open" : "lock"} size={14} />
+    <Icon name={$selected[0]?.locked ? "lock_open" : "lock"} size={20} />
     {$selected[0]?.locked ? "Unlock" : "Lock"}
   </MenuItem>
   <MenuItem danger keys={capsFor("delete")} onClick={deleteRequested}>
-    <Icon name="trash" size={14} /> Delete
+    <Icon name="delete" size={20} /> Delete
   </MenuItem>
 {/snippet}
 
@@ -380,15 +384,15 @@
   >
     {#if kids.length}
       <Icon
-        name="chevron-right"
-        size={12}
+        name="chevron_right"
+        size={20}
         class={openNodes.has(s.id) ? "chevron open" : "chevron"}
         onclick={(e: MouseEvent) => toggleOpen(s.id, e)}
       />
     {:else}
       <span class="chevron-spacer"></span>
     {/if}
-    <Icon name={s.kind === "aod" ? "moon" : "monitor"} size={14} class="node-icon" />
+    <Icon name={s.kind === "aod" ? "dark_mode" : "monitor"} size={20} class="node-icon" />
     <span class="label">{s.kind === "aod" ? "AOD" : "Screen"}</span>
   </button>
   {#if kids.length && openNodes.has(s.id)}
@@ -405,7 +409,7 @@
     <!-- an <input> can't live inside the row's own <button>, so the whole row swaps -->
     <div class="node-row" style="padding-inline-start: {0.5 + depth * 0.75}rem">
       <span class="chevron-spacer"></span>
-      <Icon name={kindIcons[l.kind]} size={14} class="node-icon" />
+      <Icon name={kindIcons[l.kind]} size={20} class="node-icon" />
       <input
         class="rename"
         value={l.name ?? ""}
@@ -443,27 +447,27 @@
     >
       {#if kids.length}
         <Icon
-          name="chevron-right"
-          size={12}
+          name="chevron_right"
+          size={20}
           class={openNodes.has(l.id) ? "chevron open" : "chevron"}
           onclick={(e: MouseEvent) => toggleOpen(l.id, e)}
         />
       {:else}
         <span class="chevron-spacer"></span>
       {/if}
-      <Icon name={kindIcons[l.kind]} size={14} class="node-icon" />
+      <Icon name={kindIcons[l.kind]} size={20} class="node-icon" />
       <span class="label">{l.name || layerLabel(l)}</span>
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <span class="flags">
         <Icon
-          name={l.hidden ? "eye-off" : "eye"}
-          size={12}
+          name={l.hidden ? "visibility_off" : "visibility"}
+          size={20}
           class={l.hidden ? "flag on" : "flag"}
           onclick={(e: MouseEvent) => toggleFlag(e, l, "hidden")}
         />
         <Icon
-          name={l.locked ? "lock" : "lock-open"}
-          size={12}
+          name={l.locked ? "lock" : "lock_open"}
+          size={20}
           class={l.locked ? "flag on" : "flag"}
           onclick={(e: MouseEvent) => toggleFlag(e, l, "locked")}
         />
@@ -496,6 +500,7 @@
     background: var(--color-background);
     border: 1px solid oklch(from var(--color-text) l c h / 10%);
     box-shadow: 0 8px 24px oklch(0 0 0 / 12%);
+    white-space: nowrap;
   }
   .toolbar {
     display: flex;
@@ -514,7 +519,7 @@
     flex: 1;
     overflow-y: auto;
     padding-block: 0.25rem;
-    font-size: 0.75rem;
+    font-size: 0.9rem;
   }
   .empty {
     margin: 0;
@@ -528,8 +533,9 @@
     gap: 0.375rem;
     border: none;
     background: transparent;
-    padding-block: 0.125rem;
+    padding-block: 0.2rem;
     padding-inline-end: 0.5rem;
+    height: 2rem;
     font: inherit;
     color: var(--color-text);
     text-align: start;
@@ -542,7 +548,7 @@
     }
     &.selected {
       background: oklch(from var(--color-accent) l c h / 12%);
-      color: var(--color-accent);
+      /* color: var(--color-accent); */
     }
     /* the primary pick — the one the props panel edits — reads a notch stronger */
     &.primary {
@@ -564,7 +570,7 @@
     }
     &:not(.selected) :global(.node-icon) {
       color: oklch(from var(--color-text) l c h);
-      opacity: 0.55;
+      opacity: 0.7;
     }
   }
   .flags {

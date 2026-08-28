@@ -26,7 +26,7 @@
     gap: 0.375rem;
   }
   .label {
-    font-size: 0.75rem;
+    font-size: 1rem;
     font-weight: 500;
   }
   .error {
