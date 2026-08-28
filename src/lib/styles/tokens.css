@@ -15,8 +15,7 @@
   --safe-area-top: env(safe-area-inset-top, 0px);
   --safe-area-bottom: env(safe-area-inset-bottom, 0px);
 
-  --font-family:
-    "Geist", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-family: "Geist", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   --font-display: "Noto Serif", Georgia, serif;
   --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --spring-transition: 0.5s

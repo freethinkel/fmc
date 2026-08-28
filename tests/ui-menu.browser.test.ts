@@ -1,7 +1,6 @@
 import { test, expect } from "vitest";
 import { render } from "vitest-browser-svelte";
-// the menu's transition reads --spring-transition; without the tokens the whole shorthand is
-// invalid and the close would be instant
+// the menu paints on --color-background from the tokens; without them it has no surface
 import "$lib/styles/tokens.css";
 import MenuFixture from "./__fixtures__/menu-fixture.svelte";
 
@@ -29,28 +28,26 @@ test("menu opens on trigger and closes on outside pointerdown", async () => {
 
 test("the menu animates shut instead of vanishing", async () => {
   const screen = await render(MenuFixture);
-  const menu = document.querySelector<HTMLElement>('[role="menu"]')!;
 
   await screen.getByTestId("trigger").click();
-  await new Promise((r) => setTimeout(r, 600));
+
+  // the menu is only in the DOM while it is open — it is Svelte's transition, not a CSS one
+  const menu = document.querySelector<HTMLElement>('[role="menu"]')!;
+
+  await new Promise((r) => setTimeout(r, 200));
   expect(getComputedStyle(menu).opacity).toBe("1");
 
-  // a transition has to actually run on the way out — polling for a mid-flight opacity is a
-  // race on a loaded machine, so wait for the browser to tell us it started
-  const closing = new Promise<string[]>((resolve, reject) => {
-    const seen: string[] = [];
-
-    menu.addEventListener("transitionrun", (e) => {
-      seen.push(e.propertyName);
-      // display and overlay run discretely alongside the visible fade
-      if (seen.includes("opacity")) resolve(seen);
-    });
-    setTimeout(() => reject(new Error(`no opacity transition, saw: ${seen}`)), 1000);
-  });
-
+  // the outro runs inline, frame by frame, so the node has to stay mounted and fade before it
+  // leaves — polling for one mid-flight opacity is a race, so sample every frame until it goes
   await screen.getByTestId("outside").click();
-  expect(await closing).toContain("opacity");
 
-  await new Promise((r) => setTimeout(r, 600));
-  expect(getComputedStyle(menu).display).toBe("none");
+  const fading: number[] = [];
+
+  while (menu.isConnected && fading.length < 100) {
+    fading.push(Number(getComputedStyle(menu).opacity));
+    await new Promise((r) => requestAnimationFrame(r));
+  }
+
+  expect(fading.some((o) => o > 0 && o < 1)).toBe(true);
+  expect(document.querySelector('[role="menu"]')).toBe(null);
 });

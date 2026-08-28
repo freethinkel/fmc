@@ -61,17 +61,13 @@
 
   /** The derived label — what a layer is called until it is renamed. */
   export function layerLabel(l: Layer) {
-    let s =
-      l.kind === "raw"
-        ? (rawNames[l.tag] ?? `0x${l.tag.toString(16)}`)
-        : kindNames[l.kind];
+    let s = l.kind === "raw" ? (rawNames[l.tag] ?? `0x${l.tag.toString(16)}`) : kindNames[l.kind];
 
     if (l.kind !== "group" && l.kind !== "raw" && l.meta.source)
       s += ` · ${pickerLabel(l.meta.source)}`;
     if (l.kind === "slot") s += ` · ${pickerLabel(l.metrics[l.active])}`;
     if (l.kind === "hand" && l.meta.source) s += ` · hand`;
-    if (l.conditions.length)
-      s += ` · ${describeConditions(l.conditions).join(", ")}`;
+    if (l.conditions.length) s += ` · ${describeConditions(l.conditions).join(", ")}`;
     return s;
   }
 
@@ -87,9 +83,7 @@
     t.value = "";
   }
 
-  const currentScreen = $derived(
-    $doc?.screens.find((s) => s.kind === $screen) ?? null,
-  );
+  const currentScreen = $derived($doc?.screens.find((s) => s.kind === $screen) ?? null);
   const pickedIds = $derived(new Set($selected.map((l) => l.id)));
   const isPicked = (id: NodeId) => pickedIds.has(id);
 
@@ -98,9 +92,7 @@
     if (!$doc || !$selected.length) return false;
     return $selected.every((l) => parentOf($doc, l.id) === null);
   });
-  const selIsGroup = $derived(
-    $selected.length === 1 && $selected[0].kind === "group",
-  );
+  const selIsGroup = $derived($selected.length === 1 && $selected[0].kind === "group");
 
   // ponytail: a modifier click toggles one layer — shift does the same as ctrl rather than
   // selecting a range, which would need the visible rows flattened into a list first
@@ -114,9 +106,7 @@
   let ctx = $state<{ x: number; y: number; screen?: boolean } | null>(null);
 
   const menuAt = (e: MouseEvent, screen = false) => {
-    const r = (e.currentTarget as HTMLElement)
-      .closest(".tree-panel")!
-      .getBoundingClientRect();
+    const r = (e.currentTarget as HTMLElement).closest(".tree-panel")!.getBoundingClientRect();
 
     ctx = { x: e.clientX - r.left, y: e.clientY - r.top, screen };
   };
@@ -157,8 +147,7 @@
     const name = value.trim();
 
     renaming = null;
-    if (name !== (l.name ?? ""))
-      layerFlagsSet({ ids: [l.id], patch: { name: name || undefined } });
+    if (name !== (l.name ?? "")) layerFlagsSet({ ids: [l.id], patch: { name: name || undefined } });
   }
 
   // accordion: closed by default, keyed by layer id — ids survive an immutable edit, object
@@ -169,8 +158,7 @@
   // row, otherwise the selected layer isn't even mounted
   $effect(() => {
     if (!$doc || !$sel) return;
-    for (let p = parentOf($doc, $sel); p; p = parentOf($doc, p.id))
-      openNodes.add(p.id);
+    for (let p = parentOf($doc, $sel); p; p = parentOf($doc, p.id)) openNodes.add(p.id);
     if (currentScreen) openNodes.add(currentScreen.id);
   });
 
@@ -184,9 +172,7 @@
   // it (across parents too — the model fixes the coordinates up), the middle of a *group* row
   // drops into that group.
   let drag = $state.raw<NodeId | null>(null);
-  let dropAt = $state.raw<{ id: NodeId; after: boolean; into: boolean } | null>(
-    null,
-  );
+  let dropAt = $state.raw<{ id: NodeId; after: boolean; into: boolean } | null>(null);
 
   function onDragStart(id: NodeId, e: DragEvent) {
     drag = id;
@@ -212,9 +198,7 @@
   }
 
   const findDragged = () =>
-    $doc && drag
-      ? ($selected.find((l) => l.id === drag) ?? layerById(drag))
-      : null;
+    $doc && drag ? ($selected.find((l) => l.id === drag) ?? layerById(drag)) : null;
 
   function layerById(id: NodeId): Layer | null {
     const walk = (ls: readonly Layer[]): Layer | null => {
@@ -231,11 +215,7 @@
   }
 
   const childrenOf = (l: Layer): readonly Layer[] =>
-    l.kind === "group"
-      ? l.children
-      : l.kind === "raw"
-        ? (l.children ?? [])
-        : [];
+    l.kind === "group" ? l.children : l.kind === "raw" ? (l.children ?? []) : [];
 
   function onDrop(l: Layer, e: DragEvent) {
     e.preventDefault();
@@ -378,10 +358,7 @@
     </MenuItem>
   {/if}
   <MenuItem onClick={() => flagOfSelection("hidden")}>
-    <Icon
-      name={$selected[0]?.hidden ? "visibility" : "visibility_off"}
-      size={20}
-    />
+    <Icon name={$selected[0]?.hidden ? "visibility" : "visibility_off"} size={20} />
     {$selected[0]?.hidden ? "Show" : "Hide"}
   </MenuItem>
   <MenuItem onClick={() => flagOfSelection("locked")}>
@@ -415,11 +392,7 @@
     {:else}
       <span class="chevron-spacer"></span>
     {/if}
-    <Icon
-      name={s.kind === "aod" ? "dark_mode" : "monitor"}
-      size={20}
-      class="node-icon"
-    />
+    <Icon name={s.kind === "aod" ? "dark_mode" : "monitor"} size={20} class="node-icon" />
     <span class="label">{s.kind === "aod" ? "AOD" : "Screen"}</span>
   </button>
   {#if kids.length && openNodes.has(s.id)}

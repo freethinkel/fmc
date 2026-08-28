@@ -50,7 +50,7 @@
         {#snippet trigger({ toggle })}
           <button onclick={toggle}>
             <span class="icon">
-              <Avatar name={$user.name || $user.email} size={24} />
+              <Avatar name={$user.name || $user.email} />
             </span>
             Account
           </button>
@@ -88,6 +88,8 @@
     border-top: 1px solid oklch(from var(--color-text) l c h / 10%);
   }
   .icon {
+    /* Avatar has no size prop — it reads this */
+    --avatar-size: 1.5rem;
     position: relative;
     display: inline-flex;
     align-items: center;

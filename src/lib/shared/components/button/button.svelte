@@ -56,9 +56,7 @@
 
     @media (hover: hover) {
       &:hover:not(:disabled, [aria-disabled="true"]) {
-        background-color: oklch(
-          from var(--color, var(--color-text)) l c h / 20%
-        );
+        background-color: oklch(from var(--color, var(--color-text)) l c h / 20%);
       }
     }
     &:active:not(:disabled, [aria-disabled="true"]) {

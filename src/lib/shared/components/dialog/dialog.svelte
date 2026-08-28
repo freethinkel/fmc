@@ -9,13 +9,7 @@
     onClose?: () => void;
     children?: Snippet;
   }
-  const {
-    open = false,
-    title,
-    side = false,
-    onClose,
-    children,
-  }: Props = $props();
+  const { open = false, title, side = false, onClose, children }: Props = $props();
 
   let el = $state<HTMLDialogElement>();
 

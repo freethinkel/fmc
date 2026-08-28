@@ -33,10 +33,8 @@
     showcaseRequested,
   } = marketModel;
 
-  const likeCount = (id: string) =>
-    $likes.filter((l) => l.watchface === id).length;
-  const liked = (id: string) =>
-    $likes.some((l) => l.watchface === id && l.user === $user?.id);
+  const likeCount = (id: string) => $likes.filter((l) => l.watchface === id).length;
+  const liked = (id: string) => $likes.some((l) => l.watchface === id && l.user === $user?.id);
 
   function remove(wf: RecordModel) {
     if (!confirm(`Delete "${wf.name}"?`)) return;

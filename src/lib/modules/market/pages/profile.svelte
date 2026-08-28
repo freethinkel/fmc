@@ -24,9 +24,7 @@
   });
 
   const name = $derived($profile?.name || "Creator");
-  const avatar = $derived(
-    $profile?.avatar ? fileUrl($profile, "avatar") : undefined,
-  );
+  const avatar = $derived($profile?.avatar ? fileUrl($profile, "avatar") : undefined);
   const joined = $derived(
     $profile
       ? new Date($profile.created).toLocaleDateString(undefined, {
@@ -35,14 +33,9 @@
         })
       : "",
   );
-  const likeCount = (id: string) =>
-    $likes.filter((l) => l.watchface === id).length;
-  const totalLikes = $derived(
-    $profileItems.reduce((n, wf) => n + likeCount(wf.id), 0),
-  );
-  const totalDownloads = $derived(
-    $profileItems.reduce((n, wf) => n + (wf.downloads || 0), 0),
-  );
+  const likeCount = (id: string) => $likes.filter((l) => l.watchface === id).length;
+  const totalLikes = $derived($profileItems.reduce((n, wf) => n + likeCount(wf.id), 0));
+  const totalDownloads = $derived($profileItems.reduce((n, wf) => n + (wf.downloads || 0), 0));
 </script>
 
 <svelte:head><title>{name} — FMC Watchfaces</title></svelte:head>

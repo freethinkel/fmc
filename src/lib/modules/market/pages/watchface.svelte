@@ -49,9 +49,7 @@
   const wf = $derived($watchface);
   const owner = $derived(wf?.expand?.owner);
   const likeCount = $derived($likes.filter((l) => l.watchface === id).length);
-  const liked = $derived(
-    $likes.some((l) => l.watchface === id && l.user === $user?.id),
-  );
+  const liked = $derived($likes.some((l) => l.watchface === id && l.user === $user?.id));
   const day = (v: string) => new Date(v).toLocaleDateString();
 
   // ponytail: Web Share where it exists, clipboard everywhere else — no share-sheet dependency
@@ -70,9 +68,7 @@
   }
 </script>
 
-<svelte:head
-  ><title>{wf?.name || "Watchface"} — FMC Watchfaces</title></svelte:head
->
+<svelte:head><title>{wf?.name || "Watchface"} — FMC Watchfaces</title></svelte:head>
 
 <div class="page">
   {#if $marketErr}<p class="error">{$marketErr}</p>{/if}
@@ -86,15 +82,11 @@
           <button
             class="toggle-aod"
             class:on={$dialScreen === "aod"}
-            onclick={() =>
-              dialScreenSet($dialScreen === "aod" ? "main" : "aod")}
+            onclick={() => dialScreenSet($dialScreen === "aod" ? "main" : "aod")}
           >
             {#key $dialScreen}
               <div transition:blur={{ duration: 200 }}>
-                <Icon
-                  name={$dialScreen === "aod" ? "monitor" : "dark_mode"}
-                  size={22}
-                />
+                <Icon name={$dialScreen === "aod" ? "monitor" : "dark_mode"} size={22} />
               </div>
             {/key}
           </button>
@@ -131,18 +123,11 @@
               <Button disabled>
                 <Icon name="check" size={22} /> Installed
               </Button>
-              <Button
-                kind="secondary"
-                onClick={() => installRequested(wf)}
-                disabled={$installing}
-              >
+              <Button kind="secondary" onClick={() => installRequested(wf)} disabled={$installing}>
                 Install again
               </Button>
             {:else}
-              <Button
-                onClick={() => installRequested(wf)}
-                disabled={$installing}
-              >
+              <Button onClick={() => installRequested(wf)} disabled={$installing}>
                 {$installing ? "Installing…" : "Install watchface"}
                 <Icon name="watch" size={22} />
               </Button>
@@ -157,11 +142,7 @@
           <List>
             {#if owner}
               <ListItem clickable>
-                <a
-                  class="list-item"
-                  href="/user/{wf.owner}"
-                  title="Watchfaces by this creator"
-                >
+                <a class="list-item" href="/user/{wf.owner}" title="Watchfaces by this creator">
                   <div class="list-key">Author</div>
                   <div class="list-value">
                     <span class="creator-name">
@@ -219,8 +200,7 @@
               class="actions--small-btn"
               kind="secondary"
               disabled={!$user}
-              onClick={() =>
-                $user && likeToggleRequested({ wf, userId: $user.id })}
+              onClick={() => $user && likeToggleRequested({ wf, userId: $user.id })}
             >
               {likeCount}
               <Icon

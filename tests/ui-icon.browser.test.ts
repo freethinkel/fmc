@@ -11,10 +11,12 @@ test("an icon renders its ligature at the requested size", async () => {
   const icon = document.querySelector(".icon")!;
 
   expect(icon.textContent).toBe("favorite");
-  expect(icon.getBoundingClientRect().width).toBe(16);
 
   const style = getComputedStyle(icon);
 
+  // the box is one em wide once the face is there — loading it is app.html's job, so measure
+  // what the component itself sets
+  expect(style.fontSize).toBe("16px");
   expect(style.color).toBe("rgb(255, 0, 0)");
   expect(style.fontFamily).toContain("Material Symbols Rounded");
   // fill is the FILL axis — the liked heart is the solid glyph, not a painted outline

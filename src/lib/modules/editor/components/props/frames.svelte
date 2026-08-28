@@ -26,15 +26,11 @@
   // a fresh layer object arrives on every edit, so plain deriveds are enough here
   const images = $derived(framesOf(layer));
   const frameLabels = $derived(
-    layer.kind !== "group" && layer.kind !== "raw"
-      ? FRAME_LABELS[layer.meta.source]
-      : null,
+    layer.kind !== "group" && layer.kind !== "raw" ? FRAME_LABELS[layer.meta.source] : null,
   );
   // the 0x5f body is already decoded on a SlotLayer — no hex to pick apart
   const slotInfo = $derived(
-    layer.kind === "slot"
-      ? { activeIdx: layer.active, ids: layer.metrics }
-      : null,
+    layer.kind === "slot" ? { activeIdx: layer.active, ids: layer.metrics } : null,
   );
   const slotOptions = $derived(
     slotInfo?.ids.map((id, i) => ({
@@ -43,8 +39,7 @@
     })) ?? [],
   );
 
-  const setSlotActive = (active: number) =>
-    set(layer.id, { active } as Partial<Layer>);
+  const setSlotActive = (active: number) => set(layer.id, { active } as Partial<Layer>);
 </script>
 
 {#if slotInfo}
@@ -100,8 +95,7 @@
           <Icon name="drag_indicator" size={14} class="drag_indicator" />
           <span class="frame-idx">{i}</span>
           {@render thumb(ri)}
-          {#if frameLabels}<span class="thumb-cap">{frameLabels[i] ?? ""}</span
-            >{/if}
+          {#if frameLabels}<span class="thumb-cap">{frameLabels[i] ?? ""}</span>{/if}
           {#if dropIdx === i}
             <!-- own element, not a row border: the line marks the gap the frame lands in -->
             <span class="drop-line" class:below={i > (dragIdx ?? -1)}></span>
@@ -138,9 +132,7 @@
       <Icon name="add_photo_alternate" size={22} />
       use a ring bitmap
     </Button>
-    <p class="hint-xs">
-      a full ring, drawn at 100% — the watch clips it to the filled sector
-    </p>
+    <p class="hint-xs">a full ring, drawn at 100% — the watch clips it to the filled sector</p>
   </div>
 {/if}
 

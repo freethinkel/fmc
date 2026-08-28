@@ -66,12 +66,7 @@
   <div class="overlay"></div>
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <div
-    class="scroll"
-    bind:this={scroller}
-    onscroll={onScroll}
-    onclick={dismiss}
-  >
+  <div class="scroll" bind:this={scroller} onscroll={onScroll} onclick={dismiss}>
     <div class="spacer"></div>
     <div class="dock" bind:this={dock}>
       <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -165,8 +160,7 @@
     position: absolute;
     inset: 0 0 -50svh;
     z-index: -1;
-    border-radius: calc(3 * var(--border-radius, 0.5rem))
-      calc(3 * var(--border-radius, 0.5rem)) 0 0;
+    border-radius: calc(3 * var(--border-radius, 0.5rem)) calc(3 * var(--border-radius, 0.5rem)) 0 0;
     background: var(--color-background, Canvas);
   }
   .grabber {
@@ -180,6 +174,6 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
-    padding: 1rem;
+    padding: 1rem 1rem calc(1rem + var(--safe-area-bottom));
   }
 </style>

@@ -13,25 +13,11 @@
   import { renderDoc, type ResizePreview } from "../core/render/render";
   import { CENTER, SCREEN } from "../core/render/screen";
   import type { LayerHit } from "../core/render/canvas";
-  import {
-    framesOf,
-    isPlaced,
-    type Layer,
-    type NodeId,
-  } from "../core/document/doc";
+  import { framesOf, isPlaced, type Layer, type NodeId } from "../core/document/doc";
   import { containerOrigin, findLayer, parentOf } from "../core/document/edits";
   import { snapAxis, snapTargets, type SnapTargets } from "../core/render/snap";
-  import {
-    SNAP_THRESHOLD,
-    GUIDE_WIDTH,
-    GUIDE_COLOR,
-  } from "../shared/constants";
-  import {
-    inField,
-    isRoving,
-    matchShortcut,
-    type ShortcutActions,
-  } from "../shared/shortcuts";
+  import { SNAP_THRESHOLD, GUIDE_WIDTH, GUIDE_COLOR } from "../shared/constants";
+  import { inField, isRoving, matchShortcut, type ShortcutActions } from "../shared/shortcuts";
   import { editorModel } from "../model";
   import TreePanel from "../components/TreePanel.svelte";
   import PropsPanel from "../components/PropsPanel.svelte";
@@ -121,8 +107,7 @@
     from: number;
   } | null>(null);
 
-  const rootRem = () =>
-    parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+  const rootRem = () => parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
   const setSide = (side: "tree" | "right", w: number) => {
     const clamped = Math.min(SIDE_MAX, Math.max(SIDE_MIN, w));
 
@@ -131,10 +116,7 @@
   };
 
   $effect(() => {
-    localStorage.setItem(
-      PANEL_KEY,
-      JSON.stringify({ tree: treeW, right: rightW }),
-    );
+    localStorage.setItem(PANEL_KEY, JSON.stringify({ tree: treeW, right: rightW }));
   });
 
   function gutterDown(side: "tree" | "right", e: PointerEvent) {
@@ -144,8 +126,7 @@
 
   function gutterMove(e: PointerEvent) {
     if (!gutter) return;
-    const dx =
-      gutter.side === "tree" ? e.clientX - gutter.x : gutter.x - e.clientX;
+    const dx = gutter.side === "tree" ? e.clientX - gutter.x : gutter.x - e.clientX;
 
     setSide(gutter.side, gutter.from + dx / rootRem());
   }
@@ -156,10 +137,7 @@
     if (!step) return;
     e.preventDefault();
     e.stopPropagation(); // the window handler would also read this as "move the selection"
-    setSide(
-      side,
-      (side === "tree" ? treeW : rightW) + (side === "tree" ? step : -step),
-    );
+    setSide(side, (side === "tree" ? treeW : rightW) + (side === "tree" ? step : -step));
   }
 
   function gutterCursor(side: "tree" | "right") {
@@ -205,9 +183,7 @@
   const FOREIGN_HINT =
     "Someone else's watchface — edit and flash it freely, but it can't be re-uploaded under your name. Export the .bin and open that file to start your own from it.";
 
-  const isPublishedMine = $derived(
-    Boolean($openedWf?.published) && $openedWf?.owner === $user?.id,
-  );
+  const isPublishedMine = $derived(Boolean($openedWf?.published) && $openedWf?.owner === $user?.id);
 
   async function saveDraft() {
     const u = $user;
@@ -288,8 +264,7 @@
     return () => cancelAnimationFrame(raf);
   });
 
-  const hitOf = (id: NodeId | null) =>
-    id ? hits.findLast((h) => h.layer.id === id) : undefined;
+  const hitOf = (id: NodeId | null) => (id ? hits.findLast((h) => h.layer.id === id) : undefined);
 
   function ghostBox(id: NodeId | null) {
     const l = id && $doc ? findLayer($doc, id) : null;
@@ -392,9 +367,7 @@
       d = Math.hypot(dx, dy),
       max = CENTER - HANDLE;
 
-    return d <= max
-      ? { x, y }
-      : { x: CENTER + (dx / d) * max, y: CENTER + (dy / d) * max };
+    return d <= max ? { x, y } : { x: CENTER + (dx / d) * max, y: CENTER + (dy / d) * max };
   };
   const firstAsset = (l: Layer | null) => {
     const ids = l && l.kind !== "group" ? framesOf(l) : [];
@@ -404,14 +377,12 @@
 
   const hasArt = (l: Layer): boolean =>
     framesOf(l).length > 0 || (l.kind === "group" && l.children.some(hasArt));
-  const isBareRing = (l: Layer): boolean =>
-    l.kind === "ring" && !l.frames.length;
+  const isBareRing = (l: Layer): boolean => l.kind === "ring" && !l.frames.length;
   const resizable = (l: Layer | null): boolean =>
     Boolean(l) && (hasArt(l!) || isBareRing(l!)) && !l!.locked;
   const rotatable = (l: Layer | null): boolean =>
     Boolean(l) && framesOf(l!).length > 0 && !l!.locked;
-  const rotateHandle = (h: LayerHit): XY =>
-    onDisc(h.x + h.w / 2, h.y - HANDLE * 1.5);
+  const rotateHandle = (h: LayerHit): XY => onDisc(h.x + h.w / 2, h.y - HANDLE * 1.5);
 
   type Rz = {
     layer: Layer;
@@ -510,8 +481,7 @@
     for (const [cx, cy] of CORNERS) {
       const c = onDisc(h.x + cx * h.w, h.y + cy * h.h);
 
-      if (Math.abs(p.x - c.x) <= HANDLE && Math.abs(p.y - c.y) <= HANDLE)
-        return { cx, cy };
+      if (Math.abs(p.x - c.x) <= HANDLE && Math.abs(p.y - c.y) <= HANDLE) return { cx, cy };
     }
     return null;
   };
@@ -622,12 +592,7 @@
       return;
     }
     const h = hits.findLast(
-      (h) =>
-        !h.layer.locked &&
-        p.x >= h.x &&
-        p.x < h.x + h.w &&
-        p.y >= h.y &&
-        p.y < h.y + h.h,
+      (h) => !h.layer.locked && p.x >= h.x && p.x < h.x + h.w && p.y >= h.y && p.y < h.y + h.h,
     );
 
     if (!h) {
@@ -658,12 +623,9 @@
   function onMove(e: PointerEvent) {
     if (rot) {
       const p = canvasXY(e);
-      const d =
-        ((Math.atan2(p.y - rot.cy, p.x - rot.cx) - rot.a0) * 180) / Math.PI;
+      const d = ((Math.atan2(p.y - rot.cy, p.x - rot.cx) - rot.a0) * 180) / Math.PI;
 
-      rot.deg = e.shiftKey
-        ? Math.round(d / ROT_STEP) * ROT_STEP
-        : Math.round(d);
+      rot.deg = e.shiftKey ? Math.round(d / ROT_STEP) * ROT_STEP : Math.round(d);
       rot.started = true;
       return;
     }
@@ -726,8 +688,7 @@
   }
   function onUp() {
     if (rot) {
-      if (rot.started && rot.deg % 360)
-        rotateImageRequested({ layer: rot.layer.id, deg: rot.deg });
+      if (rot.started && rot.deg % 360) rotateImageRequested({ layer: rot.layer.id, deg: rot.deg });
       rot = null;
     }
     if (rz) {
@@ -795,8 +756,7 @@
     flash: () => void flashWatch(),
     panel: (tab) => rightPanelSet(tab),
     // picking AOD with no AOD screen creates one — the same thing the tab does
-    screen: (kind) =>
-      kind === "aod" && !hasAOD ? aodAdded() : screenSet(kind),
+    screen: (kind) => (kind === "aod" && !hasAOD ? aodAdded() : screenSet(kind)),
     help: () => (helpOpen = true),
   };
 
@@ -874,20 +834,8 @@
         <span class="route">Export folder <span>Facer, WatchMaker</span></span>
       </MenuItem>
     </Menu>
-    <input
-      bind:this={fileInput}
-      type="file"
-      accept=".bin,.aab,.zip"
-      hidden
-      onchange={openFile}
-    />
-    <input
-      bind:this={dirInput}
-      type="file"
-      webkitdirectory
-      hidden
-      onchange={openFacer}
-    />
+    <input bind:this={fileInput} type="file" accept=".bin,.aab,.zip" hidden onchange={openFile} />
+    <input bind:this={dirInput} type="file" webkitdirectory hidden onchange={openFacer} />
     <span class="tool-slot" title="New">
       <Button
         kind="secondary"
@@ -914,11 +862,7 @@
         items={screenItems}
         value={$screen}
         onChange={(v) =>
-          v === "aod"
-            ? hasAOD
-              ? screenSet("aod")
-              : aodAdded()
-            : screenSet("main")}
+          v === "aod" ? (hasAOD ? screenSet("aod") : aodAdded()) : screenSet("main")}
       />
       <span class="tool-slot" title="Undo (⌘Z)">
         <Button kind="ghost" disabled={!$undoN} onClick={() => undo()}>
@@ -960,11 +904,7 @@
         </span>
         {#if !isPublishedMine}
           <span class="tool-slot" title={$foreignWf ? FOREIGN_HINT : "Publish"}>
-            <Button
-              kind="secondary"
-              onClick={() => publishDialogOpened()}
-              disabled={$foreignWf}
-            >
+            <Button kind="secondary" onClick={() => publishDialogOpened()} disabled={$foreignWf}>
               <Icon name="cloud_upload" size={22} />
               <span class="btn-label">Publish</span>
             </Button>
@@ -1019,12 +959,9 @@
         </p>
       {/if}
       <p class="hint">
-        click — select · drag / arrow keys (⇧ ×10) — move · ⌥ drag — no snap ·
-        corners — resize (⇧ inverts the aspect lock) · the dot above — rotate (⇧
-        snaps to 15°) ·
-        <button class="hint-key" onclick={() => (helpOpen = true)}
-          >? — all shortcuts</button
-        >
+        click — select · drag / arrow keys (⇧ ×10) — move · ⌥ drag — no snap · corners — resize (⇧
+        inverts the aspect lock) · the dot above — rotate (⇧ snaps to 15°) ·
+        <button class="hint-key" onclick={() => (helpOpen = true)}>? — all shortcuts</button>
       </p>
     </section>
 
@@ -1085,12 +1022,7 @@
   ></div>
 {/snippet}
 
-<Dialog
-  side
-  open={mobilePanel !== null}
-  title={mobileTitle}
-  onClose={() => (mobilePanel = null)}
->
+<Dialog side open={mobilePanel !== null} title={mobileTitle} onClose={() => (mobilePanel = null)}>
   {#if mobilePanel === "tree"}
     <TreePanel />
   {:else if mobilePanel === "props"}

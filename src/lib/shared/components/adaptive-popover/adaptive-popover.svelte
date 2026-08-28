@@ -35,8 +35,7 @@
 
 <svelte:window
   onpointerdown={(e) => {
-    if (desktop.current && open && drawer && !drawer.contains(e.target as Node))
-      onClose?.();
+    if (desktop.current && open && drawer && !drawer.contains(e.target as Node)) onClose?.();
   }}
   onkeydown={(e) => {
     if (desktop.current && open && e.key === "Escape") onClose?.();
@@ -50,12 +49,7 @@
     <aside class="drawer" class:open bind:this={drawer}>
       <header>
         {#if title}<h2>{title}</h2>{/if}
-        <button
-          tabindex="-1"
-          class="close"
-          aria-label="Close"
-          onclick={() => onClose?.()}
-        >
+        <button tabindex="-1" class="close" aria-label="Close" onclick={() => onClose?.()}>
           <Icon name="close" />
         </button>
       </header>

@@ -13,8 +13,7 @@
   // where anchor positioning is available the menu goes into the top layer, so a card's scroll
   // container can't clip it and position-try flips it back on screen near an edge. Older
   // browsers keep the absolutely-positioned menu inside .root.
-  const anchored =
-    typeof CSS !== "undefined" && CSS.supports("anchor-name: --a");
+  const anchored = typeof CSS !== "undefined" && CSS.supports("anchor-name: --a");
   const uid = $props.id();
   const anchor = `--menu-${uid}`;
 
@@ -29,8 +28,7 @@
     else if (menu.matches(":popover-open")) menu.hidePopover();
   });
 
-  const inside = (target: Node) =>
-    Boolean(root?.contains(target) || menu?.contains(target));
+  const inside = (target: Node) => Boolean(root?.contains(target) || menu?.contains(target));
 </script>
 
 <svelte:window

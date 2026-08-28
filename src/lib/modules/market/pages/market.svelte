@@ -39,14 +39,11 @@
     { value: "downloads", label: "Most downloaded" },
   ];
 
-  const likeCount = (id: string) =>
-    $likes.filter((l) => l.watchface === id).length;
+  const likeCount = (id: string) => $likes.filter((l) => l.watchface === id).length;
 
   const shown = $derived(
     (mine ? $myItems : $items.filter((wf) => Boolean(wf.owner)))
-      .filter((wf) =>
-        wf.name.toLowerCase().includes(query.trim().toLowerCase()),
-      )
+      .filter((wf) => wf.name.toLowerCase().includes(query.trim().toLowerCase()))
       .toSorted((a, b) =>
         sort === "popular"
           ? likeCount(b.id) - likeCount(a.id)
@@ -81,8 +78,7 @@
           { value: "mine", label: "Mine" },
         ]}
         value={mine ? "mine" : "all"}
-        onChange={(v) =>
-          goto(v === "mine" ? "/?mine" : "/", { replaceState: true })}
+        onChange={(v) => goto(v === "mine" ? "/?mine" : "/", { replaceState: true })}
       />
     {/if}
     <SearchInput bind:value={query} />

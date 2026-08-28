@@ -61,9 +61,7 @@
   const sourceOptions = $derived(
     Object.keys(ID_LABELS)
       .map((id) => sourceOption(Number(id)))
-      .concat(
-        meta && !ID_LABELS[meta.source] ? [sourceOption(meta.source)] : [],
-      ),
+      .concat(meta && !ID_LABELS[meta.source] ? [sourceOption(meta.source)] : []),
   );
 
   // meta.flags === 4 marks this widget's assets accent-tintable on the real device — see
@@ -83,8 +81,7 @@
     } as Partial<Layer>);
 
   const setSpec = (patch: Partial<ArcSpec>) =>
-    ring &&
-    set(ring.id, { spec: { ...ring.spec, ...patch } } as Partial<Layer>);
+    ring && set(ring.id, { spec: { ...ring.spec, ...patch } } as Partial<Layer>);
 
   const setFmt = (digits: number, padZero: boolean) =>
     set(layer.id, { digits: digits & 0x1f, padZero } as Partial<Layer>);
@@ -102,9 +99,7 @@
   // watch is whichever sibling layer carries the matching condition. So the link is offered from
   // THIS side — pick the slot metric this layer stands for — rather than from the slot.
   const slots = $derived(
-    collectSlotsDoc(
-      $doc?.screens.find((s) => s.kind === $screen)?.layers ?? [],
-    ),
+    collectSlotsDoc($doc?.screens.find((s) => s.kind === $screen)?.layers ?? []),
   );
   const slotBindOptions = $derived([
     { value: "", label: "always (not slot-bound)" },
@@ -147,11 +142,7 @@
 {#if meta}
   <div>
     <span class="muted-label">source</span>
-    <Select
-      value={String(meta.source)}
-      options={sourceOptions}
-      onChange={(v) => setSourceId(+v)}
-    />
+    <Select value={String(meta.source)} options={sourceOptions} onChange={(v) => setSourceId(+v)} />
     {#if frameLabels && images.length && images.length !== frameLabels.length}
       <p class="hint-xs">
         {ID_LABELS[meta.source]} needs {frameLabels.length} frames, this widget has
@@ -166,50 +157,30 @@
        instead of sitting flush against the source select. -->
   <div class="row">
     <span class="field-label w-md">gauge</span>
-    <Input
-      type="number"
-      value={String(ring.spec.min)}
-      onInput={(v) => setSpec({ min: num(v) })}
-    />
+    <Input type="number" value={String(ring.spec.min)} onInput={(v) => setSpec({ min: num(v) })} />
     <span class="field-label w-md">to</span>
-    <Input
-      type="number"
-      value={String(ring.spec.max)}
-      onInput={(v) => setSpec({ max: num(v) })}
-    />
+    <Input type="number" value={String(ring.spec.max)} onInput={(v) => setSpec({ max: num(v) })} />
   </div>
 {/if}
 {#if meta}
   <div class="check-row">
     <Checkbox checked={isAccent(meta)} onChange={(v) => setAccent(v)} />
-    <button
-      type="button"
-      class="check-label"
-      onclick={() => setAccent(!isAccent(meta))}
+    <button type="button" class="check-label" onclick={() => setAccent(!isAccent(meta))}
       >tints with device accent color</button
     >
   </div>
 {/if}
 {#if isSecondHand}
   <div class="check-row">
-    <Checkbox
-      checked={isSmooth}
-      onChange={(v) => setSourceId(v ? 0x12 : 0x72)}
-    />
-    <button
-      type="button"
-      class="check-label"
-      onclick={() => setSourceId(isSmooth ? 0x72 : 0x12)}
-    >
+    <Checkbox checked={isSmooth} onChange={(v) => setSourceId(v ? 0x12 : 0x72)} />
+    <button type="button" class="check-label" onclick={() => setSourceId(isSmooth ? 0x72 : 0x12)}>
       smooth sweep (unchecked — ticks once per second)
     </button>
   </div>
 {/if}
 {#if isBrokenRing}
   <div>
-    <p class="hint-xs">
-      this source freezes a ring on the watch — it only animates a hand
-    </p>
+    <p class="hint-xs">this source freezes a ring on the watch — it only animates a hand</p>
     <div class="row">
       <Button kind="secondary" onClick={() => setSourceId(0x0f)}>
         <Icon name="undo" size={22} /> use the ticking second
@@ -230,10 +201,8 @@
       />
     </span>
     <Checkbox checked={num_.padZero} onChange={(v) => setFmt(num_.digits, v)} />
-    <button
-      type="button"
-      class="check-label"
-      onclick={() => setFmt(num_.digits, !num_.padZero)}>leading zeros</button
+    <button type="button" class="check-label" onclick={() => setFmt(num_.digits, !num_.padZero)}
+      >leading zeros</button
     >
   </div>
 {/if}
@@ -266,13 +235,10 @@
           { value: "", label: "add a metric…" },
           ...addable.map((m) => ({ value: String(m), label: pickerLabel(m) })),
         ]}
-        onChange={(v) =>
-          v && slotMetricAdded({ id: layer.id, metric: Number(v) })}
+        onChange={(v) => v && slotMetricAdded({ id: layer.id, metric: Number(v) })}
       />
     {/if}
-    <p class="hint-xs">
-      each metric gets a blank icon for the app's picker — drop art on it below
-    </p>
+    <p class="hint-xs">each metric gets a blank icon for the app's picker — drop art on it below</p>
   </div>
 {/if}
 {#if showSlotBind}
@@ -287,9 +253,7 @@
         slotBindSet({ id: layer.id, slot, metric });
       }}
     />
-    <p class="hint-xs">
-      shows this layer only while that slot is set to that metric
-    </p>
+    <p class="hint-xs">shows this layer only while that slot is set to that metric</p>
   </div>
 {/if}
 {#if conditions.length}
@@ -300,17 +264,11 @@
         <Select
           value={String(c.source)}
           options={sourceOptions.concat(
-            ID_LABELS[c.source]
-              ? []
-              : [{ value: String(c.source), label: pickerLabel(c.source) }],
+            ID_LABELS[c.source] ? [] : [{ value: String(c.source), label: pickerLabel(c.source) }],
           )}
           onChange={(v) => setCondition(i, { source: +v })}
         />
-        <Select
-          value={c.op}
-          options={OPS}
-          onChange={(v) => setCondition(i, { op: v as CondOp })}
-        />
+        <Select value={c.op} options={OPS} onChange={(v) => setCondition(i, { op: v as CondOp })} />
         <span class="w-num">
           <Input
             type="number"
@@ -330,9 +288,7 @@
       <p class="hint-xs">{bindLines[i]}</p>
     {/each}
     {#if conditions.length > 1}
-      <p class="hint-xs">
-        "show if" lines are OR-ed, "only if"/"hide if" must all hold
-      </p>
+      <p class="hint-xs">"show if" lines are OR-ed, "only if"/"hide if" must all hold</p>
     {/if}
   </div>
 {/if}

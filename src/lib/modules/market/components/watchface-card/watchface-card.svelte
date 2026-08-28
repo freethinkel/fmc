@@ -45,9 +45,7 @@
 
   const authorName = $derived(wf.expand?.owner?.name || "—");
 
-  const avatar = $derived(
-    wf.expand?.owner ? fileUrl(wf.expand?.owner, "avatar") : undefined,
-  );
+  const avatar = $derived(wf.expand?.owner ? fileUrl(wf.expand?.owner, "avatar") : undefined);
 </script>
 
 <Card onClick={onOpen}>
@@ -75,11 +73,7 @@
       <img src={fileUrl(wf, "preview")} alt={wf.name} loading="lazy" />
     </div>
     {#if wf.owner && showAuthor}
-      <a
-        class="author"
-        href="/user/{wf.owner}"
-        onclick={(e) => e.stopPropagation()}
-      >
+      <a class="author" href="/user/{wf.owner}" onclick={(e) => e.stopPropagation()}>
         <Avatar name={authorName} src={avatar} />
         {authorName}
       </a>
@@ -100,7 +94,7 @@
         <span class="menu-slot" onclick={(e) => e.stopPropagation()}>
           <Menu>
             {#snippet trigger({ toggle })}
-              <button class="action-btn" onclick={toggle}>
+              <button class="action-btn" title="More" aria-label="More" onclick={toggle}>
                 <Icon name="more_horiz" size={22} />
               </button>
             {/snippet}

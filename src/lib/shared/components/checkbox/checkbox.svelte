@@ -9,12 +9,7 @@
 </script>
 
 <label class="root">
-  <input
-    type="checkbox"
-    bind:checked
-    {disabled}
-    onchange={() => onChange?.(checked)}
-  />
+  <input type="checkbox" bind:checked {disabled} onchange={() => onChange?.(checked)} />
   <span class="box"><Icon name="check" size={22} /></span>
 </label>
 

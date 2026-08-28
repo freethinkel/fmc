@@ -8,12 +8,7 @@
 </script>
 
 <label class="root">
-  <input
-    type="checkbox"
-    bind:checked
-    {disabled}
-    onchange={() => onChange?.(checked)}
-  />
+  <input type="checkbox" bind:checked {disabled} onchange={() => onChange?.(checked)} />
   <span class="switch"><span class="thumb"></span></span>
 </label>
 
@@ -63,18 +58,13 @@
 
     .thumb {
       /* the squished thumb starts further left, so its right edge stays pinned to the track */
-      transform: translateX(
-        calc(var(--size) * (var(--track) - var(--knob)) - var(--padding) * 2)
-      );
+      transform: translateX(calc(var(--size) * (var(--track) - var(--knob)) - var(--padding) * 2));
       box-shadow: 0 2px 6px oklch(0 0 0 / 20%);
     }
   }
   .root:active input:checked + .switch .thumb {
     transform: translateX(
-      calc(
-        var(--size) * (var(--track) - var(--knob) * var(--squish)) -
-          var(--padding) * 2
-      )
+      calc(var(--size) * (var(--track) - var(--knob) * var(--squish)) - var(--padding) * 2)
     );
   }
   input:disabled + .switch {

@@ -16,21 +16,13 @@
     onclick?: (event: MouseEvent) => void;
   }
 
-  const {
-    name,
-    size = 24,
-    color,
-    fill = false,
-    class: cls,
-    onclick,
-  }: Props = $props();
+  const { name, size = 24, color, fill = false, class: cls, onclick }: Props = $props();
 </script>
 
 <span
   class="icon {cls ?? ''}"
   style:--size="{size / 16}rem"
-  style:font-variation-settings="'FILL' {fill ? 1 : 0}, 'opsz' {size}, 'wght'
-  300"
+  style:font-variation-settings="'FILL' {fill ? 1 : 0}, 'opsz' {size}, 'wght' 300"
   style:color
   aria-hidden="true"
   {onclick}>{name}</span
