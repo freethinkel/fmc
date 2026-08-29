@@ -137,14 +137,18 @@ const replaceImageFx = attach({
       return {
         asset: { ...a, data, w: bitmap.width, h: bitmap.height },
         // the uploaded file is the new original — drop any pinned resize source
-        cache: { bitmap, original: undefined, accent: undefined },
+        cache: { bitmap, original: undefined, rot0: undefined, accent: undefined },
       };
     }
     const fresh = await resourceFromFile(file, a.cf);
 
     return {
       asset: { ...a, cf: fresh.cf, w: fresh.w, h: fresh.h, data: fresh.data },
-      cache: { bitmap: fresh.bitmap ?? (await bitmapOf(fresh)), original: undefined },
+      cache: {
+        bitmap: fresh.bitmap ?? (await bitmapOf(fresh)),
+        original: undefined,
+        rot0: undefined,
+      },
     };
   },
 });
@@ -161,7 +165,7 @@ const clearImageFx = attach({
 
     return {
       asset: { ...a, cf: fresh.cf, data: fresh.data },
-      cache: { bitmap: fresh.bitmap, original: undefined, accent: undefined },
+      cache: { bitmap: fresh.bitmap, original: undefined, rot0: undefined, accent: undefined },
     };
   },
 });
@@ -207,6 +211,7 @@ async function rescaleFrames(
         resizeQuality: "high",
       }),
       original: src,
+      rot0: undefined, // pinned at the old size — the next turn re-pins from these pixels
       accent: undefined, // a stale tint would keep the old size; accentFx recomputes it
     });
   }
@@ -250,7 +255,7 @@ const resizeImageFx = attach({
         assets.set(id, { ...a, cf: r.cf, w: r.w, h: r.h, data: r.data });
         // no `original`: these pixels ARE the source now, and flushAssets must not re-encode
         // them from a stale bitmap of the old size
-        cached.set(id, { bitmap, original: undefined, accent: undefined });
+        cached.set(id, { bitmap, original: undefined, rot0: undefined, accent: undefined });
       });
       glyphSpecs.set(l.id, next);
       return { assets, cache: cached, layer: l.id, patch: at ? { x: at.x, y: at.y } : {} };
@@ -363,6 +368,8 @@ const resizeGroupFx = attach({
 // Turn every frame of a widget by the same delta. Destructive, like the invert below: the file
 // format has no rotation, so the art is re-baked and the pinned original goes with it (the turned
 // pixels ARE the source from here — flushAssets must not re-encode the untouched ones over them).
+// What survives instead is `rot0`, the pre-rotation pixels: every further turn resamples those, so
+// nudging an angle a degree at a time costs no more quality than turning it once.
 const rotateImageFx = attach({
   source: { doc: $doc, cache: $cache },
   async effect({ doc, cache }, { layer, deg }: { layer: NodeId; deg: number }) {
@@ -380,14 +387,23 @@ const rotateImageFx = attach({
 
       if (!turned) continue;
       assets.set(id, turned.asset);
-      cached.set(id, { bitmap: turned.bitmap, original: undefined, accent: undefined });
+      // rot0: the pixels the NEXT turn resamples, so repeated rotations don't compound
+      cached.set(id, {
+        bitmap: turned.bitmap,
+        original: undefined,
+        rot0: turned.rot0,
+        accent: undefined,
+      });
     }
     // The bounding box grows around the centre, so the layer moves back by half of the growth and
     // the art stays where it was. A hand's pivot moves with it, which keeps x+pivot — the point it
     // rotates around at runtime — on the same pixel of the dial.
     const grown = assets.get(frames[0]);
-    const dx = grown ? Math.round((grown.w - first.w) / 2) : 0;
-    const dy = grown ? Math.round((grown.h - first.h) / 2) : 0;
+    // rounded symmetrically about zero: Math.round(-22.5) is -22 but Math.round(22.5) is 23, and
+    // that half pixel would walk the layer one step every time an angle is turned and turned back
+    const half = (v: number) => Math.sign(v) * Math.round(Math.abs(v) / 2);
+    const dx = grown ? half(grown.w - first.w) : 0;
+    const dy = grown ? half(grown.h - first.h) : 0;
     const moved = isPlaced(l) ? { x: l.x - dx, y: l.y - dy } : {};
     const patch: Partial<Layer> =
       l.kind === "hand"
@@ -492,7 +508,12 @@ const invertColorsFx = attach({
         cached.set(copy.id, { bitmap: flipped.bitmap });
       } else {
         assets.set(id, flipped.asset);
-        cached.set(id, { bitmap: flipped.bitmap, original: undefined, accent: undefined });
+        cached.set(id, {
+          bitmap: flipped.bitmap,
+          original: undefined,
+          rot0: undefined,
+          accent: undefined,
+        });
       }
     }
     return { assets, cache: cached, remap, rootIds };
