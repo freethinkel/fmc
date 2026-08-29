@@ -60,6 +60,10 @@ export interface ImageAsset {
 export interface ImageCache {
   bitmap?: ImageBitmap;
   original?: ImageBitmap; // pinned source, so resize/adjust stay lossless
+  /** The pixels a rotation resamples from, and the angle they already carry — pinned on the first
+   *  turn so repeated ones don't blur, dropped wherever the art is re-baked or rescaled. See
+   *  rotateAsset. */
+  rot0?: { src: ImageBitmap; deg: number };
   accent?: ImageBitmap; // preview tint for accent-flagged assets
 }
 
