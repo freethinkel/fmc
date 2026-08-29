@@ -221,6 +221,17 @@ export function defaultSim(): Sim {
   };
 }
 
+export const PREVIEW_TIME = new Date(2026, 0, 8, 10, 9, 36).getTime();
+
+export const previewSim = (sim: Sim): Sim => ({
+  ...sim,
+  live: false,
+  time: PREVIEW_TIME,
+  is24h: true,
+  showSlotPlaceholders: false,
+  overrides: {},
+});
+
 export function timeParts(sim: Sim): TimeParts {
   const d = sim.live ? new Date() : new Date(sim.time);
 
