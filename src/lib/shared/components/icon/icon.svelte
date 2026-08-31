@@ -25,6 +25,7 @@
   style:font-variation-settings="'FILL' {fill ? 1 : 0}, 'opsz' {size}, 'wght' 300"
   style:color
   aria-hidden="true"
+  translate="no"
   {onclick}>{name}</span
 >
 
