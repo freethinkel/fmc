@@ -3,9 +3,11 @@
   import { Button } from "$lib/shared/components/button";
   import { Field } from "$lib/shared/components/field";
   import { Input } from "$lib/shared/components/input";
+  import { Select } from "$lib/shared/components/select";
   import { Textarea } from "$lib/shared/components/textarea";
   import { authModel } from "$lib/modules/auth/model";
   import { marketModel } from "$lib/modules/market/model";
+  import { DEVICES } from "$lib/modules/market/lib/devices";
   import { editorModel } from "../model";
 
   const { $user: user } = authModel;
@@ -13,29 +15,23 @@
     publishRequested,
     $savePending: busy,
     $publishDialogOpen: open,
-    $openedWf: openedWf,
+    $publishForm: form,
+    $publishEditing: editing,
+    $publishReady: ready,
+    publishFormPatched,
     publishDialogClosed,
   } = marketModel;
-  const { $doc: doc, buildCurrentBin, previewBlob } = editorModel;
+  const { buildCurrentBin, previewBlob } = editorModel;
 
-  let name = $state("");
-  let description = $state("");
-
-  // an already-published own face reopens the dialog to edit its details, so both fields
-  // start from the record — otherwise re-publishing would wipe the description with ""
-  const editing = $derived(Boolean($openedWf?.published) && $openedWf?.owner === $user?.id);
-
-  $effect(() => {
-    if (!$open) return;
-    name = $openedWf?.name || $doc?.name || "Custom";
-    description = $openedWf?.description ?? "";
-  });
+  const DEVICE_OPTIONS = [
+    { value: "", label: "Select a watch…" },
+    ...DEVICES.map((d) => ({ value: d.value, label: d.label })),
+  ];
 
   async function publish() {
     if (!$user) return;
     publishRequested({
-      name,
-      description,
+      ...$form,
       ownerId: $user.id,
       published: true,
       bin: await buildCurrentBin(),
@@ -46,24 +42,36 @@
 
 <Dialog
   open={$open}
-  title={editing ? "Edit details" : "Publish to marketplace"}
+  title={$editing ? "Edit details" : "Publish to marketplace"}
   onClose={() => publishDialogClosed()}
 >
-  {#if !editing}
+  {#if !$editing}
     <p class="desc">The watchface will be visible to everyone.</p>
   {/if}
   <div class="fields">
     <Field label="Name">
-      <Input bind:value={name} maxlength={100} />
+      <Input value={$form.name} maxlength={100} onInput={(name) => publishFormPatched({ name })} />
+    </Field>
+    <Field label="Watch" hint="Sets the badge on your card and which device filter finds it.">
+      <Select
+        value={$form.device}
+        options={DEVICE_OPTIONS}
+        onChange={(device) => publishFormPatched({ device })}
+      />
     </Field>
     <Field label="Description">
-      <Textarea bind:value={description} rows={3} maxlength={1000} />
+      <Textarea
+        value={$form.description}
+        rows={3}
+        maxlength={1000}
+        onInput={(description) => publishFormPatched({ description })}
+      />
     </Field>
   </div>
   <div class="footer">
     <Button kind="ghost" onClick={() => publishDialogClosed()}>Cancel</Button>
-    <Button kind="primary" disabled={$busy || !name.trim()} onClick={publish}>
-      {$busy ? "Uploading…" : editing ? "Save" : "Publish"}
+    <Button kind="primary" disabled={$busy || !$ready} onClick={publish}>
+      {$busy ? "Uploading…" : $editing ? "Save" : "Publish"}
     </Button>
   </div>
 </Dialog>
