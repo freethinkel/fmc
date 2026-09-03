@@ -65,7 +65,7 @@ export interface ImageCache {
 
 // ---- decoded pieces ----
 
-export type CondOp = "eq" | "ne" | "noData" | "gte" | "lte";
+export type CondOp = "eq" | "ne" | "noData" | "lt" | "gte" | "lte";
 
 /** One line of a visibility condition (tag 0x02). */
 export interface Condition {
@@ -76,8 +76,12 @@ export interface Condition {
   readonly exclusive?: boolean;
 }
 
-const OPS: Record<number, CondOp> = { 1: "eq", 2: "ne", 3: "noData", 5: "gte", 6: "lte" };
-const OP_BYTES: Record<CondOp, number> = { eq: 1, ne: 2, noData: 3, gte: 5, lte: 6 };
+// op 4 is the Watch Pro 3's: it only ever appears paired with a 5 over the same source, the two
+// bounding a half-open range (0x24 >= 0 && 0x24 < 10, then >= 10 && < 20, … in Explorer and
+// Ring_Data), so 4 is `<` next to 5's `>=`. Unmapped it decoded to "eq" and re-exported as a 1,
+// silently rewriting the visibility rules of 7 faces in musaoruc's corpus (#49).
+const OPS: Record<number, CondOp> = { 1: "eq", 2: "ne", 3: "noData", 4: "lt", 5: "gte", 6: "lte" };
+const OP_BYTES: Record<CondOp, number> = { eq: 1, ne: 2, noData: 3, lt: 4, gte: 5, lte: 6 };
 
 const toCondition = (e: BindEntry): Condition => ({
   source: e.id,
@@ -183,6 +187,11 @@ interface PlacedLayer extends LayerBase {
   readonly refType?: number; // 0x01 | 0x61 | 0x71 — how the frame run is referenced
   /** Bytes trailing the meta when there is no image ref at all (procedural rings carry 2). */
   readonly tail?: string;
+  /** Service children this parser doesn't model. Only the Watch Pro 3's own widget tags carry
+   *  them — 0x5c under 0x82, 0x5d under 0x83, 0x5e under 0x84, 0x63 under 0x89 — and all 37
+   *  occurrences across musaoruc's corpus (#49) are flat hex leaves sitting last, so keeping the
+   *  bytes in order is enough for those widgets to round-trip until someone decodes them. */
+  readonly extra?: readonly { readonly tag: number; readonly hex: string }[];
 }
 
 export interface ImageLayer extends PlacedLayer {
@@ -353,6 +362,9 @@ function toLayer(n: FaceNode, ids: readonly ImageId[]): Layer {
   }
 
   if (st && st.x != null && st.meta) {
+    const extra = (n.subs ?? [])
+      .filter((c) => !SERVICE.has(c.tag) && c.hex != null)
+      .map((c) => ({ tag: c.tag, hex: c.hex! }));
     const placed = {
       ...base,
       x: st.x,
@@ -360,6 +372,7 @@ function toLayer(n: FaceNode, ids: readonly ImageId[]): Layer {
       meta: decodeMeta(st.meta),
       ...(st.refType != null ? { refType: st.refType } : {}),
       ...(st.tail ? { tail: st.tail } : {}),
+      ...(extra.length ? { extra } : {}),
     };
     const pivot = sub(n, TAG.pivot);
     const spec = parseArcSpec(n);
@@ -434,20 +447,22 @@ export function fromLegacy(face: LegacyFace): { doc: Doc; assets: Resource[] } {
     });
   });
 
-  const screens = face.screens.map((s): Screen => {
-    const nameNode = s.subs?.find((c) => c.tag === TAG.name);
-
-    return {
+  const screens = face.screens.map(
+    (s): Screen => ({
       id: newNodeId(),
       kind: s.tag === TAG.aod ? "aod" : "main",
       // 0x86 is hoisted into Doc.name, so it isn't a layer
       layers: (s.subs ?? []).filter((c) => c.tag !== TAG.name).map((c) => toLayer(c, ids)),
-      ...(nameNode ? {} : {}),
-    };
-  });
+    }),
+  );
+  // The header field the parser reads `face.name` off is only 16 bytes and in practice shorter
+  // still — three Pro 3 faces (#49) store 14 chars there and their real title in 0x86, so taking
+  // the header would re-export "Traditional Pointer" as "Traditional Po". `nameRaw` keeps the
+  // header bytes verbatim either way, so preferring 0x86 costs the round trip nothing.
+  const titled = face.screens.flatMap((s) => s.subs ?? []).find((c) => c.tag === TAG.name)?.text;
 
   return {
-    doc: { name: face.name, nameRaw: face.nameRaw ?? "", screens, images },
+    doc: { name: titled || face.name, nameRaw: face.nameRaw ?? "", screens, images },
     assets: face.resources,
   };
 }
@@ -537,6 +552,7 @@ function toNode(layer: Layer, runAt: ReadonlyMap<string, number[]>): FaceNode {
     out.set(v, 3 + l.metrics.length);
     subs.push({ tag: TAG.slot, hex: hex(out) });
   }
+  if (l.extra) subs.push(...l.extra.map((e) => ({ tag: e.tag, hex: e.hex })));
   return { tag: l.tag, subs };
 }
 
