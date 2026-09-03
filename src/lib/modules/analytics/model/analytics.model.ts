@@ -1,11 +1,12 @@
 // What the launch is measured by, in one place.
 //
-//   face_view      a face's showcase page was opened            { id, name }
-//   editor_open    a document was loaded into the editor        { source }
-//   import         a Facer/WatchMaker/Wear OS export was read   { format }
-//   watch_connect  a watch paired over Web Bluetooth
-//   watch_upload   a face was flashed onto the watch — the conversion everything else leads to
-//   signup         a new account was created through the register form
+//   face_view           a face's showcase page was opened            { id, name }
+//   editor_open         a document was loaded into the editor        { source }
+//   import              a Facer/WatchMaker/Wear OS export was read   { format }
+//   watch_connect       a watch paired over Web Bluetooth            { device }
+//   watch_upload        a face was flashed — the conversion everything else leads to { device }
+//   watch_upload_failed a flash was started and did not finish       { device, reason }
+//   signup              a new account was created through the register form
 //
 // Pageviews (path + referrer) are the tracker script's own job, see ../lib/umami.
 //
@@ -26,6 +27,7 @@ export type EventName =
   | "import"
   | "watch_connect"
   | "watch_upload"
+  | "watch_upload_failed"
   | "signup";
 
 // ---- events ----
@@ -75,17 +77,46 @@ sample({
   target: trackFx,
 });
 
-// $bleInfo is reset to null on every connect attempt and on disconnect — a record means the
-// handshake got all the way through
+// The watch's advertised name ("CMF Watch Pro 2-1A2B") is the only model id the protocol gives
+// us, and it is data about the user's hardware — so, like `source` above, it is folded to a
+// closed set before it leaves the browser: the serial-ish tail never goes anywhere. Everything
+// unrecognised is `other`, which doubles as "a watch we don't support yet turned up".
+// ponytail: the Pro 3's advertised string is unverified — nobody here owns one — so both
+// spellings Nothing uses for it are listed. If `other` starts filling up, that's the one to fix.
+const MODELS = ["CMF Watch Pro 2", "CMF Watch 3 Pro", "CMF Watch Pro 3"];
+const deviceOf = (name: string | null | undefined) => {
+  const advertised = name?.toLowerCase() ?? "";
+
+  return MODELS.find((m) => advertised.includes(m.toLowerCase())) ?? "other";
+};
+
+// A flash failure message carries byte dumps and slot ids; only the shape of the failure is
+// reportable — and the shape is the whole point, because "the Pro 3 connects and then gets
+// rejected by its own firmware" is invisible in a funnel drop.
+const REASONS: [RegExp, string][] = [
+  [/not a watchface|trailer name mismatch|larger than/i, "bad_file"],
+  [/rejected the upload|did not accept the file|refused/i, "rejected"],
+  [/stalled|timeout/i, "stalled"],
+  [/disconnect/i, "disconnected"],
+];
+const reasonOf = (e: Error) => REASONS.find(([re]) => re.test(e.message))?.[1] ?? "error";
+
 sample({
-  clock: bleModel.$bleInfo.updates,
-  filter: Boolean,
-  fn: () => ({ name: "watch_connect" as const }),
+  clock: bleModel.connected,
+  fn: (watch) => ({ name: "watch_connect" as const, props: { device: deviceOf(watch.name) } }),
   target: trackFx,
 });
 sample({
   clock: bleModel.flashDone,
-  fn: () => ({ name: "watch_upload" as const }),
+  fn: (watch) => ({ name: "watch_upload" as const, props: { device: deviceOf(watch?.name) } }),
+  target: trackFx,
+});
+sample({
+  clock: bleModel.flashFailed,
+  fn: ({ watch, error }) => ({
+    name: "watch_upload_failed" as const,
+    props: { device: deviceOf(watch?.name), reason: reasonOf(error) },
+  }),
   target: trackFx,
 });
 
