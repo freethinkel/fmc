@@ -48,9 +48,13 @@ test.each(FIXTURES)("%s classifies every node, nothing lands in raw by accident"
 
   doc.screens.forEach((s) => s.layers.forEach(walk));
 
-  // 0x28 (embedded preview) and its 0x08 child are the only things expected to stay raw —
-  // anything else showing up here means a widget shape the converter doesn't understand
-  expect([...rawTags].sort((a, b) => a - b)).toEqual([0x08, 0x28].filter((t) => rawTags.has(t)));
+  // 0x28 (embedded preview) with its 0x08 child, and 0x8a — a Watch Pro 3 sibling of 0x86 that
+  // carries the title twice, once ASCII and once localized ("CitrusDash" / "模块动律"), in two
+  // 32-byte fields. All three are screen furniture rather than widgets, and raw keeps them
+  // byte-exact. Anything else here is a widget shape the converter doesn't understand.
+  const EXPECTED = [0x08, 0x28, 0x8a];
+
+  expect([...rawTags].sort((a, b) => a - b)).toEqual(EXPECTED.filter((t) => rawTags.has(t)));
   expect(counts.image ?? 0).toBeGreaterThan(0);
 });
 

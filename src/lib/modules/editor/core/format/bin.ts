@@ -69,9 +69,22 @@ function parseRefTail(
   if (!resOffset.has(ref)) return null;
   const idx = resOffset.get(ref)!;
 
+  // 0x01 spells every frame out as its own absolute u32 offset, where 0x61/0x71 store the first
+  // offset and the block sizes to walk on from it. Watch Pro 2 files only ever use count=1, which
+  // reads the same either way; the Watch Pro 3 uses the same tag for a whole run — one file in
+  // musaoruc's corpus (#49) hangs 7 full-screen backgrounds off a count=7 tail, and rejecting it
+  // dropped them to an opaque `tail` and lost 490 KB of art on open.
   if (typ === 0x01) {
-    if (p !== v.length) return null;
-    return { refType: typ, images: [idx] };
+    if (count === 0 || p + 4 * (count - 1) !== v.length) return null;
+    const images = [idx];
+
+    for (let k = 1; k < count; k++) {
+      const o = u32(v, p + 4 * (k - 1));
+
+      if (!resOffset.has(o)) return null;
+      images.push(resOffset.get(o)!);
+    }
+    return { refType: typ, images };
   }
   if (typ === 0x61 || typ === 0x71) {
     if (p + 2 * count !== v.length || count === 0) return null;
@@ -307,10 +320,12 @@ function refTailBytes(j: FaceNode, resources: Resource[], offsets: number[]): Ui
 
   b.push(off & 0xff, (off >> 8) & 0xff, (off >> 16) & 0xff, (off >> 24) & 0xff);
   if (j.refType === 0x01) {
-    if (images.length !== 1)
-      throw new Error(`tag ${j.tag}: refType 0x01 references exactly one resource`);
-    b[1] = 1;
-    b[2] = 0;
+    // one absolute offset per frame after the first, which the shared prefix already wrote
+    for (let k = 1; k < images.length; k++) {
+      const o = offsets[images[k]];
+
+      b.push(o & 0xff, (o >> 8) & 0xff, (o >> 16) & 0xff, (o >>> 24) & 0xff);
+    }
     return new Uint8Array(b);
   }
   if (j.refType !== 0x61 && j.refType !== 0x71)

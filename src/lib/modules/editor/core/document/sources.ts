@@ -542,6 +542,8 @@ export function describeConditions(conditions: readonly Condition[]): string[] {
         return `hide if ${s} = ${value}`;
       case "noData":
         return `show if ${s} = ${value} (no-data marker)`;
+      case "lt":
+        return `only if ${s} < ${value}`;
       case "gte":
         return `only if ${s} ≥ ${value}`;
       case "lte":
