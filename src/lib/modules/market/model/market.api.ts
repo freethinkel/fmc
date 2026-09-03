@@ -66,6 +66,9 @@ export const removeFx = createEffect((wf: RecordModel) =>
 export interface SavePayload {
   name: string;
   description?: string;
+  // which watch the face was made for — see market/lib/devices. Undefined leaves whatever the
+  // record already has: a draft save from the editor never asks, so it must not clear it.
+  device?: string;
   ownerId: string;
   bin: Uint8Array;
   preview: Blob;
@@ -81,6 +84,7 @@ export const saveFx = createEffect(async (p: SavePayload & { openedId?: string }
 
   fd.set("name", p.name);
   if (p.description !== undefined) fd.set("description", p.description);
+  if (p.device !== undefined) fd.set("device", p.device);
   fd.set("owner", p.ownerId);
   fd.set("published", p.published ? "true" : "false");
   fd.set("bin", new Blob([p.bin as BlobPart]), `${p.name || "watchface"}.bin`);
