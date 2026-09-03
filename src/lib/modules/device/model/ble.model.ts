@@ -38,9 +38,13 @@ export const connectRequested = createEvent();
 export const flashRequested = createEvent<FlashPayload>();
 export const slotPicked = createEvent<number>();
 export const slotDialogClosed = createEvent();
-// cross-module signal (market.model bumps the download counter on a successful flash) —
-// exposed as an event, not the effect itself, so other models react without touching flashFx
-export const flashDone = createEvent();
+// cross-module signals (market.model bumps the download counter on a successful flash,
+// analytics.model counts both) — exposed as events, not the effects themselves, so other models
+// react without touching connectFx/flashFx. They carry the connected watch because who it was is
+// part of what happened, and $bleInfo is already gone by the time a disconnect is handled.
+export const connected = createEvent<WatchInfo>();
+export const flashDone = createEvent<WatchInfo | null>();
+export const flashFailed = createEvent<{ watch: WatchInfo | null; error: Error }>();
 export const forgetRequested = createEvent();
 
 // ---- effects ----
@@ -101,7 +105,7 @@ sample({
 
 sample({
   clock: connectFx.doneData,
-  target: $bleInfo,
+  target: [$bleInfo, connected],
 });
 reset({ clock: [connectFx, disconnected], target: $bleInfo });
 
@@ -151,8 +155,16 @@ reset({ clock: [slotDialogClosed, flashFx.done, disconnected], target: $pendingB
 
 sample({
   clock: flashFx.done,
-  fn: () => undefined,
+  source: $bleInfo,
   target: flashDone,
+});
+sample({
+  clock: flashFx.failData,
+  source: $bleInfo,
+  // a full watch isn't a failure either — the slot dialog above turns it into another attempt
+  filter: (_watch, e) => !(e instanceof NoFreeSlotError),
+  fn: (watch, error) => ({ watch, error }),
+  target: flashFailed,
 });
 
 sample({
