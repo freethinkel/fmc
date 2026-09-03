@@ -8,6 +8,7 @@
   import { authModel } from "$lib/modules/auth/model";
   import { bleModel } from "$lib/modules/device/model";
   import { marketModel } from "../model";
+  import { faceTitle } from "$lib/shared/seo";
   import { LiveDial } from "../components/live-dial";
   import { BackBtn } from "$lib/shared/components/back-btn";
   import { List, ListItem } from "$lib/shared/components/list";
@@ -68,7 +69,9 @@
   }
 </script>
 
-<svelte:head><title>{wf?.name || "Watchface"} — FMC Watchfaces</title></svelte:head>
+<!-- matches the title scripts/seo.ts bakes into this page's HTML: Google indexes the rendered
+     one, an unfurler only ever sees the baked one -->
+<svelte:head><title>{faceTitle(wf?.name || "Watchface")}</title></svelte:head>
 
 <div class="page">
   {#if $marketErr}<p class="error">{$marketErr}</p>{/if}
