@@ -7,6 +7,7 @@
   import { fileUrl, downloadUrl } from "$lib/shared/api";
   import type { RecordModel } from "pocketbase";
   import { Avatar } from "$lib/shared/components/avatar";
+  import { deviceLabel } from "../../lib/devices";
 
   interface Props {
     wf: RecordModel;
@@ -46,6 +47,9 @@
   const authorName = $derived(wf.expand?.owner?.name || "—");
 
   const avatar = $derived(wf.expand?.owner ? fileUrl(wf.expand?.owner, "avatar") : undefined);
+
+  // "" for a face that doesn't claim a device — most of the marketplace predates the field
+  const device = $derived(deviceLabel(wf.device));
 </script>
 
 <Card onClick={onOpen}>
@@ -86,6 +90,9 @@
         <Badge>{wf.published ? "Published" : "Draft"}</Badge>
       {:else if wf.type}
         <Badge>{wf.type}</Badge>
+      {/if}
+      {#if device}
+        <Badge quiet>{device}</Badge>
       {/if}
 
       {#if manage || canRemove}

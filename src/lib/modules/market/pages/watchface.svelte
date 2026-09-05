@@ -11,6 +11,7 @@
   import { LiveDial } from "../components/live-dial";
   import { BackBtn } from "$lib/shared/components/back-btn";
   import { List, ListItem } from "$lib/shared/components/list";
+  import { deviceLabel } from "../lib/devices";
   import { blur } from "svelte/transition";
 
   interface Props {
@@ -105,6 +106,7 @@
           <div class="title-row">
             <h1 class="name">{wf.name}</h1>
             {#if wf.type}<Badge>{wf.type}</Badge>{/if}
+            {#if deviceLabel(wf.device)}<Badge quiet>{deviceLabel(wf.device)}</Badge>{/if}
           </div>
 
           {#if wf.description}
