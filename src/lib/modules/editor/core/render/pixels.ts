@@ -214,6 +214,8 @@ export async function rotateAsset(
   const rot0 = pinned ?? {
     src: cache?.bitmap ?? (await bitmapOf({ cf: a.cf, w: a.w, h: a.h, data: a.data })),
     deg: a.rotate ?? 0,
+    w: a.w,
+    h: a.h,
   };
   const turn = (v: number) => ((v % 360) + 360) % 360;
   const rotate = turn((a.rotate ?? 0) + deg);
@@ -222,8 +224,10 @@ export async function rotateAsset(
   const cos = Math.abs(Math.cos(rad)),
     sin = Math.abs(Math.sin(rad));
   const size = (v: number) => Math.max(1, Math.min(2047, Math.round(v))); // 11-bit, see encodePixels
-  const sw = rot0.src.width,
-    sh = rot0.src.height;
+  // the pin's own box, not its bitmap's: `$cache` is outside the undo history, so an undone resize
+  // leaves a bitmap of the wrong size behind and sizing off it would resize the widget on a turn
+  const sw = rot0.w,
+    sh = rot0.h;
   const w = size(sw * cos + sh * sin),
     h = size(sw * sin + sh * cos);
   const cf = a.cf === 4 && ang % 90 !== 0 ? 5 : a.cf;

@@ -148,6 +148,7 @@ const replaceImageFx = attach({
         bitmap: fresh.bitmap ?? (await bitmapOf(fresh)),
         original: undefined,
         rot0: undefined,
+        accent: undefined, // a stale tint is the previous image, at the previous size
       },
     };
   },
@@ -202,6 +203,12 @@ async function rescaleFrames(
     const rw = id === frames[0] ? tw : dim(src.width * sx),
       rh = id === frames[0] ? th : dim(src.height * sy);
 
+    // The rotation pin survives a resize: only its BOX follows the scale, the pinned pixels stay
+    // at full resolution. Dropping it would re-pin from art that already carries a turn — and its
+    // transparent margin — so a resize between two turns would blur what the pin exists to keep
+    // sharp. Scaled against the asset's current size, the same factor the art itself takes.
+    const pin = cache.get(id)?.rot0;
+
     assets.set(id, { ...a, w: rw, h: rh });
     cached.set(id, {
       // always off the ORIGINAL, so shrink-then-grow is lossless
@@ -211,7 +218,7 @@ async function rescaleFrames(
         resizeQuality: "high",
       }),
       original: src,
-      rot0: undefined, // pinned at the old size — the next turn re-pins from these pixels
+      rot0: pin && { ...pin, w: dim((pin.w * rw) / a.w), h: dim((pin.h * rh) / a.h) },
       accent: undefined, // a stale tint would keep the old size; accentFx recomputes it
     });
   }
@@ -399,11 +406,16 @@ const rotateImageFx = attach({
     // the art stays where it was. A hand's pivot moves with it, which keeps x+pivot — the point it
     // rotates around at runtime — on the same pixel of the dial.
     const grown = assets.get(frames[0]);
+    const pin = cached.get(frames[0])?.rot0;
     // rounded symmetrically about zero: Math.round(-22.5) is -22 but Math.round(22.5) is 23, and
     // that half pixel would walk the layer one step every time an angle is turned and turned back
     const half = (v: number) => Math.sign(v) * Math.round(Math.abs(v) / 2);
-    const dx = grown ? half(grown.w - first.w) : 0;
-    const dy = grown ? half(grown.h - first.h) : 0;
+    // measured against the PIN's box rather than the previous step's, so the offsets telescope:
+    // twelve 5° nudges move the layer exactly as far as one 60° turn, instead of accumulating a
+    // rounding error per step
+    const off = (v: number, from: number) => half(v - from);
+    const dx = grown && pin ? off(grown.w, pin.w) - off(first.w, pin.w) : 0;
+    const dy = grown && pin ? off(grown.h, pin.h) - off(first.h, pin.h) : 0;
     const moved = isPlaced(l) ? { x: l.x - dx, y: l.y - dy } : {};
     const patch: Partial<Layer> =
       l.kind === "hand"
