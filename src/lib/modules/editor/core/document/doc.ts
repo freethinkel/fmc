@@ -60,6 +60,11 @@ export interface ImageAsset {
 export interface ImageCache {
   bitmap?: ImageBitmap;
   original?: ImageBitmap; // pinned source, so resize/adjust stay lossless
+  /** The pixels a rotation resamples from, the angle they already carry, and the box the document
+   *  gave them — pinned on the first turn so repeated ones don't blur, dropped wherever the art is
+   *  re-baked or rescaled. `w`/`h` are the asset's, not the bitmap's: the cache isn't in the undo
+   *  history, so a bitmap can outlive the size it was decoded at. See rotateAsset. */
+  rot0?: { src: ImageBitmap; deg: number; w: number; h: number };
   accent?: ImageBitmap; // preview tint for accent-flagged assets
 }
 
