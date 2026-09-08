@@ -153,3 +153,37 @@ test("a resize between two turns doesn't cost the pinned original", async () => 
   expect([asset(frame).w, asset(frame).h]).toEqual([half.w, half.h]);
   expect(pixels(bitmapOf(frame))).toEqual(halved);
 });
+
+// `$cache` is outside the undo history — `undo` only swaps `$doc` — so an undone resize leaves a
+// bitmap of the previous size behind. A turn that sized itself off that bitmap would resize the
+// widget on the canvas, so the pin records the asset's box and the box is what the turn measures.
+test("a turn after an undone resize keeps the size the document says", async () => {
+  await load("rotate-undo-ref");
+  const ref = singleFrameImage();
+  const refFrame = framesOf(ref.layer)[0];
+
+  await rotate(ref.layer.id, 15, refFrame);
+  const straight = {
+    w: asset(refFrame).w,
+    h: asset(refFrame).h,
+    at: findLayer(doc(), ref.layer.id) as ImageLayer,
+  };
+
+  await load("rotate-undo-test");
+  const hit = singleFrameImage();
+  const frame = framesOf(hit.layer)[0];
+  const w0 = asset(frame).w,
+    h0 = asset(frame).h;
+
+  await resize(hit.layer.id, w0 * 2, h0 * 2, frame);
+  editorModel.undo();
+  await vi.waitFor(() => expect(asset(frame).w).toBe(w0));
+  expect(bitmapOf(frame).width).toBe(w0 * 2); // the stale bitmap the turn must not size off
+
+  await rotate(hit.layer.id, 15, frame);
+
+  expect([asset(frame).w, asset(frame).h]).toEqual([straight.w, straight.h]);
+  const after = findLayer(doc(), hit.layer.id) as ImageLayer;
+
+  expect([after.x, after.y]).toEqual([straight.at.x, straight.at.y]);
+});
