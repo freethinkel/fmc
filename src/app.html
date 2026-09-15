@@ -14,6 +14,12 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="FMC·WF" />
+    <!-- Title, canonical and share card. Written per route at build time by scripts/seo.ts:
+         a link unfurler never runs the JS that <svelte:head> needs, so the tags have to be in
+         the file on disk. The runtime <title> still wins in the browser — Svelte assigns
+         document.title rather than appending a second <title> element. -->
+    <!--seo:start-->
+    <!--seo:end-->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
