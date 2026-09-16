@@ -13,6 +13,7 @@
     publishRequested,
     $savePending: busy,
     $publishDialogOpen: open,
+    $openedWf: openedWf,
     publishDialogClosed,
   } = marketModel;
   const { $doc: doc, buildCurrentBin, previewBlob } = editorModel;
@@ -20,8 +21,14 @@
   let name = $state("");
   let description = $state("");
 
+  // an already-published own face reopens the dialog to edit its details, so both fields
+  // start from the record — otherwise re-publishing would wipe the description with ""
+  const editing = $derived(Boolean($openedWf?.published) && $openedWf?.owner === $user?.id);
+
   $effect(() => {
-    if ($open) name = $doc?.name || "Custom";
+    if (!$open) return;
+    name = $openedWf?.name || $doc?.name || "Custom";
+    description = $openedWf?.description ?? "";
   });
 
   async function publish() {
@@ -37,8 +44,14 @@
   }
 </script>
 
-<Dialog open={$open} title="Publish to marketplace" onClose={() => publishDialogClosed()}>
-  <p class="desc">The watchface will be visible to everyone.</p>
+<Dialog
+  open={$open}
+  title={editing ? "Edit details" : "Publish to marketplace"}
+  onClose={() => publishDialogClosed()}
+>
+  {#if !editing}
+    <p class="desc">The watchface will be visible to everyone.</p>
+  {/if}
   <div class="fields">
     <Field label="Name">
       <Input bind:value={name} maxlength={100} />
@@ -50,7 +63,7 @@
   <div class="footer">
     <Button kind="ghost" onClick={() => publishDialogClosed()}>Cancel</Button>
     <Button kind="primary" disabled={$busy || !name.trim()} onClick={publish}>
-      {$busy ? "Uploading…" : "Publish"}
+      {$busy ? "Uploading…" : editing ? "Save" : "Publish"}
     </Button>
   </div>
 </Dialog>
