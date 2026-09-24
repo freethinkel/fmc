@@ -3,6 +3,7 @@
   import { Skeleton } from "$lib/shared/components/skeleton";
   import { fileUrl } from "$lib/shared/api";
   import { marketModel } from "../model";
+  import { creatorTitle } from "$lib/shared/seo";
   import { WatchfaceList } from "../components/watchface-list";
 
   interface Props {
@@ -38,7 +39,7 @@
   const totalDownloads = $derived($profileItems.reduce((n, wf) => n + (wf.downloads || 0), 0));
 </script>
 
-<svelte:head><title>{name} — FMC Watchfaces</title></svelte:head>
+<svelte:head><title>{creatorTitle(name)}</title></svelte:head>
 
 <div class="page">
   {#if $marketErr}<p class="error">{$marketErr}</p>{/if}
