@@ -72,11 +72,13 @@ const visible = (l: Layer, sim: Sim, t: TimeParts): boolean => {
   return l.conditions.every((c) =>
     c.op === "ne"
       ? idValue(c.source, sim, t) !== c.value
-      : c.op === "gte"
-        ? idValue(c.source, sim, t) >= c.value
-        : c.op === "lte"
-          ? idValue(c.source, sim, t) <= c.value
-          : true,
+      : c.op === "lt"
+        ? idValue(c.source, sim, t) < c.value
+        : c.op === "gte"
+          ? idValue(c.source, sim, t) >= c.value
+          : c.op === "lte"
+            ? idValue(c.source, sim, t) <= c.value
+            : true,
   );
 };
 

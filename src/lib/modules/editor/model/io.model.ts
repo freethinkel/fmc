@@ -6,6 +6,7 @@ import { reset } from "patronum";
 import { buildBin, parseBin } from "../core/format";
 import { fromLegacy, toLegacy, type Doc, type ImageId } from "../core/document/doc";
 import { saveNames, withNames } from "../core/document/names";
+import { previewSim } from "../core/document/sources";
 import { blankDoc } from "../core/document/factory";
 import { decodeAssets, flushAssets, opaqueBlack, regenPreviewAssets } from "../core/render/pixels";
 import { renderDoc } from "../core/render/render";
@@ -125,7 +126,7 @@ const binOf = async ({
   let next: Doc = { ...doc!, images };
 
   if (dirty) {
-    const fresh = await regenPreviewAssets(next, { assets: images, cache }, sim);
+    const fresh = await regenPreviewAssets(next, { assets: images, cache }, previewSim(sim));
     const merged = new Map(images);
 
     fresh.forEach(({ asset }, id) => merged.set(id, asset));
@@ -150,7 +151,7 @@ export const previewBlob = attach({
     const c = document.createElement("canvas");
 
     c.width = c.height = SCREEN;
-    renderDoc(c.getContext("2d")!, doc!, store, "main", sim);
+    renderDoc(c.getContext("2d")!, doc!, store, "main", previewSim(sim));
     return new Promise((res) => c.toBlob((b) => res(b!), "image/png"));
   },
 });
@@ -163,7 +164,7 @@ export const previewThumb = attach({
     const full = document.createElement("canvas");
 
     full.width = full.height = SCREEN;
-    renderDoc(full.getContext("2d")!, doc!, store, "main", sim);
+    renderDoc(full.getContext("2d")!, doc!, store, "main", previewSim(sim));
     const thumb = document.createElement("canvas");
 
     thumb.width = thumb.height = 96;

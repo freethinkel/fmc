@@ -46,3 +46,8 @@ server — served by Caddy. Prod infra details — in
 pnpm check   # svelte-check
 pnpm test    # round-trip test of the .bin parser/compiler against watchfaces/files/ fixtures
 ```
+
+## License
+
+[AGPL-3.0](LICENSE). The bundled Geist fonts are under the SIL Open Font License —
+see [`static/fonts/OFL.txt`](static/fonts/OFL.txt).

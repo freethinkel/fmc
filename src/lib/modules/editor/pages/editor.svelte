@@ -902,14 +902,23 @@
             >
           </Button>
         </span>
-        {#if !isPublishedMine}
-          <span class="tool-slot" title={$foreignWf ? FOREIGN_HINT : "Publish"}>
-            <Button kind="secondary" onClick={() => publishDialogOpened()} disabled={$foreignWf}>
-              <Icon name="cloud_upload" size={22} />
-              <span class="btn-label">Publish</span>
-            </Button>
-          </span>
-        {/if}
+        <span
+          class="tool-slot"
+          title={$foreignWf
+            ? FOREIGN_HINT
+            : isPublishedMine
+              ? "Edit name and description"
+              : "Publish"}
+        >
+          <Button
+            kind={isPublishedMine ? "ghost" : "secondary"}
+            onClick={() => publishDialogOpened()}
+            disabled={$foreignWf}
+          >
+            <Icon name={isPublishedMine ? "edit_note" : "cloud_upload"} size={22} />
+            <span class="btn-label">{isPublishedMine ? "Details" : "Publish"}</span>
+          </Button>
+        </span>
       {/if}
     {/if}
     {#if $bleInfo && $doc}

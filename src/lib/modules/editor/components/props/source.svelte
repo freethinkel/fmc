@@ -124,6 +124,7 @@
   const OPS: { value: CondOp; label: string; short: string }[] = [
     { value: "eq", label: "= (show if)", short: "=" },
     { value: "ne", label: "≠ (hide if)", short: "≠" },
+    { value: "lt", label: "< (only if)", short: "<" },
     { value: "gte", label: "≥ (only if)", short: "≥" },
     { value: "lte", label: "≤ (only if)", short: "≤" },
     { value: "noData", label: "= no-data marker", short: "= ∅" },

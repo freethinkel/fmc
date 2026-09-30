@@ -21,6 +21,9 @@ test("an icon renders its ligature at the requested size", async () => {
   expect(style.fontFamily).toContain("Material Symbols Rounded");
   // fill is the FILL axis — the liked heart is the solid glyph, not a painted outline
   expect(style.fontVariationSettings).toContain('"FILL" 1');
+  // the ligature is a machine name, not prose: Google Translate turns "favorite" into a word
+  // and the glyph into garbage
+  expect(icon.getAttribute("translate")).toBe("no");
 });
 
 // A name the font doesn't know renders as its own word — many ems wide, where a real glyph is
