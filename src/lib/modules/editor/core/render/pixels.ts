@@ -200,7 +200,7 @@ export async function invertAsset(
  *  Every turn resamples the PINNED pre-rotation pixels (`cache.rot0`), never the already-turned
  *  ones, so a hundred 1° nudges cost exactly as much quality as one 100° turn — and coming back to
  *  the angle the pin carries restores it exactly. The pin is per session and is dropped wherever
- *  the art is re-baked or rescaled (see assets.model). */
+ *  the art is re-baked or rescaled non-uniformly (see assets.model). */
 export async function rotateAsset(
   a: ImageAsset,
   cache: ImageCache | undefined,
@@ -210,34 +210,42 @@ export async function rotateAsset(
   bitmap: ImageBitmap;
   rot0: NonNullable<ImageCache["rot0"]>;
 } | null> {
-  const pinned = cache?.rot0;
+  const turn = (v: number) => ((v % 360) + 360) % 360;
+  const size = (v: number) => Math.max(1, Math.min(2047, Math.round(v))); // 11-bit, see encodePixels
+  const box = (w: number, h: number, deg: number) => {
+    const rad = (deg * Math.PI) / 180;
+    const cos = Math.abs(Math.cos(rad)),
+      sin = Math.abs(Math.sin(rad));
+
+    return { w: size(w * cos + h * sin), h: size(w * sin + h * cos) };
+  };
+  // `$cache` — the pin included — is outside the undo history, so an undo can leave a pin that
+  // no longer matches the document. Trusted only while turning it to the asset's current angle
+  // gives the asset's current box (a pixel of rounding either way); otherwise re-pinned from
+  // what's on screen. Not under an adjust either: the pin predates the filter, and the turn bakes
+  // the filter in and clears `adjust`, so the pin would lose it on the turn after.
+  const p = cache?.rot0;
+  const fits = p && box(p.w, p.h, turn((a.rotate ?? 0) - p.deg));
+  const pinned =
+    !a.adjust && fits && Math.abs(fits.w - a.w) <= 1 && Math.abs(fits.h - a.h) <= 1 ? p : undefined;
   const rot0 = pinned ?? {
     src: cache?.bitmap ?? (await bitmapOf({ cf: a.cf, w: a.w, h: a.h, data: a.data })),
     deg: a.rotate ?? 0,
     w: a.w,
     h: a.h,
   };
-  const turn = (v: number) => ((v % 360) + 360) % 360;
   const rotate = turn((a.rotate ?? 0) + deg);
   const ang = turn(rotate - rot0.deg); // how far the PIN turns, which isn't the delta the user drags
   const rad = (ang * Math.PI) / 180;
-  const cos = Math.abs(Math.cos(rad)),
-    sin = Math.abs(Math.sin(rad));
-  const size = (v: number) => Math.max(1, Math.min(2047, Math.round(v))); // 11-bit, see encodePixels
-  // the pin's own box, not its bitmap's: `$cache` is outside the undo history, so an undone resize
-  // leaves a bitmap of the wrong size behind and sizing off it would resize the widget on a turn
+  // the pin's own box, not its bitmap's: an undone resize leaves a bitmap of the wrong size behind,
+  // and sizing off it would resize the widget on a turn
   const sw = rot0.w,
     sh = rot0.h;
-  const w = size(sw * cos + sh * sin),
-    h = size(sw * sin + sh * cos);
+  const { w, h } = box(sw, sh, ang);
   const cf = a.cf === 4 && ang % 90 !== 0 ? 5 : a.cf;
   const c = new OffscreenCanvas(w, h);
   const cx = c.getContext("2d")!;
 
-  // an older pin predates the adjust dialled in since, which the turned pixels bake in (see
-  // `adjust: undefined` below); a pin taken right here IS the filtered preview bitmap already, so
-  // filtering it again would apply the adjust twice
-  if (pinned) cx.filter = filterOf(a as unknown as Resource);
   cx.translate(w / 2, h / 2);
   cx.rotate(rad);
   cx.drawImage(rot0.src, -sw / 2, -sh / 2, sw, sh);

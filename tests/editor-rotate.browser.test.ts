@@ -187,3 +187,105 @@ test("a turn after an undone resize keeps the size the document says", async () 
 
   expect([after.x, after.y]).toEqual([straight.at.x, straight.at.y]);
 });
+
+// Undo can restore a document the pin no longer describes: turn, resize (which rescales the pin's
+// box) and undo — the two coalesce into one history entry, so the document goes back to unturned
+// while the pin keeps the halved box. Trusting it would halve the widget on the next nudge.
+test("a pin an undo left behind is re-pinned, not trusted", async () => {
+  await load("rotate-stale-pin");
+  const hit = singleFrameImage();
+  const frame = framesOf(hit.layer)[0];
+
+  await rotate(hit.layer.id, 30, frame);
+  const turned = asset(frame);
+
+  await resize(hit.layer.id, Math.round(turned.w / 2), Math.round(turned.h / 2), frame);
+  editorModel.undo();
+  await vi.waitFor(() => expect(asset(frame).w).not.toBe(Math.round(turned.w / 2)));
+  const before = asset(frame);
+
+  await rotate(hit.layer.id, 10, frame);
+  // the art is square-ish: a 10° nudge forward from 0° or 30° grows the box, never halves it
+  expect(asset(frame).w).toBeGreaterThanOrEqual(before.w);
+  expect(asset(frame).h).toBeGreaterThanOrEqual(before.h);
+});
+
+const luma = (b: ImageBitmap) => {
+  const px = pixels(b);
+  let sum = 0,
+    n = 0;
+
+  for (let i = 0; i < px.length; i += 4)
+    if (px[i + 3] > 0) {
+      sum += 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
+      n++;
+    }
+  return sum / n;
+};
+
+// A turn bakes the adjust into the pixels and clears it, so the pin must not outlive it: drawing
+// the unadjusted pin on the turn after would make the brightness vanish.
+test("an adjust survives every turn after it, not just the first", async () => {
+  await load("rotate-adjust");
+  const hit = singleFrameImage();
+  const frame = framesOf(hit.layer)[0];
+
+  await rotate(hit.layer.id, 30, frame);
+  const plain = luma(bitmapOf(frame));
+
+  editorModel.adjustImageRequested({
+    layer: hit.layer.id,
+    adjust: { brightness: 300, contrast: 100, saturate: 100, hue: 0 },
+  });
+  await vi.waitFor(() => expect(asset(frame).adjust?.brightness).toBe(300));
+  const adjusted = luma(bitmapOf(frame));
+
+  expect(adjusted).toBeGreaterThan(plain + 2); // the fixture's art is dark enough to show it
+  await rotate(hit.layer.id, 10, frame);
+  await rotate(hit.layer.id, 10, frame);
+
+  const after = luma(bitmapOf(frame));
+
+  expect(Math.abs(after - adjusted)).toBeLessThan(Math.abs(after - plain));
+});
+
+// The pin's box only takes a uniform scale; a stretch has to drop it, or the next nudge would
+// compute scale-then-rotate and reshape the art.
+test("a one-degree nudge after a stretch keeps the stretched shape", async () => {
+  await load("rotate-stretch");
+  const hit = singleFrameImage();
+  const frame = framesOf(hit.layer)[0];
+
+  await rotate(hit.layer.id, 45, frame);
+  const turned = asset(frame);
+
+  await resize(hit.layer.id, Math.round(turned.w * 1.4), turned.h, frame);
+  const stretched = asset(frame);
+
+  await rotate(hit.layer.id, 1, frame);
+  // a 1° turn of a box grows it by a few percent at most, and keeps its aspect
+  expect(Math.abs(asset(frame).w / stretched.w - 1)).toBeLessThan(0.03);
+  expect(Math.abs(asset(frame).h / stretched.h - 1)).toBeLessThan(0.03);
+});
+
+// Fresh art has never been turned: carrying the old running angle onto it would make the inspector
+// lie, and typing 0 there would turn the new image backwards by the old angle.
+test("replacing or clearing a turned frame resets its angle", async () => {
+  await load("rotate-replace");
+  const hit = singleFrameImage();
+  const frame = framesOf(hit.layer)[0];
+
+  await rotate(hit.layer.id, 30, frame);
+  const c = document.createElement("canvas");
+
+  c.width = c.height = 10;
+  const blob = await new Promise<Blob>((r) => c.toBlob((b) => r(b!), "image/png"));
+
+  editorModel.replaceImageRequested({ id: frame, file: new File([blob], "a.png") });
+  await vi.waitFor(() => expect(asset(frame).w).toBe(10));
+  expect(asset(frame).rotate).toBeUndefined();
+
+  await rotate(hit.layer.id, 30, frame);
+  editorModel.clearImageRequested({ id: frame });
+  await vi.waitFor(() => expect(asset(frame).rotate).toBeUndefined());
+});

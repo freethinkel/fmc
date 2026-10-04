@@ -135,7 +135,8 @@ const replaceImageFx = attach({
       const bitmap = await createImageBitmap(new Blob([data as BlobPart], { type: "image/jpeg" }));
 
       return {
-        asset: { ...a, data, w: bitmap.width, h: bitmap.height },
+        // never turned, so no running angle either — the inspector would claim the old one
+        asset: { ...a, data, w: bitmap.width, h: bitmap.height, rotate: undefined },
         // the uploaded file is the new original — drop any pinned resize source
         cache: { bitmap, original: undefined, rot0: undefined, accent: undefined },
       };
@@ -143,7 +144,7 @@ const replaceImageFx = attach({
     const fresh = await resourceFromFile(file, a.cf);
 
     return {
-      asset: { ...a, cf: fresh.cf, w: fresh.w, h: fresh.h, data: fresh.data },
+      asset: { ...a, cf: fresh.cf, w: fresh.w, h: fresh.h, data: fresh.data, rotate: undefined },
       cache: {
         bitmap: fresh.bitmap ?? (await bitmapOf(fresh)),
         original: undefined,
@@ -165,7 +166,7 @@ const clearImageFx = attach({
     const fresh = await blankFrame(a.w, a.h);
 
     return {
-      asset: { ...a, cf: fresh.cf, data: fresh.data },
+      asset: { ...a, cf: fresh.cf, data: fresh.data, rotate: undefined },
       cache: { bitmap: fresh.bitmap, original: undefined, rot0: undefined, accent: undefined },
     };
   },
@@ -207,7 +208,12 @@ async function rescaleFrames(
     // at full resolution. Dropping it would re-pin from art that already carries a turn — and its
     // transparent margin — so a resize between two turns would blur what the pin exists to keep
     // sharp. Scaled against the asset's current size, the same factor the art itself takes.
-    const pin = cache.get(id)?.rot0;
+    // Uniform scales only: scaling the pin's box then turning it is rotate-THEN-scale for those
+    // alone, so a stretch (aspect lock off) would change the art's shape on the next nudge — there
+    // the pin is dropped and the next turn re-pins from the stretched art. "Uniform" allows the
+    // half pixel each side rounds by.
+    const uniform = Math.abs(rw * a.h - rh * a.w) <= (a.w + a.h) / 2;
+    const pin = uniform ? cache.get(id)?.rot0 : undefined;
 
     assets.set(id, { ...a, w: rw, h: rh });
     cached.set(id, {
@@ -259,7 +265,7 @@ const resizeImageFx = attach({
         const { resource: r, bitmap } = sprites[i];
 
         if (!a) return;
-        assets.set(id, { ...a, cf: r.cf, w: r.w, h: r.h, data: r.data });
+        assets.set(id, { ...a, cf: r.cf, w: r.w, h: r.h, data: r.data, rotate: undefined });
         // no `original`: these pixels ARE the source now, and flushAssets must not re-encode
         // them from a stale bitmap of the old size
         cached.set(id, { bitmap, original: undefined, rot0: undefined, accent: undefined });
