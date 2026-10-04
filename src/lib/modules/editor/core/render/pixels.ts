@@ -197,31 +197,62 @@ export async function invertAsset(
  *  is re-baked (like invertAsset above) and `rotate` only records the running total for the
  *  inspector. cf 4 has no alpha for the corners a non-square turn opens up, so it becomes cf 5;
  *  a JPEG resource keeps its codec and gets black corners instead.
- *  ponytail: every call resamples the current pixels, so a hundred 1° nudges blur more than one
- *  100° turn. Pin the pre-rotation bitmap in the cache if that ever shows. */
+ *  Every turn resamples the PINNED pre-rotation pixels (`cache.rot0`), never the already-turned
+ *  ones, so a hundred 1° nudges cost exactly as much quality as one 100° turn — and coming back to
+ *  the angle the pin carries restores it exactly. The pin is per session and is dropped wherever
+ *  the art is re-baked or rescaled non-uniformly (see assets.model). */
 export async function rotateAsset(
   a: ImageAsset,
   cache: ImageCache | undefined,
   deg: number,
-): Promise<{ asset: ImageAsset; bitmap: ImageBitmap } | null> {
-  const src = cache?.bitmap ?? (await bitmapOf({ cf: a.cf, w: a.w, h: a.h, data: a.data }));
-  const rad = (deg * Math.PI) / 180;
-  const cos = Math.abs(Math.cos(rad)),
-    sin = Math.abs(Math.sin(rad));
+): Promise<{
+  asset: ImageAsset;
+  bitmap: ImageBitmap;
+  rot0: NonNullable<ImageCache["rot0"]>;
+} | null> {
+  const turn = (v: number) => ((v % 360) + 360) % 360;
   const size = (v: number) => Math.max(1, Math.min(2047, Math.round(v))); // 11-bit, see encodePixels
-  const w = size(a.w * cos + a.h * sin),
-    h = size(a.w * sin + a.h * cos);
-  const cf = a.cf === 4 && deg % 90 !== 0 ? 5 : a.cf;
+  const box = (w: number, h: number, deg: number) => {
+    const rad = (deg * Math.PI) / 180;
+    const cos = Math.abs(Math.cos(rad)),
+      sin = Math.abs(Math.sin(rad));
+
+    return { w: size(w * cos + h * sin), h: size(w * sin + h * cos) };
+  };
+  // `$cache` — the pin included — is outside the undo history, so an undo can leave a pin that
+  // no longer matches the document. Trusted only while turning it to the asset's current angle
+  // gives the asset's current box (a pixel of rounding either way); otherwise re-pinned from
+  // what's on screen. Not under an adjust either: the pin predates the filter, and the turn bakes
+  // the filter in and clears `adjust`, so the pin would lose it on the turn after.
+  const p = cache?.rot0;
+  const fits = p && box(p.w, p.h, turn((a.rotate ?? 0) - p.deg));
+  const pinned =
+    !a.adjust && fits && Math.abs(fits.w - a.w) <= 1 && Math.abs(fits.h - a.h) <= 1 ? p : undefined;
+  const rot0 = pinned ?? {
+    src: cache?.bitmap ?? (await bitmapOf({ cf: a.cf, w: a.w, h: a.h, data: a.data })),
+    deg: a.rotate ?? 0,
+    w: a.w,
+    h: a.h,
+  };
+  const rotate = turn((a.rotate ?? 0) + deg);
+  const ang = turn(rotate - rot0.deg); // how far the PIN turns, which isn't the delta the user drags
+  const rad = (ang * Math.PI) / 180;
+  // the pin's own box, not its bitmap's: an undone resize leaves a bitmap of the wrong size behind,
+  // and sizing off it would resize the widget on a turn
+  const sw = rot0.w,
+    sh = rot0.h;
+  const { w, h } = box(sw, sh, ang);
+  const cf = a.cf === 4 && ang % 90 !== 0 ? 5 : a.cf;
   const c = new OffscreenCanvas(w, h);
   const cx = c.getContext("2d")!;
 
   cx.translate(w / 2, h / 2);
   cx.rotate(rad);
-  cx.drawImage(src, -a.w / 2, -a.h / 2, a.w, a.h);
+  cx.drawImage(rot0.src, -sw / 2, -sh / 2, sw, sh);
   const bitmap = await createImageBitmap(c);
-  const rotate = ((((a.rotate ?? 0) + deg) % 360) + 360) % 360;
 
   return {
+    rot0,
     // the turned pixels are the ones the user was looking at, filter included — so `adjust` goes
     // back to neutral rather than claiming it could still be dialled away
     asset: {
