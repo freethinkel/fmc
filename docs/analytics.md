@@ -33,7 +33,7 @@ user's, not ours to collect.
 
 `reason` is the same kind of closed set, for the same reason — the raw failure messages carry
 byte dumps and slot ids. It is one of `bad_file`, `rejected` (the watch said no), `stalled`
-(timed out mid-transfer), `disconnected`, `error` (anything else). A full watch is not counted:
+(the watch stopped answering), `disconnected`, `error` (anything else). A full watch is not counted:
 that path opens the slot dialog and the user tries again.
 
 ### `device`, and why it is collected

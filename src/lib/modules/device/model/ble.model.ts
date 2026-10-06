@@ -28,6 +28,9 @@ export const $dials = createStore<WatchDials | null>(null);
 // user picks which dial to overwrite in the slot dialog
 export const $slotDialogOpen = createStore(false);
 const $pendingBin = createStore<FlashPayload | null>(null);
+// the watch a flash went to: $bleInfo resets the moment the link drops, which is before a flash
+// cut off by that drop fails — so the outcome reads who it was from here, not from $bleInfo
+const $flashWatch = createStore<WatchInfo | null>(null);
 export const $forgetting = bleApi.forgetFx.pending;
 
 // ---- events ----
@@ -41,7 +44,7 @@ export const slotDialogClosed = createEvent();
 // cross-module signals (market.model bumps the download counter on a successful flash,
 // analytics.model counts both) — exposed as events, not the effects themselves, so other models
 // react without touching connectFx/flashFx. They carry the connected watch because who it was is
-// part of what happened, and $bleInfo is already gone by the time a disconnect is handled.
+// part of what happened.
 export const connected = createEvent<WatchInfo>();
 export const flashDone = createEvent<WatchInfo | null>();
 export const flashFailed = createEvent<{ watch: WatchInfo | null; error: Error }>();
@@ -154,13 +157,18 @@ reset({
 reset({ clock: [slotDialogClosed, flashFx.done, disconnected], target: $pendingBin });
 
 sample({
-  clock: flashFx.done,
+  clock: flashFx,
   source: $bleInfo,
+  target: $flashWatch,
+});
+sample({
+  clock: flashFx.done,
+  source: $flashWatch,
   target: flashDone,
 });
 sample({
   clock: flashFx.failData,
-  source: $bleInfo,
+  source: $flashWatch,
   // a full watch isn't a failure either — the slot dialog above turns it into another attempt
   filter: (_watch, e) => !(e instanceof NoFreeSlotError),
   fn: (watch, error) => ({ watch, error }),
