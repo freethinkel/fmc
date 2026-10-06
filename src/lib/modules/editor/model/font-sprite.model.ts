@@ -13,7 +13,7 @@ import {
   registerFont,
   type GlyphSpec,
 } from "../core/render/glyphs";
-import { FRAME_LABELS } from "../core/document/sources";
+import { frameLabelsOf } from "../core/document/sources";
 import { findLayer } from "../core/document/edits";
 import type { NodeId } from "../core/document/doc";
 import { $doc } from "./doc.model";
@@ -102,7 +102,7 @@ sample({
   source: $doc,
   fn: (doc, id) => {
     const l = doc ? findLayer(doc, id) : null;
-    const fixed = l && l.kind !== "group" && l.kind !== "raw" ? FRAME_LABELS[l.meta.source] : null;
+    const fixed = l ? frameLabelsOf(l) : null;
     const labels = fixed ?? (l?.kind === "image" ? ["Text"] : DIGITS);
 
     return { labelsText: labels.join(" ") };

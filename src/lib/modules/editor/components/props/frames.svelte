@@ -3,7 +3,7 @@
   import { Button } from "$lib/shared/components/button";
   import { Icon } from "$lib/shared/components/icon";
   import { framesOf, type ImageId, type Layer } from "../../core/document/doc";
-  import { FRAME_LABELS, pickerLabel } from "../../core/document/sources";
+  import { frameLabelsOf, pickerLabel } from "../../core/document/sources";
   import { editorModel } from "../../model";
   import { set } from "./patch";
   import FrameThumb from "./frame-thumb.svelte";
@@ -25,9 +25,7 @@
 
   // a fresh layer object arrives on every edit, so plain deriveds are enough here
   const images = $derived(framesOf(layer));
-  const frameLabels = $derived(
-    layer.kind !== "group" && layer.kind !== "raw" ? FRAME_LABELS[layer.meta.source] : null,
-  );
+  const frameLabels = $derived(frameLabelsOf(layer));
   // the 0x5f body is already decoded on a SlotLayer — no hex to pick apart
   const slotInfo = $derived(
     layer.kind === "slot" ? { activeIdx: layer.active, ids: layer.metrics } : null,
