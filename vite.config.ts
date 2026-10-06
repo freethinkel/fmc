@@ -21,6 +21,12 @@ export default defineConfig({
       },
       // SPA: the editor lives entirely on browser APIs (canvas, BLE)
       adapter: adapter({ fallback: "index.html" }),
+      // the build scripts import src/ and run on every deploy — typecheck them with the app
+      typescript: {
+        config: (c) => {
+          c.include.push("../scripts/**/*.ts");
+        },
+      },
     }),
   ],
 });
