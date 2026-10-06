@@ -108,6 +108,14 @@ export const FRAME_LABELS: Record<number, string[]> = {
   0x18: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
 };
 
+/** The labels a layer's frames must hold, or null. A number never has them: it prints the value
+ *  digit by digit off a 0..9 glyph set, so a month on one reads "10", and twelve month names
+ *  in its glyphs draw October as "Jan"+"Dec". Month names are an image widget's job. */
+export const frameLabelsOf = (l: Layer): string[] | null =>
+  l.kind === "group" || l.kind === "raw" || l.kind === "number"
+    ? null
+    : (FRAME_LABELS[l.meta.source] ?? null);
+
 // 0x79 + slotIndex is synthetic — not a metric but the widget slot's own selection index
 // (0x5f byte 2), only ever seen in visibility conditions.
 export const sourceLabel = (id: number) =>

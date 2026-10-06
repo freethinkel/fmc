@@ -16,7 +16,7 @@
     collectSlotsDoc,
     describeConditions,
     pickerLabel,
-    FRAME_LABELS,
+    frameLabelsOf,
     ID_LABELS,
   } from "../../core/document/sources";
   import type { ArcSpec } from "../../core/render/arc";
@@ -51,7 +51,7 @@
   const ring = $derived(layer.kind === "ring" ? layer : null);
   const conditions = $derived(layer.conditions);
   const bindLines = $derived(describeConditions(conditions));
-  const frameLabels = $derived(meta ? FRAME_LABELS[meta.source] : null);
+  const frameLabels = $derived(frameLabelsOf(layer));
 
   const setSourceId = (source: number) => sourceIdSet({ id: layer.id, source });
   const sourceOption = (id: number) => ({

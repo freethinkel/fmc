@@ -73,3 +73,25 @@ test("frame count follows the source, and a trim is undone by switching back", a
   expect(rebuilt).toHaveLength(12);
   expect(rebuilt.every((ri, i) => i === 0 || ri === rebuilt[i - 1] + 1)).toBe(true);
 });
+
+// A number prints its value digit by digit off ten glyphs, so a month on one reads "10" — handing
+// it twelve month-name slots drew October as "Jan"+"Dec" (glyph 1, glyph 0) on the watch.
+test("a number keeps its ten digit glyphs when it reads the month", async () => {
+  const before = new Set(layers().map((l) => l.id));
+
+  editorModel.numberAdded();
+  for (let i = 0; i < 100 && !layers().some((l) => !before.has(l.id)); i++)
+    await new Promise((r) => setTimeout(r, 5));
+  const num = layers().find((l) => !before.has(l.id))!;
+
+  expect(num.kind).toBe("number");
+  const glyphs = [...framesOf(num)];
+
+  editorModel.sourceIdSet({ id: num.id, source: MONTH });
+  await new Promise((r) => setTimeout(r, 50));
+
+  const after = findLayer(doc(), num.id)!;
+
+  expect(after.kind === "number" && after.meta.source).toBe(MONTH);
+  expect(framesOf(after)).toEqual(glyphs);
+});

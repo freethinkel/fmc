@@ -362,7 +362,8 @@ const sourceIdFx = attach({
     const l = doc ? findLayer(doc, id) : null;
 
     if (!doc || !l || l.kind === "group" || l.kind === "raw") return null;
-    const need = FRAME_LABELS[source]?.length;
+    // a number keeps its ten digits whatever it reads (see frameLabelsOf)
+    const need = l.kind === "number" ? undefined : FRAME_LABELS[source]?.length;
     const have = frameStash.get(id) ?? framesOf(l);
     const assets = new Map<ImageId, ImageAsset>();
     const cache = new Map<ImageId, ImageCache>();
