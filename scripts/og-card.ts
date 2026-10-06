@@ -8,6 +8,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
+import { DEVICE } from "../src/lib/shared/seo/copy.ts";
 
 const STATIC = join(dirname(fileURLToPath(import.meta.url)), "..", "static");
 
@@ -32,12 +33,12 @@ const html = `<!doctype html>
   .mark { width: 124px; height: 124px; border-radius: 26px; overflow: hidden; }
   .mark svg { display: block; width: 100%; height: 100%; }
   /* both lines are sized to sit on one line at 1008px of usable width */
-  h1 { font-size: 52px; font-weight: 600; letter-spacing: -1px; }
+  h1 { font-size: 46px; font-weight: 600; letter-spacing: -1px; }
   p { font-size: 28px; font-weight: 400; color: oklch(from ${PAPER} l c h / 55%); }
 </style></head>
 <body>
   <div class="mark">${mark}</div>
-  <h1>Watchfaces for the CMF Watch Pro 2</h1>
+  <h1>Watchfaces for the ${DEVICE}</h1>
   <p>Browse, edit and install — straight from the browser, no phone app</p>
 </body></html>`;
 

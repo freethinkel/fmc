@@ -42,8 +42,8 @@ const DEFAULT_ALT = `${SITE_NAME} — watchfaces for the ${DEVICE}`;
 interface Card {
   title: string;
   description: string;
-  /** absolute, canonical */
-  url: string;
+  /** absolute, canonical; left out on the shared fallback shell — see siteCard */
+  url?: string;
   image: string;
   imageAlt: string;
   /** square dial render vs the 1200x630 wordmark card — see the twitter:card note below */
@@ -71,7 +71,7 @@ const metaBlock = (c: Card) => {
     ["property=og:site_name", SITE_NAME],
     ["property=og:title", c.title],
     ["property=og:description", c.description],
-    ["property=og:url", c.url],
+    ...(c.url ? ([["property=og:url", c.url]] as [string, string][]) : []),
     ["property=og:image", c.image],
     ["property=og:image:alt", c.imageAlt],
     // a dial is square: asking for the wide card would letterbox-crop the top and bottom of
@@ -84,7 +84,7 @@ const metaBlock = (c: Card) => {
 
   return [
     `<title>${esc(c.title)}</title>`,
-    `<link rel="canonical" href="${esc(c.url)}" />`,
+    ...(c.url ? [`<link rel="canonical" href="${esc(c.url)}" />`] : []),
     ...tags.map(([k, v]) => {
       const [attr, name] = k.split("=");
 
@@ -154,10 +154,11 @@ if (!REGION.test(shell))
 const withCard = (c: Card) =>
   shell.replace(REGION, `<!--seo:start-->\n    ${metaBlock(c)}\n    <!--seo:end-->`);
 
+// no url: this file is also what /editor and every face published since the last deploy get
+// served, and a canonical pointing at / would tell Google they are all duplicates of the home page
 const siteCard: Card = {
   title: siteTitle(),
   description: siteDesc(),
-  url: `${SITE}/`,
   image: DEFAULT_IMAGE,
   imageAlt: DEFAULT_ALT,
 };
