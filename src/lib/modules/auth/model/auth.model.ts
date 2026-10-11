@@ -28,6 +28,10 @@ export const registerRequested = createEvent<{
   name?: string;
 }>();
 export const oauthRequested = createEvent<string>();
+// cross-module signal (analytics counts signups) — exposed as an event, not the effect itself,
+// so other models react without touching authApi. OAuth has no equivalent: the provider call is
+// the same for a new account and a returning one.
+export const registered = createEvent();
 
 // business logic
 pb.authStore.onChange(() => userChanged(pb.authStore.record));
@@ -66,6 +70,12 @@ sample({
 sample({
   clock: registerRequested,
   target: authApi.registerFx,
+});
+
+sample({
+  clock: authApi.registerFx.done,
+  fn: () => undefined,
+  target: registered,
 });
 
 sample({
