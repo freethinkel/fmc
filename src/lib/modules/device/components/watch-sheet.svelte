@@ -73,16 +73,16 @@
         <summary>Before you connect</summary>
         <ul>
           <li>
-            Only one app can hold the watch at a time — close Nothing X first, and this tab when
-            you're done.
+            The watch talks to one app at a time. Close Nothing X before you connect, and close this
+            tab when you're done.
           </li>
           <li>
-            FMC has no firmware command that writes. Watchfaces go through the watch's own
-            installer, which can refuse them.
+            FMC can't write firmware. Watchfaces go through the watch's own installer, and the watch
+            can refuse them.
           </li>
           <li>
-            If Nothing X stops seeing the watch afterwards, it's a pairing conflict, not damage:
-            Bluetooth off and on, forget the watch, pair again.
+            If Nothing X loses the watch afterwards, pair it again. Turn Bluetooth off and on,
+            forget the watch, add it back.
           </li>
         </ul>
         <a href="/help" onclick={onClose}>Read the full notes</a>
