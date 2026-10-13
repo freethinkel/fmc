@@ -14,14 +14,14 @@ Pageviews are the tracker's own job: it patches `history.pushState`, so SvelteKi
 navigations are counted, each with its path and referrer. `/market/<id>` therefore gives
 views-per-face for free. Everything else is a named event:
 
-| Event           | Fires when                                                | Properties     |
-| --------------- | --------------------------------------------------------- | -------------- |
-| `face_view`     | a face's showcase page finished loading                     | `id`, `name`   |
-| `editor_open`   | a document was loaded into the editor                       | `source`       |
-| `import`        | a Facer / WatchMaker / Wear OS export was read              | `format`       |
-| `watch_connect` | a watch finished pairing over Web Bluetooth                 | —              |
-| `watch_upload`  | a face was flashed onto the watch                           | —              |
-| `signup`        | an account was created through the register form            | —              |
+| Event           | Fires when                                       | Properties   |
+| --------------- | ------------------------------------------------ | ------------ |
+| `face_view`     | a face's showcase page finished loading          | `id`, `name` |
+| `editor_open`   | a document was loaded into the editor            | `source`     |
+| `import`        | a Facer / WatchMaker / Wear OS export was read   | `format`     |
+| `watch_connect` | a watch finished pairing over Web Bluetooth      | —            |
+| `watch_upload`  | a face was flashed onto the watch                | —            |
+| `signup`        | an account was created through the register form | —            |
 
 `watch_upload` is the conversion — the funnel is `pageview → face_view → editor_open →
 watch_connect → watch_upload`, and the drop between the last two is the pairing failure rate.

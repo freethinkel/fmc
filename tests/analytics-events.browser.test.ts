@@ -1,11 +1,12 @@
 // The analytics model reads the app's existing event graph rather than being called from it, so
 // nothing in the feature models fails when a name or a payload here drifts. This test is what
 // notices: it drives the same events the app fires and asserts on what reaches the tracker.
-import { test, expect, beforeEach } from "vitest";
+import { test, expect, beforeEach, vi } from "vitest";
 import type { Doc } from "$lib/modules/editor/core/document/doc";
 import { authModel } from "$lib/modules/auth/model";
 import { bleModel } from "$lib/modules/device/model";
 import { editorModel } from "$lib/modules/editor/model";
+import { marketModel } from "$lib/modules/market/model";
 import "$lib/modules/analytics/model";
 
 const doc = {} as Doc; // the payload the model never looks at
@@ -48,6 +49,12 @@ test("a blank face is neither a file nor an import", () => {
   expect(sent).toEqual([["editor_open", { source: "new" }]]);
 });
 
+test("a finished showcase load is one face_view", () => {
+  marketModel.watchfaceLoaded({ id: "wf1", name: "Nothing Dots" } as never);
+
+  expect(sent).toEqual([["face_view", { id: "wf1", name: "Nothing Dots" }]]);
+});
+
 test("a successful flash is the conversion event", () => {
   bleModel.flashDone();
 
@@ -58,4 +65,24 @@ test("a registration is a signup", () => {
   authModel.registered();
 
   expect(sent).toEqual([["signup", undefined]]);
+});
+
+test("an event fired before the tracker loads is queued, then flushed on load", async () => {
+  delete (window as { umami?: unknown }).umami;
+  vi.stubEnv("VITE_ANALYTICS_HOST", "/stats");
+  vi.stubEnv("VITE_ANALYTICS_SITE_ID", "site");
+  // a fresh copy: `enabled` is read once at import, and vi.resetModules is a no-op in browser mode
+  const umami: typeof import("$lib/modules/analytics/lib/umami") =
+    // @ts-expect-error the query is Vite's, not a module TypeScript can resolve
+    await import("$lib/modules/analytics/lib/umami?stubbed");
+
+  umami.sendEvent("face_view", { id: "wf1" }); // a shared link's record beats the script
+  umami.loadTracker();
+  (window as { umami?: { track: (n: string, p?: unknown) => void } }).umami = {
+    track: (name, props) => sent.push([name, props]),
+  };
+  document.querySelector<HTMLScriptElement>("script[data-website-id]")!.onload!(new Event("load"));
+
+  expect(sent).toEqual([["face_view", { id: "wf1" }]]);
+  vi.unstubAllEnvs();
 });

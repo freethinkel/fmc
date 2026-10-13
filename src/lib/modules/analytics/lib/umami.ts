@@ -14,8 +14,10 @@
 const HOST: string | undefined = import.meta.env.VITE_ANALYTICS_HOST;
 const SITE: string | undefined = import.meta.env.VITE_ANALYTICS_SITE_ID;
 
+type Props = Record<string, string | number | boolean>;
+
 interface Umami {
-  track(name: string, props?: Record<string, string | number | boolean>): void;
+  track(name: string, props?: Props): void;
 }
 
 export const enabled = Boolean(HOST && SITE);
@@ -30,11 +32,26 @@ export const loadTracker = () => {
   el.src = `${HOST!.replace(/\/$/, "")}/script.js`;
   el.dataset.websiteId = SITE!;
   el.dataset.hostUrl = HOST!;
+  el.onload = flush;
+  el.onerror = () => (queue = null);
   document.head.append(el);
 };
 
-// ponytail: an event fired before the deferred script finishes loading is dropped rather than
-// queued. Every event we send follows a click that cannot plausibly beat it. Upgrade path if one
-// ever can: buffer into an array here and flush it from the script's onload.
-export const sendEvent = (name: string, props?: Record<string, string | number | boolean>) =>
-  (window as { umami?: Umami }).umami?.track(name, props);
+// A shared link lands straight on /market/<id> or the editor, and the record can come back before
+// the async-inserted script does — so events wait here and are flushed on load. Closed if the
+// script never arrives (an ad blocker), so the queue can't grow for the whole session.
+let queue: [string, Props?][] | null = enabled ? [] : null;
+
+export const sendEvent = (name: string, props?: Props) => {
+  const umami = (window as { umami?: Umami }).umami;
+
+  if (umami) umami.track(name, props);
+  else queue?.push([name, props]);
+};
+
+const flush = () => {
+  const pending = queue ?? [];
+
+  queue = null;
+  for (const [name, props] of pending) sendEvent(name, props);
+};

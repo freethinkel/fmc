@@ -1,6 +1,6 @@
 // What the launch is measured by, in one place.
 //
-//   face_view      a face's showcase page was opened            { id, name }
+//   face_view      a face's showcase page finished loading      { id, name }
 //   editor_open    a document was loaded into the editor        { source }
 //   import         a Facer/WatchMaker/Wear OS export was read   { format }
 //   watch_connect  a watch paired over Web Bluetooth
@@ -44,10 +44,9 @@ sample({
   target: initFx,
 });
 
-// the showcase page nulls the store while the next face loads, so only a record is a view
+// a finished load, not $watchface.updates: a download bump rewrites the record on the same page
 sample({
-  clock: marketModel.$watchface.updates,
-  filter: Boolean,
+  clock: marketModel.watchfaceLoaded,
   fn: (wf) => ({ name: "face_view" as const, props: { id: wf.id, name: String(wf.name ?? "") } }),
   target: trackFx,
 });
