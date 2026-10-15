@@ -104,6 +104,9 @@ export const publishDialogClosed = createEvent();
 // showcase page: load one watchface by id, and open its page from a card
 export const watchfaceRequested = createEvent<string>();
 export const showcaseRequested = createEvent<RecordModel>();
+// cross-module signal (analytics counts views): a finished load, unlike $watchface, which a
+// download bump rewrites too
+export const watchfaceLoaded = createEvent<RecordModel>();
 // showcase page: switch the preview between the normal render and the always-on one
 export const dialScreenSet = createEvent<"main" | "aod">();
 export const likeToggleRequested = createEvent<{
@@ -232,7 +235,7 @@ sample({
 sample({
   clock: marketApi.loadWatchfaceFx.doneData,
   fn: ({ wf }) => wf,
-  target: $watchface,
+  target: [$watchface, watchfaceLoaded],
 });
 // fold this face's likes into the shared list, so the showcase page counts and toggles them
 // with the same $likes/likeToggleRequested the grid uses
