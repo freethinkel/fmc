@@ -28,6 +28,9 @@ export const $dials = createStore<WatchDials | null>(null);
 // user picks which dial to overwrite in the slot dialog
 export const $slotDialogOpen = createStore(false);
 const $pendingBin = createStore<FlashPayload | null>(null);
+// the watch a flash went to: $bleInfo resets the moment the link drops, which is before a flash
+// cut off by that drop fails — so the outcome reads who it was from here, not from $bleInfo
+const $flashWatch = createStore<WatchInfo | null>(null);
 export const $forgetting = bleApi.forgetFx.pending;
 
 // ---- events ----
@@ -38,9 +41,13 @@ export const connectRequested = createEvent();
 export const flashRequested = createEvent<FlashPayload>();
 export const slotPicked = createEvent<number>();
 export const slotDialogClosed = createEvent();
-// cross-module signal (market.model bumps the download counter on a successful flash) —
-// exposed as an event, not the effect itself, so other models react without touching flashFx
-export const flashDone = createEvent();
+// cross-module signals (market.model bumps the download counter on a successful flash,
+// analytics.model counts both) — exposed as events, not the effects themselves, so other models
+// react without touching connectFx/flashFx. They carry the connected watch because who it was is
+// part of what happened.
+export const connected = createEvent<WatchInfo>();
+export const flashDone = createEvent<WatchInfo | null>();
+export const flashFailed = createEvent<{ watch: WatchInfo | null; error: Error }>();
 export const forgetRequested = createEvent();
 
 // ---- effects ----
@@ -101,7 +108,7 @@ sample({
 
 sample({
   clock: connectFx.doneData,
-  target: $bleInfo,
+  target: [$bleInfo, connected],
 });
 reset({ clock: [connectFx, disconnected], target: $bleInfo });
 
@@ -150,9 +157,22 @@ reset({
 reset({ clock: [slotDialogClosed, flashFx.done, disconnected], target: $pendingBin });
 
 sample({
+  clock: flashFx,
+  source: $bleInfo,
+  target: $flashWatch,
+});
+sample({
   clock: flashFx.done,
-  fn: () => undefined,
+  source: $flashWatch,
   target: flashDone,
+});
+sample({
+  clock: flashFx.failData,
+  source: $flashWatch,
+  // a full watch isn't a failure either — the slot dialog above turns it into another attempt
+  filter: (_watch, e) => !(e instanceof NoFreeSlotError),
+  fn: (watch, error) => ({ watch, error }),
+  target: flashFailed,
 });
 
 sample({
