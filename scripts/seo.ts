@@ -220,6 +220,7 @@ const newest = faces
 const urls = [
   { loc: `${SITE}/`, lastmod: newest && day(newest) },
   { loc: `${SITE}/editor` },
+  { loc: `${SITE}/help` },
   ...faces.map((f) => ({ loc: `${SITE}/market/${f.id}`, lastmod: day(f.updated) })),
   ...[...creators.keys()].map((id) => ({ loc: `${SITE}/user/${id}` })),
 ];

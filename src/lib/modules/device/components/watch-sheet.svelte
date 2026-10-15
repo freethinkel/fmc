@@ -68,6 +68,25 @@
         </span>
         {#if $bleStatus}<span class="status">{$bleStatus}</span>{/if}
       </div>
+      <!-- the honest version of "is this safe?", said here rather than left to a launch thread -->
+      <details class="before">
+        <summary>Before you connect</summary>
+        <ul>
+          <li>
+            The watch talks to one app at a time. Close Nothing X before you connect, and close this
+            tab when you're done.
+          </li>
+          <li>
+            FMC can't write firmware. Watchfaces go through the watch's own installer, and the watch
+            can refuse them.
+          </li>
+          <li>
+            If Nothing X loses the watch afterwards, pair it again. Turn Bluetooth off and on,
+            forget the watch, add it back.
+          </li>
+        </ul>
+        <a href="/help" onclick={onClose}>Read the full notes</a>
+      </details>
     </div>
   {:else}
     <div class="section">
@@ -136,6 +155,26 @@
   .status {
     font-size: 0.625rem;
     color: oklch(from var(--color-text) l c h / 55%);
+  }
+  .before {
+    font-size: 0.75rem;
+    color: oklch(from var(--color-text) l c h / 55%);
+
+    summary {
+      cursor: pointer;
+      color: var(--color-text);
+    }
+    ul {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      margin: 0.625rem 0;
+      padding-left: 1.125rem;
+      line-height: 1.5;
+    }
+    a {
+      color: var(--color-accent);
+    }
   }
   .info {
     display: flex;
