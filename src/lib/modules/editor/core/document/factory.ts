@@ -50,6 +50,21 @@ export const newImage = (frames: readonly ImageId[]): ImageLayer => ({
   frames,
 });
 
+/** One frame per battery percent, 0..100: the image widget draws frames[value % count]. */
+export const PROGRESS_STEPS = 101;
+
+/** A progress line. The format has no linear gauge, so this is the shape the stock
+ *  Analog__370__Hemisphere ships for its battery gauge: a plain image widget on battery (0x24)
+ *  picking one of 101 pre-drawn frames, meta copied from that face (max 100000, no w/h).
+ *  ponytail: battery only. It is the one source the corpus proves reads 0..100 into a picker;
+ *  the goal-percent ids would need a stock face that pickers them before they can drive one. */
+export const newProgressLine = (frames: readonly ImageId[], w: number, h: number): ImageLayer => ({
+  ...newImage(frames),
+  x: CENTER - (w >> 1),
+  y: CENTER - (h >> 1),
+  meta: metaWith({ source: 0x24, max: 100000 }),
+});
+
 /** A step counter over a 10-glyph atlas. fmt byte 0x82 = two digits, zero-padded. */
 export const newNumber = (glyphs: readonly ImageId[]): NumberLayer => ({
   ...base(),
