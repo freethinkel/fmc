@@ -2,11 +2,12 @@
 // pure `Doc -> Doc` edit handed to `committed`, so the history and the "what changed" logic stay
 // in one place — this file only decides which edit runs and what ends up selected.
 import { attach, createEffect, createEvent, createStore, sample } from "effector";
-import { TAG } from "../core/format";
+import { TAG, parseBin } from "../core/format";
 import { PREVIEW, SCREEN } from "../core/render/screen";
 import { renderDoc } from "../core/render/render";
 import {
   blankFrame,
+  decodeAssets,
   opaqueBlack,
   progressLineFrame,
   resourceFromFile,
@@ -48,6 +49,7 @@ import {
 import { FRAME_LABELS } from "../core/document/sources";
 import {
   framesOf,
+  fromLegacy,
   newImageId,
   type Doc,
   type ImageAsset,
@@ -112,6 +114,9 @@ export const duplicateRequested = createEvent();
 export const copyRequested = createEvent();
 export const cutRequested = createEvent();
 export const pasteRequested = createEvent();
+/** Other watchfaces' .bin files, pasted into the open one: each file's layers for the current
+ *  screen (its main one when it has no such screen), with their assets. */
+export const binsImported = createEvent<File[]>();
 export const groupRequested = createEvent();
 export const ungroupRequested = createEvent();
 export const moveRequested = createEvent<{
@@ -797,11 +802,12 @@ interface Clip {
 
 export const $clipboard = createStore<Clip | null>(null);
 /** The paste, resolved: fresh layer ids, and the assets this document is missing. */
-const pasted = createEvent<{
+type Pasted = {
   layers: Layer[];
   images: Map<ImageId, ImageAsset>;
   cache: Map<ImageId, ImageCache>;
-}>();
+};
+const pasted = createEvent<Pasted>();
 
 interface ClipSource {
   selected: Layer[];
@@ -856,28 +862,67 @@ sample({
   }),
   target: committed,
 });
+const resolvePaste = (clip: Clip, doc: Doc): Pasted => {
+  // An id already in this document is the same picture only when it's the very same object —
+  // the counters restart per document, so everything else gets a fresh id and a copied asset.
+  const remap = new Map<ImageId, ImageId>();
+  const images = new Map<ImageId, ImageAsset>();
+  const cache = new Map<ImageId, ImageCache>();
+
+  for (const [id, a] of clip.images) {
+    if (doc.images.get(id) === a) continue;
+    const fresh = newImageId();
+    const c = clip.cache.get(id);
+
+    remap.set(id, fresh);
+    images.set(fresh, { ...a, id: fresh });
+    if (c) cache.set(fresh, c);
+  }
+  return { layers: clip.layers.map((l) => repointFrames(cloneLayer(l), remap)), images, cache };
+};
+
 sample({
   clock: pasteRequested,
   source: { clip: $clipboard, doc: $doc },
   filter: ({ clip, doc }) => Boolean(clip?.layers.length && doc),
-  fn: ({ clip, doc }) => {
-    // An id already in this document is the same picture only when it's the very same object —
-    // the counters restart per document, so everything else gets a fresh id and a copied asset.
-    const remap = new Map<ImageId, ImageId>();
-    const images = new Map<ImageId, ImageAsset>();
-    const cache = new Map<ImageId, ImageCache>();
+  fn: ({ clip, doc }) => resolvePaste(clip!, doc!),
+  target: pasted,
+});
 
-    for (const [id, a] of clip!.images) {
-      if (doc!.images.get(id) === a) continue;
-      const fresh = newImageId();
-      const c = clip!.cache.get(id);
+// Every file parses into its own document, whose asset ids (i0, i1, …) collide with the next
+// file's — so each one is resolved on its own, and only the fresh ids are merged.
+const importBinsFx = attach({
+  source: $screen,
+  effect: (screen, files: File[]) =>
+    Promise.all(
+      files.map(async (f) => {
+        const { doc } = fromLegacy(parseBin(await f.arrayBuffer()));
+        const from = doc.screens.find((s) => s.kind === screen) ?? doc.screens[0];
 
-      remap.set(id, fresh);
-      images.set(fresh, { ...a, id: fresh });
-      if (c) cache.set(fresh, c);
-    }
-    return { layers: clip!.layers.map((l) => repointFrames(cloneLayer(l), remap)), images, cache };
-  },
+        return clipOf({ selected: [...from.layers], doc, cache: await decodeAssets(doc.images) });
+      }),
+    ),
+});
+
+sample({
+  clock: binsImported,
+  source: $doc,
+  filter: (doc, files) => Boolean(doc) && files.length > 0,
+  fn: (_, files) => files,
+  target: importBinsFx,
+});
+sample({
+  clock: importBinsFx.doneData,
+  source: $doc,
+  filter: Boolean,
+  fn: (doc, clips) =>
+    clips
+      .map((clip) => resolvePaste(clip, doc))
+      .reduce((a, b) => ({
+        layers: [...a.layers, ...b.layers],
+        images: new Map([...a.images, ...b.images]),
+        cache: new Map([...a.cache, ...b.cache]),
+      })),
   target: pasted,
 });
 sample({
@@ -1123,6 +1168,7 @@ sample({
     addAodFx.failData,
     sourceIdFx.failData,
     alignFx.failData,
+    importBinsFx.failData,
   ],
   fn: (e: Error) => e.message,
   target: errored,
