@@ -44,6 +44,7 @@ jobs:
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }} # user@host
           DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+          VITE_APTABASE_KEY: A-EU-4670014985 # public, ends up in the bundle
         run: |
           mkdir -p ~/.ssh
           printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/id_ed25519

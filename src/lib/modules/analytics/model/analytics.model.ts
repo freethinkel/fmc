@@ -8,18 +8,18 @@
 //   watch_upload_failed a flash was started and did not finish       { device, reason }
 //   signup              a new account was created through the register form
 //
-// Pageviews (path + referrer) are the tracker script's own job, see ../lib/umami.
+//   page_view           a route was opened — sent by the root layout   { page }
 //
 // Every moment above already has an event in the model that owns it, so this file subscribes to
 // those rather than scattering track() calls through the feature models: the entire catalogue of
 // what FMC reports about its users stays readable on one screen, which is the point of an
 // analytics layer you can defend to a privacy-minded audience.
-import { createEffect, createEvent, sample } from "effector";
+import { createEffect, sample } from "effector";
 import { authModel } from "$lib/modules/auth/model";
 import { bleModel } from "$lib/modules/device/model";
 import { editorModel } from "$lib/modules/editor/model";
 import { marketModel } from "$lib/modules/market/model";
-import { loadTracker, sendEvent } from "../lib/umami";
+import { sendEvent } from "../lib/aptabase";
 
 export type EventName =
   | "face_view"
@@ -30,22 +30,12 @@ export type EventName =
   | "watch_upload_failed"
   | "signup";
 
-// ---- events ----
-/** Fired once from the root layout — nothing is loaded or sent before it. */
-export const started = createEvent();
-
 // ---- effects ----
-const initFx = createEffect(loadTracker);
 const trackFx = createEffect(
   ({ name, props }: { name: EventName; props?: Record<string, string> }) => sendEvent(name, props),
 );
 
 // ---- business logic ----
-sample({
-  clock: started,
-  target: initFx,
-});
-
 // a finished load, not $watchface.updates: a download bump rewrites the record on the same page
 sample({
   clock: marketModel.watchfaceLoaded,

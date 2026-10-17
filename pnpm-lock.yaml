@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@aptabase/web':
+        specifier: 0.5.0
+        version: 0.5.0
       '@beacio/core':
         specifier: ^1.0.0
         version: 1.0.0
@@ -83,6 +86,9 @@ importers:
         version: 3.0.0(svelte@5.56.7)(vitest@4.1.10)
 
 packages:
+
+  '@aptabase/web@0.5.0':
+    resolution: {integrity: sha512-+RFdaS0bLJtqTZyB1uG32S7tuTfJTGbG2bkdVMs3AT7yG7DP2yb6JY5rZoBf3UyW9sigFHGRkbXoAXdCMZibWA==}
 
   '@beacio/core@1.0.0':
     resolution: {integrity: sha512-aZbGbkl6eZiNTFcf/fwuO/LeYK6gY6oMrhbXHKBCROKJqMQcM2hH1arsWGQqGeMw7MaebCwpU/JejSzLSDc6WA==}
@@ -1054,6 +1060,8 @@ packages:
     resolution: {integrity: sha512-B58NGBEoc8Y9MWWCQGl/gq9xBCe4IiKM0a2x7GZdQKOW5Exr8S1W24J6OgM1njK8xCRGvAJIL/MxXHf6SkmQKQ==}
 
 snapshots:
+
+  '@aptabase/web@0.5.0': {}
 
   '@beacio/core@1.0.0': {}
 

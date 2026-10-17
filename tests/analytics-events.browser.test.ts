@@ -18,14 +18,16 @@ const watch = (name: string | null): WatchInfo => ({
   firmware: null,
   serial: null,
 });
-let sent: [string, unknown][] = [];
+const sent = vi.hoisted((): [string, unknown][] => []);
+
+// stand in for the transport, which a test build (no VITE_APTABASE_KEY) turns into a no-op
+vi.mock("$lib/modules/analytics/lib/aptabase", () => ({
+  enabled: true,
+  sendEvent: (name: string, props?: unknown) => sent.push([name, props]),
+}));
 
 beforeEach(() => {
-  sent = [];
-  // stand in for the tracker script, which a test build never loads
-  (window as { umami?: { track: (n: string, p?: unknown) => void } }).umami = {
-    track: (name, props) => sent.push([name, props]),
-  };
+  sent.length = 0;
   editorModel.faceKeySet(null);
 });
 
@@ -100,24 +102,4 @@ test("a registration is a signup", () => {
   authModel.registered();
 
   expect(sent).toEqual([["signup", undefined]]);
-});
-
-test("an event fired before the tracker loads is queued, then flushed on load", async () => {
-  delete (window as { umami?: unknown }).umami;
-  vi.stubEnv("VITE_ANALYTICS_HOST", "/stats");
-  vi.stubEnv("VITE_ANALYTICS_SITE_ID", "site");
-  // a fresh copy: `enabled` is read once at import, and vi.resetModules is a no-op in browser mode
-  const umami: typeof import("$lib/modules/analytics/lib/umami") =
-    // @ts-expect-error the query is Vite's, not a module TypeScript can resolve
-    await import("$lib/modules/analytics/lib/umami?stubbed");
-
-  umami.sendEvent("face_view", { id: "wf1" }); // a shared link's record beats the script
-  umami.loadTracker();
-  (window as { umami?: { track: (n: string, p?: unknown) => void } }).umami = {
-    track: (name, props) => sent.push([name, props]),
-  };
-  document.querySelector<HTMLScriptElement>("script[data-website-id]")!.onload!(new Event("load"));
-
-  expect(sent).toEqual([["face_view", { id: "wf1" }]]);
-  vi.unstubAllEnvs();
 });
