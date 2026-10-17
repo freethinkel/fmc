@@ -13,11 +13,13 @@
     type Layer,
   } from "../../core/document/doc";
   import {
+    aliasOf,
     collectSlotsDoc,
     describeConditions,
     pickerLabel,
     frameLabelsOf,
     ID_LABELS,
+    SOURCE_IDS,
   } from "../../core/document/sources";
   import type { ArcSpec } from "../../core/render/arc";
   import { slotBindingOf } from "../../core/document/edits";
@@ -54,14 +56,20 @@
   const frameLabels = $derived(frameLabelsOf(layer));
 
   const setSourceId = (source: number) => sourceIdSet({ id: layer.id, source });
-  const sourceOption = (id: number) => ({
-    value: String(id),
-    label: pickerLabel(id),
-  });
+  // an alias says, in the open list, which id it duplicates (#39); the trigger keeps the short name
+  const sourceOption = (id: number) => {
+    const of = aliasOf(id);
+
+    return {
+      value: String(id),
+      label: of == null ? pickerLabel(id) : `${pickerLabel(id)} — same as 0x${of.toString(16)}`,
+      short: pickerLabel(id),
+    };
+  };
   const sourceOptions = $derived(
-    Object.keys(ID_LABELS)
-      .map((id) => sourceOption(Number(id)))
-      .concat(meta && !ID_LABELS[meta.source] ? [sourceOption(meta.source)] : []),
+    SOURCE_IDS.map(sourceOption).concat(
+      meta && !ID_LABELS[meta.source] ? [sourceOption(meta.source)] : [],
+    ),
   );
 
   // meta.flags === 4 marks this widget's assets accent-tintable on the real device — see
@@ -144,6 +152,13 @@
   <div>
     <span class="muted-label">source</span>
     <Select value={String(meta.source)} options={sourceOptions} onChange={(v) => setSourceId(+v)} />
+    {#if aliasOf(meta.source) != null}
+      <p class="hint-xs">
+        a firmware alias: reads the same value as 0x{aliasOf(meta.source)?.toString(16)}. A second
+        id only matters when a number and a ring show one metric — on a shared id the number reads
+        the ring's percent
+      </p>
+    {/if}
     {#if frameLabels && images.length && images.length !== frameLabels.length}
       <p class="hint-xs">
         {ID_LABELS[meta.source]} needs {frameLabels.length} frames, this widget has
@@ -264,9 +279,7 @@
       <div class="row">
         <Select
           value={String(c.source)}
-          options={sourceOptions.concat(
-            ID_LABELS[c.source] ? [] : [{ value: String(c.source), label: pickerLabel(c.source) }],
-          )}
+          options={sourceOptions.concat(ID_LABELS[c.source] ? [] : [sourceOption(c.source)])}
           onChange={(v) => setCondition(i, { source: +v })}
         />
         <Select value={c.op} options={OPS} onChange={(v) => setCondition(i, { op: v as CondOp })} />
