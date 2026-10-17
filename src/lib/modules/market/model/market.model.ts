@@ -47,6 +47,28 @@ export const $foreignWf = combine(
 // of the follow-up (dialog open state, navigation, error banner) lives here, not in components.
 const $saveKind = createStore<"draft" | "publish" | null>(null);
 export const $publishDialogOpen = createStore(false);
+/** The publish dialog's form. `device` is a `market/lib/devices` value, "" until picked. */
+export interface PublishForm {
+  name: string;
+  description: string;
+  device: string;
+}
+export const $publishForm = createStore<PublishForm>({ name: "", description: "", device: "" });
+// an already-published own face reopens the dialog to edit its details rather than to publish
+export const $publishEditing = combine(
+  $openedWf,
+  authModel.$user,
+  (wf, user) => Boolean(wf?.published) && wf?.owner === user?.id,
+);
+// A first publish has to say which watch it's for — no default on purpose: the editor renders
+// both watches identically, so a guess would re-create the mislabelling the field exists to end.
+// Editing details doesn't insist: most published faces predate the field, and fixing a typo in
+// one shouldn't be held hostage to it.
+export const $publishReady = combine(
+  $publishForm,
+  $publishEditing,
+  (form, editing) => Boolean(form.name.trim()) && (editing || Boolean(form.device)),
+);
 // marketLoadRequested fires on every market.svelte mount — load the catalog once per session,
 // a page revisit reuses $items; reloading needs a full page refresh (or removeFx's own reload below)
 const $marketRequestedOnce = createStore(false);
@@ -101,6 +123,7 @@ export const saveDraftRequested = createEvent<marketApi.SavePayload>();
 export const publishRequested = createEvent<marketApi.SavePayload>();
 export const publishDialogOpened = createEvent();
 export const publishDialogClosed = createEvent();
+export const publishFormPatched = createEvent<Partial<PublishForm>>();
 // showcase page: load one watchface by id, and open its page from a card
 export const watchfaceRequested = createEvent<string>();
 export const showcaseRequested = createEvent<RecordModel>();
@@ -430,6 +453,25 @@ sample({
   clock: publishDialogClosed,
   fn: () => false,
   target: $publishDialogOpen,
+});
+
+// the form starts from the record when there is one — otherwise re-publishing would wipe the
+// description with "" and drop the device the face already carries
+sample({
+  clock: publishDialogOpened,
+  source: { wf: $openedWf, doc: editorModel.$doc },
+  fn: ({ wf, doc }): PublishForm => ({
+    name: wf?.name || doc?.name || "Custom",
+    description: wf?.description ?? "",
+    device: typeof wf?.device === "string" ? wf.device : "",
+  }),
+  target: $publishForm,
+});
+sample({
+  clock: publishFormPatched,
+  source: $publishForm,
+  fn: (form, patch) => ({ ...form, ...patch }),
+  target: $publishForm,
 });
 
 sample({

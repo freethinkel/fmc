@@ -7,6 +7,7 @@
   import { authModel } from "$lib/modules/auth/model";
   import { marketModel } from "../model";
   import { WatchfaceList } from "../components/watchface-list";
+  import { DEVICES, matchesDevice } from "../lib/devices";
 
   const { $user: user } = authModel;
   const {
@@ -39,10 +40,19 @@
     { value: "downloads", label: "Most downloaded" },
   ];
 
+  // "" — every watch. The shelf is mostly Watch 3 Pro faces right now, so a Watch Pro 2 owner
+  // needs a way to see their own watch's faces without us moving or hiding anyone's work.
+  let device = $state("");
+  const DEVICE_OPTIONS = [
+    { value: "", label: "All devices" },
+    ...DEVICES.map((d) => ({ value: d.value, label: d.label, short: d.short })),
+  ];
+
   const likeCount = (id: string) => $likes.filter((l) => l.watchface === id).length;
 
   const shown = $derived(
     (mine ? $myItems : $items.filter((wf) => Boolean(wf.owner)))
+      .filter((wf) => matchesDevice(wf.device, device))
       .filter((wf) => wf.name.toLowerCase().includes(query.trim().toLowerCase()))
       .toSorted((a, b) =>
         sort === "popular"
@@ -60,6 +70,7 @@
   $effect(() => {
     query;
     sort;
+    device;
     mine;
     visibleCount = PAGE;
   });
@@ -82,6 +93,9 @@
       />
     {/if}
     <SearchInput bind:value={query} />
+    <div class="device">
+      <Select bind:value={device} options={DEVICE_OPTIONS} />
+    </div>
     <div class="sort">
       <Select bind:value={sort} options={SORT_OPTIONS} />
     </div>
@@ -130,6 +144,9 @@
   .sort {
     width: 8.125rem;
   }
+  .device {
+    width: 9.5rem;
+  }
 
   @media (max-width: 767px) {
     .toolbar {
@@ -143,14 +160,16 @@
         flex: 1;
       }
     }
+    /* two selects don't fit beside the search on a phone — the search takes its own row */
     .toolbar > :global(.search) {
-      flex: 1;
+      flex: 1 1 100%;
       width: auto;
       margin-inline-start: 0;
     }
+    .device,
     .sort {
-      width: 7.5rem;
-      flex: none;
+      flex: 1;
+      width: auto;
     }
   }
   main {

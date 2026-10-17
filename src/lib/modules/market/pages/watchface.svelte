@@ -12,6 +12,7 @@
   import { LiveDial } from "../components/live-dial";
   import { BackBtn } from "$lib/shared/components/back-btn";
   import { List, ListItem } from "$lib/shared/components/list";
+  import { deviceLabel } from "../lib/devices";
   import { blur } from "svelte/transition";
 
   interface Props {
@@ -48,6 +49,7 @@
   });
 
   const wf = $derived($watchface);
+  const device = $derived(deviceLabel(wf?.device));
   const owner = $derived(wf?.expand?.owner);
   const likeCount = $derived($likes.filter((l) => l.watchface === id).length);
   const liked = $derived($likes.some((l) => l.watchface === id && l.user === $user?.id));
@@ -108,6 +110,7 @@
           <div class="title-row">
             <h1 class="name">{wf.name}</h1>
             {#if wf.type}<Badge>{wf.type}</Badge>{/if}
+            {#if device}<Badge quiet>{device}</Badge>{/if}
           </div>
 
           {#if wf.description}

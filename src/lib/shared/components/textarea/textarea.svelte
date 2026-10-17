@@ -5,11 +5,20 @@
     rows?: number;
     disabled?: boolean;
     maxlength?: number;
+    onInput?: (value: string) => void;
   }
-  let { value = $bindable(""), placeholder, rows = 3, disabled, maxlength }: Props = $props();
+  let {
+    value = $bindable(""),
+    placeholder,
+    rows = 3,
+    disabled,
+    maxlength,
+    onInput,
+  }: Props = $props();
 </script>
 
-<textarea {placeholder} {rows} {disabled} {maxlength} bind:value></textarea>
+<textarea {placeholder} {rows} {disabled} {maxlength} bind:value oninput={() => onInput?.(value)}
+></textarea>
 
 <style>
   textarea {
