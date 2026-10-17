@@ -18,6 +18,7 @@
     selectToggled,
     nodeAdded,
     slotAdded,
+    progressLineAdded,
     aodRemoved,
     layerFlagsSet,
     widgetAdded,
@@ -313,6 +314,12 @@
       </MenuItem>
       <MenuItem onClick={() => nodeAdded("ring")}>
         <Icon name="progress_activity" size={22} /> Progress ring
+      </MenuItem>
+      <MenuItem onClick={() => progressLineAdded("horizontal")}>
+        <Icon name="linear_scale" size={22} /> Progress line
+      </MenuItem>
+      <MenuItem onClick={() => progressLineAdded("vertical")}>
+        <Icon name="height" size={22} /> Vertical progress line
       </MenuItem>
       <MenuItem onClick={() => nodeAdded("group")}>
         <Icon name="folder" size={22} /> Group
