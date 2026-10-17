@@ -40,3 +40,29 @@ test("dragging a layer row onto its sibling reorders the tree", async () => {
   // dropped onto the target row, so it lands next to it in subs
   expect(Math.abs(after.indexOf(dragged) - after.indexOf(target))).toBe(1);
 });
+
+test("a touch drag from a row's grip reorders the tree too", async () => {
+  // the previous test left a document loaded
+  render(TreePanel);
+  document.querySelector(".chevron")!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 50));
+  const before = editorModel.$doc.getState()!.screens[0].layers.map((l) => l.id);
+  const rows = [...document.querySelectorAll<HTMLElement>(".node-row")];
+  const dragged = before.at(-1)!; // rows[1]
+  const target = before.at(-3)!; // rows[3]
+  const r = rows[3].getBoundingClientRect();
+  const at = { clientX: r.left + r.width / 2, clientY: r.top + r.height * 0.1 };
+  const touch = (type: string, init: PointerEventInit = {}) =>
+    new PointerEvent(type, { bubbles: true, pointerType: "touch", pointerId: 7, ...init });
+
+  rows[1].querySelector(".grip")!.dispatchEvent(touch("pointerdown"));
+  window.dispatchEvent(touch("pointermove", at));
+  await new Promise((r) => setTimeout(r, 0));
+  expect(rows[3].classList.contains("drop-before")).toBe(true);
+  window.dispatchEvent(touch("pointerup", at));
+
+  const after = editorModel.$doc.getState()!.screens[0].layers.map((l) => l.id);
+
+  // dropped on the target row's top edge, i.e. right above it: next after it in draw order
+  expect(after.indexOf(dragged)).toBe(after.indexOf(target) + 1);
+});
