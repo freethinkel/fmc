@@ -105,6 +105,27 @@ export async function blankFrame(w: number, h: number): Promise<Resource> {
   return r;
 }
 
+/** One progress-line frame at `pct` percent: a white fill over a faint track, filling left to
+ *  right, or bottom-up when the bar is taller than wide.
+ *  ponytail: baked white, no accent flag (Hemisphere's gauge has none); recolor by replacing frames. */
+export function progressLinePixels(w: number, h: number, pct: number): Uint8ClampedArray {
+  const px = new Uint8ClampedArray(w * h * 4).fill(255);
+  const vertical = h > w;
+  const filled = Math.round(((vertical ? h : w) * pct) / 100);
+
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++)
+      if (vertical ? h - 1 - y >= filled : x >= filled) px[(y * w + x) * 4 + 3] = 51;
+  return px;
+}
+
+export async function progressLineFrame(w: number, h: number, pct: number): Promise<Resource> {
+  const r = encodePixels(progressLinePixels(w, h, pct), w, h, 5);
+
+  r.bitmap = await bitmapOf(r);
+  return r;
+}
+
 export async function opaqueBlack(w: number, h: number): Promise<Resource> {
   const px = new Uint8ClampedArray(w * h * 4);
 

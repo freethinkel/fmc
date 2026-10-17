@@ -5,6 +5,8 @@
 import { test, expect } from "vitest";
 import {
   ID_METRIC,
+  SOURCE_IDS,
+  aliasOf,
   defaultSim,
   goalOf,
   idValue,
@@ -51,4 +53,15 @@ test("an override still wins over the metric field — that's what the folded se
 
   expect(idValue(0x19, sim, t)).toBe(100);
   expect(idValue(0x19, { ...sim, overrides: { 0x19: 7 } }, t)).toBe(7);
+});
+
+// #39: the picker lists aliases under their first id and names which one they duplicate
+test("aliases sit right under the id they duplicate", () => {
+  expect(aliasOf(0x15)).toBeNull();
+  expect(aliasOf(0x16)).toBe(0x15);
+  expect(aliasOf(0x70)).toBe(0x0a);
+  expect(aliasOf(0x19)).toBeNull();
+  expect(SOURCE_IDS.slice(SOURCE_IDS.indexOf(0x0a), SOURCE_IDS.indexOf(0x0a) + 2)).toEqual([
+    0x0a, 0x70,
+  ]);
 });

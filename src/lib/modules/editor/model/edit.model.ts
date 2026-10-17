@@ -5,7 +5,13 @@ import { attach, createEffect, createEvent, createStore, sample } from "effector
 import { TAG, parseBin } from "../core/format";
 import { PREVIEW, SCREEN } from "../core/render/screen";
 import { renderDoc } from "../core/render/render";
-import { blankFrame, decodeAssets, opaqueBlack, resourceFromFile } from "../core/render/pixels";
+import {
+  blankFrame,
+  decodeAssets,
+  opaqueBlack,
+  progressLineFrame,
+  resourceFromFile,
+} from "../core/render/pixels";
 import { glyphSprites, type GlyphSpec } from "../core/render/glyphs";
 import {
   addLayer,
@@ -27,6 +33,7 @@ import {
   wrapInGroup,
 } from "../core/document/edits";
 import {
+  PROGRESS_STEPS,
   SLOT_METRICS,
   SLOT_SIZE,
   blankScreen,
@@ -35,6 +42,7 @@ import {
   newHand,
   newImage,
   newNumber,
+  newProgressLine,
   newRing,
   newSlot,
 } from "../core/document/factory";
@@ -87,6 +95,8 @@ export const numberAdded = createEvent();
  *  the font generator — for when the picture doesn't exist at add time. */
 export const imageAdded = createEvent();
 export const slotAdded = createEvent();
+/** A battery progress line: 101 pre-drawn frames, one per percent (see newProgressLine). */
+export const progressLineAdded = createEvent<"horizontal" | "vertical">();
 /** Give the face an always-on screen. A new document starts with the main screen only, and until
  *  this runs the AOD tab has nothing to show. */
 export const aodAdded = createEvent();
@@ -225,6 +235,26 @@ const addNumberFx = attach({
       cache.set(id, { bitmap: r.bitmap });
     }
     return { screen, assets, cache, layer: newNumber([...assets.keys()]) };
+  },
+});
+
+// A progress line's frames are drawn here, not dropped in: one per percent, so the art can't
+// drift out of step with the value that picks it.
+const addProgressLineFx = attach({
+  source: $screen,
+  async effect(screen, dir: "horizontal" | "vertical") {
+    const [w, h] = dir === "horizontal" ? [200, 12] : [12, 200];
+    const assets = new Map<ImageId, ImageAsset>();
+    const cache = new Map<ImageId, ImageCache>();
+
+    for (let i = 0; i < PROGRESS_STEPS; i++) {
+      const r = await progressLineFrame(w, h, i);
+      const id = newImageId();
+
+      assets.set(id, { id, cf: r.cf, w: r.w, h: r.h, data: r.data });
+      cache.set(id, { bitmap: r.bitmap });
+    }
+    return { screen, assets, cache, layer: newProgressLine([...assets.keys()], w, h) };
   },
 });
 
@@ -506,7 +536,17 @@ sample({
   target: addSlotFx,
 });
 sample({
-  clock: [addWidgetFx.doneData, addImageFx.doneData, addNumberFx.doneData, addSlotFx.doneData],
+  clock: progressLineAdded,
+  target: addProgressLineFx,
+});
+sample({
+  clock: [
+    addWidgetFx.doneData,
+    addImageFx.doneData,
+    addNumberFx.doneData,
+    addSlotFx.doneData,
+    addProgressLineFx.doneData,
+  ],
   filter: Boolean,
   fn: ({ screen, assets, layer }) => ({
     edit: (doc: Doc) => addLayer(withAssets(doc, assets), screen, layer),
@@ -514,13 +554,25 @@ sample({
   target: committed,
 });
 sample({
-  clock: [addWidgetFx.doneData, addImageFx.doneData, addNumberFx.doneData, addSlotFx.doneData],
+  clock: [
+    addWidgetFx.doneData,
+    addImageFx.doneData,
+    addNumberFx.doneData,
+    addSlotFx.doneData,
+    addProgressLineFx.doneData,
+  ],
   filter: Boolean,
   fn: ({ cache }) => cache,
   target: cachePatched,
 });
 sample({
-  clock: [addWidgetFx.doneData, addImageFx.doneData, addNumberFx.doneData, addSlotFx.doneData],
+  clock: [
+    addWidgetFx.doneData,
+    addImageFx.doneData,
+    addNumberFx.doneData,
+    addSlotFx.doneData,
+    addProgressLineFx.doneData,
+  ],
   filter: Boolean,
   fn: ({ layer }) => layer.id,
   target: select,

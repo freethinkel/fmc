@@ -6,13 +6,27 @@ import { test, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import {
   buildBin,
+  decodePixels,
+  encodePixels,
   parseBin,
   TAG,
   type FaceNode,
   type Resource,
 } from "../src/lib/modules/editor/core/format";
-import { toLegacy, type RingLayer } from "../src/lib/modules/editor/core/document/doc";
-import { blankDoc, newRing, withName } from "../src/lib/modules/editor/core/document/factory";
+import {
+  newImageId,
+  toLegacy,
+  type ImageAsset,
+  type RingLayer,
+} from "../src/lib/modules/editor/core/document/doc";
+import {
+  PROGRESS_STEPS,
+  blankDoc,
+  newProgressLine,
+  newRing,
+  withName,
+} from "../src/lib/modules/editor/core/document/factory";
+import { progressLinePixels } from "../src/lib/modules/editor/core/render/pixels";
 import { SCREEN } from "../src/lib/modules/editor/core/render/screen";
 
 const res = (w: number, h: number): Resource => ({
@@ -105,4 +119,55 @@ test("renaming keeps the header's trailing byte and cuts only the header copy", 
   expect(built.screens[0].subs!.find((n) => n.tag === TAG.name)?.text).toBe(
     "A name well over fifteen",
   );
+});
+
+// #61: the format has no linear gauge, so a progress line is a battery picker with one frame per
+// percent — the shape Hemisphere's stock battery gauge already ships. Pinned against that file's
+// own node, and the frames have to fill in step with the percent that picks them.
+test("a progress line is written like Hemisphere's 101-frame battery gauge", () => {
+  const assets = Array.from({ length: PROGRESS_STEPS }, (_, i): ImageAsset => {
+    const r = encodePixels(progressLinePixels(200, 12, i), 200, 12, 5);
+
+    return { id: newImageId(), cf: r.cf, w: r.w, h: r.h, data: r.data };
+  });
+  const doc = blankDoc("Line", res(2, 2), res(SCREEN, SCREEN));
+  const line = newProgressLine(
+    assets.map((a) => a.id),
+    200,
+    12,
+  );
+  const built = parseBin(
+    buildBin(
+      toLegacy({
+        ...doc,
+        images: new Map([...doc.images, ...assets.map((a) => [a.id, a] as const)]),
+        screens: [{ ...doc.screens[0], layers: [...doc.screens[0].layers, line] }],
+      }),
+    ),
+  );
+  const written = built.screens[0].subs!.at(-1)!.subs![0];
+  const stock = parseBin(readFileSync("tests/__fixtures__/Analog__370__Hemisphere.bin"));
+  const pickers: FaceNode[] = [];
+  const walk = (n: FaceNode) => {
+    if (n.tag === TAG.struct && n.images?.length === PROGRESS_STEPS) pickers.push(n);
+    n.subs?.forEach(walk);
+  };
+
+  stock.screens.forEach(walk);
+  expect(pickers).toHaveLength(1);
+  expect([written.meta, written.refType]).toEqual([pickers[0].meta, pickers[0].refType]);
+  expect(written.images).toHaveLength(PROGRESS_STEPS);
+
+  // alpha of the first and last column: empty at 0%, half way at 50%, full at 100%
+  const ends = (pct: number) => {
+    const px = decodePixels(built.resources[written.images![pct]])!;
+
+    return [px[3], px[199 * 4 + 3]];
+  };
+
+  expect([ends(0), ends(50), ends(100)]).toEqual([
+    [51, 51],
+    [255, 51],
+    [255, 255],
+  ]);
 });
