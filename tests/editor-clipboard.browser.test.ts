@@ -115,3 +115,43 @@ test("cut removes the layers and still pastes them back", async () => {
   expect(framesOf(back)).toEqual(framesOf(src));
   expect(framesOf(back).every((id) => doc().images.has(id))).toBe(true);
 });
+
+test("importing several .bin files pastes every file's layers, each with its own pixels", async () => {
+  const file = async (url: string, name: string) =>
+    new File([await fetch(url).then((r) => r.arrayBuffer())], name);
+  const files = [await file(dialUrl, "dial.bin"), await file(discUrl, "disc.bin")];
+  const assetCount = () => new Set(layers().flatMap((l) => [...assetsOf(l)])).size;
+
+  await load("bins-a", dialUrl);
+  const [dialLayers, dialAssets] = [layers().length, assetCount()];
+
+  await load("bins-b", discUrl);
+  const [discLayers, discAssets] = [layers().length, assetCount()];
+
+  await load("bins-into", dialUrl);
+  const n = layers().length;
+  const before = doc().images.size;
+
+  await new Promise<void>((resolve) => {
+    const unwatch = editorModel.$doc.updates.watch(() => {
+      unwatch();
+      resolve();
+    });
+
+    editorModel.binsImported(files);
+  });
+
+  expect(layers().length).toBe(n + dialLayers + discLayers);
+  // both files number their assets from i0, so merging them by id would let one file's pixels
+  // overwrite the other's — every asset has to arrive under its own fresh id
+  expect(doc().images.size).toBe(before + dialAssets + discAssets);
+  const frames = layers()
+    .slice(n)
+    .flatMap((l) => [...assetsOf(l)]);
+  const cache = editorModel.$cache.getState();
+
+  expect(frames.every((id) => doc().images.has(id) && Boolean(cache.get(id)?.bitmap))).toBe(true);
+  // one import, one undo step
+  editorModel.undo();
+  expect(layers().length).toBe(n);
+});

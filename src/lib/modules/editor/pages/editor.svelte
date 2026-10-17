@@ -63,6 +63,7 @@
     copyRequested,
     cutRequested,
     pasteRequested,
+    binsImported,
     duplicateRequested,
     deleteRequested,
     orderMoved,
@@ -88,6 +89,7 @@
   let canvas = $state<HTMLCanvasElement | null>(null);
   let fileInput = $state<HTMLInputElement>();
   let dirInput = $state<HTMLInputElement>();
+  let binsInput = $state<HTMLInputElement>();
 
   let mobilePanel = $state<"tree" | "props" | "sim" | null>(null); // drawer on mobile
   let helpOpen = $state(false); // the `?` overlay
@@ -833,9 +835,26 @@
         <Icon name="watch" />
         <span class="route">Export folder <span>Facer, WatchMaker</span></span>
       </MenuItem>
+      {#if $doc}
+        <MenuItem onClick={() => binsInput?.click()}>
+          <Icon name="library_add" />
+          <span class="route">Layers from watchfaces <span>.bin, into this one</span></span>
+        </MenuItem>
+      {/if}
     </Menu>
     <input bind:this={fileInput} type="file" accept=".bin,.aab,.zip" hidden onchange={openFile} />
     <input bind:this={dirInput} type="file" webkitdirectory hidden onchange={openFacer} />
+    <input
+      bind:this={binsInput}
+      type="file"
+      accept=".bin"
+      multiple
+      hidden
+      onchange={(e) => {
+        binsImported([...(e.currentTarget.files ?? [])]);
+        e.currentTarget.value = "";
+      }}
+    />
     <span class="tool-slot" title="New">
       <Button
         kind="secondary"
