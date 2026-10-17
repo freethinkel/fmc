@@ -127,6 +127,24 @@ export const sourceLabel = (id: number) =>
 // only place a picker shows one.
 const AMBIGUOUS = new Set(Object.values(ID_LABELS).filter((l, i, all) => all.indexOf(l) !== i));
 
+/** The id an alias reads the same value as — the first id under its name — or null when `id` is
+ *  that first id, or has a name of its own. The firmware's getter table answers both from one
+ *  getter (docs/cmf-protocol.md, "Data-source ids"); nothing tells them apart but the number. */
+export const aliasOf = (id: number): number | null => {
+  const label = ID_LABELS[id];
+  const first = label
+    ? Number(Object.keys(ID_LABELS).find((k) => ID_LABELS[Number(k)] === label))
+    : id;
+
+  return first === id ? null : first;
+};
+
+/** Every known source in picker order: by id, with each alias pulled up under its first id, so
+ *  "month (0x15)" and "month (0x16)" sit together instead of 0x0a and 0x70 lying 100 rows apart. */
+export const SOURCE_IDS = Object.keys(ID_LABELS)
+  .map(Number)
+  .sort((a, b) => (aliasOf(a) ?? a) - (aliasOf(b) ?? b) || a - b);
+
 /** What a source picker shows: the plain name, disambiguated by id only where it has to be. */
 export const pickerLabel = (id: number) => {
   const label = ID_LABELS[id];
