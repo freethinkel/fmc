@@ -4,6 +4,14 @@ import { test, expect, vi } from "vitest";
 import { bleModel } from "$lib/modules/device/model";
 import "$lib/modules/analytics/model";
 
+const sent = vi.hoisted((): [string, unknown][] => []);
+
+// stand in for the transport, which a test build (no VITE_APTABASE_KEY) turns into a no-op
+vi.mock("$lib/modules/analytics/lib/aptabase", () => ({
+  enabled: true,
+  sendEvent: (name: string, props?: unknown) => sent.push([name, props]),
+}));
+
 vi.mock("$lib/modules/device/lib/ble", async (importOriginal) => {
   class Watch {
     constructor(private status: (s: string) => void) {}
@@ -21,11 +29,6 @@ vi.mock("$lib/modules/device/lib/ble", async (importOriginal) => {
 });
 
 test("a flash cut off by a disconnect still names the watch it was going to", async () => {
-  const sent: [string, unknown][] = [];
-
-  (window as { umami?: { track: (n: string, p?: unknown) => void } }).umami = {
-    track: (name, props) => sent.push([name, props]),
-  };
   bleModel.connectRequested();
   await vi.waitFor(() => expect(bleModel.$bleInfo.getState()).not.toBeNull());
   bleModel.flashRequested({ bin: new Uint8Array() });

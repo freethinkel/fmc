@@ -19,6 +19,7 @@
     "format:check": "oxfmt --check"
   },
   "dependencies": {
+    "@aptabase/web": "0.5.0",
     "@beacio/core": "^1.0.0",
     "effector": "^23.4.4",
     "marked": "^18.0.14",
