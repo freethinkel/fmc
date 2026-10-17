@@ -180,14 +180,14 @@
     if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
   }
 
-  function onDragOver(l: Layer, e: DragEvent) {
-    const dragged = drag && $doc ? findDragged() : null;
+  // aims the drop at row `l` from the pointer's y; false where the dragged layer can't land
+  function aim(l: Layer, y: number, row: HTMLElement) {
+    const dragged = findDragged();
 
     // dropping a layer into its own subtree would detach it from the document
-    if (!dragged || contains(dragged, l.id)) return;
-    e.preventDefault();
-    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const rel = (e.clientY - r.top) / r.height;
+    if (!dragged || contains(dragged, l.id)) return false;
+    const r = row.getBoundingClientRect();
+    const rel = (y - r.top) / r.height;
 
     // only a group's middle is a drop-into zone — nothing else can hold children
     dropAt = {
@@ -195,6 +195,11 @@
       after: rel > 0.5,
       into: l.kind === "group" && rel > 0.25 && rel < 0.75,
     };
+    return true;
+  }
+
+  function onDragOver(l: Layer, e: DragEvent) {
+    if (aim(l, e.clientY, e.currentTarget as HTMLElement)) e.preventDefault();
   }
 
   const findDragged = () =>
@@ -217,17 +222,52 @@
   const childrenOf = (l: Layer): readonly Layer[] =>
     l.kind === "group" ? l.children : l.kind === "raw" ? (l.children ?? []) : [];
 
-  function onDrop(l: Layer, e: DragEvent) {
-    e.preventDefault();
+  function drop() {
     // the list is reversed, so dropping visually below the target means earlier in layer order
-    if (drag && dropAt?.id === l.id)
+    if (drag && dropAt)
       moveRequested({
         id: drag,
-        target: l.id,
+        target: dropAt.id,
         after: !dropAt.after,
         into: dropAt.into,
       });
     drag = dropAt = null;
+  }
+
+  function onDrop(l: Layer, e: DragEvent) {
+    e.preventDefault();
+    if (dropAt?.id !== l.id) dropAt = null;
+    drop();
+  }
+
+  // Touch: mobile browsers don't start an HTML5 drag from a touch (or hide it behind a long
+  // press that also opens the context menu), so a grip on each row drives the same drag with
+  // pointer events. A touch pointer stays with the grip it went down on; the window handlers
+  // below hit-test the row under the finger. ponytail: no auto-scroll near the list edges, a
+  // long tree is reordered in hops; add it if faces with many layers make that painful.
+  let gripping = false;
+
+  function onGripDown(id: NodeId, e: PointerEvent) {
+    e.preventDefault(); // no text selection or emulated mouse events from this touch
+    drag = id;
+    gripping = true;
+  }
+
+  function onGripMove(e: PointerEvent) {
+    if (!gripping) return;
+    const row = document
+      .elementFromPoint(e.clientX, e.clientY)
+      ?.closest<HTMLElement>(".node-row[data-id]");
+    const l = row ? layerById(row.dataset.id as NodeId) : null;
+
+    if (!row || !l || !aim(l, e.clientY, row)) dropAt = null;
+  }
+
+  function onGripUp(e: PointerEvent) {
+    if (!gripping) return;
+    gripping = false;
+    if (e.type === "pointercancel") drag = dropAt = null;
+    else drop();
   }
 </script>
 
@@ -326,6 +366,9 @@
     if (ctx && !(e.target as HTMLElement).closest(".ctx-menu")) ctx = null;
   }}
   onkeydown={(e) => e.key === "Escape" && (ctx = null)}
+  onpointermove={onGripMove}
+  onpointerup={onGripUp}
+  onpointercancel={onGripUp}
 />
 
 {#snippet layerActions()}
@@ -436,6 +479,7 @@
       class:drop-before={dropAt?.id === l.id && !dropAt.into && !dropAt.after}
       class:drop-after={dropAt?.id === l.id && !dropAt.into && dropAt.after}
       style="padding-inline-start: {0.5 + depth * 0.75}rem"
+      data-id={l.id}
       draggable="true"
       onclick={(e) => onRowClick(l.id, e)}
       ondblclick={() => (renaming = l.id)}
@@ -471,6 +515,9 @@
           class={l.locked ? "flag on" : "flag"}
           onclick={(e: MouseEvent) => toggleFlag(e, l, "locked")}
         />
+        <span class="grip" onpointerdown={(e) => onGripDown(l.id, e)}>
+          <Icon name="drag_indicator" size={20} />
+        </span>
       </span>
     </button>
   {/if}
@@ -603,6 +650,17 @@
   @media (hover: none) {
     :global(.flag) {
       opacity: 0.75;
+    }
+  }
+  /* the touch drag handle: a mouse drags the whole row natively */
+  .grip {
+    display: none;
+    touch-action: none; /* the finger drags the layer, not the list */
+    color: oklch(from var(--color-text) l c h / 55%);
+    cursor: grab;
+
+    @media (hover: none) {
+      display: inline-flex;
     }
   }
   .rename {
