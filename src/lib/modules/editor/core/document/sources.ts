@@ -122,22 +122,25 @@ export const sourceLabel = (id: number) =>
   ID_LABELS[id] ??
   (isSlotSel(id) ? `slot ${id - SLOT_SEL_ID} selection` : `id 0x${id.toString(16)}`);
 
-// The firmware exposes several aliases under one name — two `month`, two `battery`, four
+// The firmware exposes several ids under one name — two `month`, two `battery`, four
 // `steps (slot)?`. Those are the only entries where the raw id is doing any work, so it's the
-// only place a picker shows one.
-const AMBIGUOUS = new Set(Object.values(ID_LABELS).filter((l, i, all) => all.indexOf(l) !== i));
+// only place a picker shows one. Every id under a name, ascending (integer keys iterate in order).
+const IDS_BY_LABEL: Record<string, number[]> = {};
+
+for (const [id, label] of Object.entries(ID_LABELS)) (IDS_BY_LABEL[label] ??= []).push(Number(id));
 
 /** The id an alias reads the same value as — the first id under its name — or null when `id` is
  *  that first id, or has a name of its own. The firmware's getter table answers both from one
- *  getter (docs/cmf-protocol.md, "Data-source ids"); nothing tells them apart but the number. */
+ *  getter (docs/cmf-protocol.md, "Data-source ids"); nothing tells them apart but the number.
+ *  Under a "?" name the shared metric is itself a guess — see aliasIsGuess. */
 export const aliasOf = (id: number): number | null => {
-  const label = ID_LABELS[id];
-  const first = label
-    ? Number(Object.keys(ID_LABELS).find((k) => ID_LABELS[Number(k)] === label))
-    : id;
+  const first = IDS_BY_LABEL[ID_LABELS[id]]?.[0] ?? id;
 
   return first === id ? null : first;
 };
+
+/** True when `id`'s name is a guess ("steps (slot)?"), so being an alias of it is one too. */
+export const aliasIsGuess = (id: number) => Boolean(ID_LABELS[id]?.includes("?"));
 
 /** Every known source in picker order: by id, with each alias pulled up under its first id, so
  *  "month (0x15)" and "month (0x16)" sit together instead of 0x0a and 0x70 lying 100 rows apart. */
@@ -151,7 +154,7 @@ export const pickerLabel = (id: number) => {
 
   if (!id) return "none — static"; // meta byte 9 left at 0: the widget reads no live value
   if (!label) return sourceLabel(id); // unknown id — the number is all we have to go on
-  return AMBIGUOUS.has(label) ? `${label} (0x${id.toString(16)})` : label;
+  return IDS_BY_LABEL[label].length > 1 ? `${label} (0x${id.toString(16)})` : label;
 };
 
 export type SimValue = number | "";

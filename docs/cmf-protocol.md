@@ -231,9 +231,12 @@ this `number`'s id, the number renders `round(progressFrac(...) * 100)` **instea
 `round(idValue(id))`. Confirmed live: give a heart-rate ring and a heart-rate number both
 `id=0x1a`, and the number shows e.g. `36` (71/200 as a percent) instead of `71` bpm.
 
-- If the metric has an alias id that reads the same `idValue` (steps: `0x19`/`0x24`/
-  `0x26`/`0x49`, calories: `0x1e`/`0x48`) — put the ring on one alias, the number on
-  another. They read identical live data, so they stay in sync.
+- If the metric has an alias id that reads the same `idValue` — per the table above:
+  calories `0x1c`/`0x1e`, battery `0x24`/`0x30` — put the ring on one alias, the number on
+  another. They read identical live data, so they stay in sync. Steps (`0x19`) has no
+  confirmed alias: the editor's simulator feeds `0x25`/`0x26`/`0x49`/`0x6a`/`0x6c`/`0x6f`
+  from steps too, but the table marks those as slot ids whose exact metric is unconfirmed, so
+  check a steps ring+number pair on the watch before relying on it.
 - If it doesn't (heart rate `0x1a` has no known alias) — you can't have both a ring driven
   by the real metric AND a number showing its raw value on the same screen. Pick one:
   drop the ring (keep the accurate number) or drop the number (keep the ring, no readout).
