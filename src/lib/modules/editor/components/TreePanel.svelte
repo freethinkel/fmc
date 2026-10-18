@@ -9,6 +9,7 @@
   import { type Layer, type NodeId, type Screen } from "../core/document/doc";
   import { capsFor } from "../shared/shortcuts";
   import { editorModel } from "../model";
+  import DragGrip from "./DragGrip.svelte";
   const {
     $doc: doc,
     $screen: screen,
@@ -241,34 +242,22 @@
     drop();
   }
 
-  // Touch: mobile browsers don't start an HTML5 drag from a touch (or hide it behind a long
-  // press that also opens the context menu), so a grip on each row drives the same drag with
-  // pointer events. A touch pointer stays with the grip it went down on; the window handlers
-  // below hit-test the row under the finger. ponytail: no auto-scroll near the list edges, a
-  // long tree is reordered in hops; add it if faces with many layers make that painful.
-  let gripping = false;
+  // Touch: a grip on each row drives the same drag (see DragGrip). The row stops being
+  // natively draggable while a finger holds its grip, so a long press can't start an HTML5 drag
+  // on top. ponytail: no auto-scroll near the list edges, a long tree is reordered in hops; add
+  // it if faces with many layers make that painful.
+  let gripping = $state(false);
 
-  function onGripDown(id: NodeId, e: PointerEvent) {
-    e.preventDefault(); // no text selection or emulated mouse events from this touch
-    drag = id;
-    gripping = true;
-  }
-
-  function onGripMove(e: PointerEvent) {
-    if (!gripping) return;
-    const row = document
-      .elementFromPoint(e.clientX, e.clientY)
-      ?.closest<HTMLElement>(".node-row[data-id]");
+  function onGripMove(row: HTMLElement | null, y: number) {
     const l = row ? layerById(row.dataset.id as NodeId) : null;
 
-    if (!row || !l || !aim(l, e.clientY, row)) dropAt = null;
+    if (!row || !l || !aim(l, y, row)) dropAt = null;
   }
 
-  function onGripUp(e: PointerEvent) {
-    if (!gripping) return;
+  function onGripEnd(ok: boolean) {
     gripping = false;
-    if (e.type === "pointercancel") drag = dropAt = null;
-    else drop();
+    if (ok) drop();
+    else drag = dropAt = null;
   }
 </script>
 
@@ -373,9 +362,6 @@
     if (ctx && !(e.target as HTMLElement).closest(".ctx-menu")) ctx = null;
   }}
   onkeydown={(e) => e.key === "Escape" && (ctx = null)}
-  onpointermove={onGripMove}
-  onpointerup={onGripUp}
-  onpointercancel={onGripUp}
 />
 
 {#snippet layerActions()}
@@ -487,7 +473,7 @@
       class:drop-after={dropAt?.id === l.id && !dropAt.into && dropAt.after}
       style="padding-inline-start: {0.5 + depth * 0.75}rem"
       data-id={l.id}
-      draggable="true"
+      draggable={!gripping}
       onclick={(e) => onRowClick(l.id, e)}
       ondblclick={() => (renaming = l.id)}
       oncontextmenu={(e) => onRowMenu(l.id, e)}
@@ -522,9 +508,15 @@
           class={l.locked ? "flag on" : "flag"}
           onclick={(e: MouseEvent) => toggleFlag(e, l, "locked")}
         />
-        <span class="grip" onpointerdown={(e) => onGripDown(l.id, e)}>
-          <Icon name="drag_indicator" size={20} />
-        </span>
+        <DragGrip
+          rows=".node-row[data-id]"
+          onStart={() => {
+            drag = l.id;
+            gripping = true;
+          }}
+          onMove={onGripMove}
+          onEnd={onGripEnd}
+        />
       </span>
     </button>
   {/if}
@@ -657,17 +649,6 @@
   @media (hover: none) {
     :global(.flag) {
       opacity: 0.75;
-    }
-  }
-  /* the touch drag handle: a mouse drags the whole row natively */
-  .grip {
-    display: none;
-    touch-action: none; /* the finger drags the layer, not the list */
-    color: oklch(from var(--color-text) l c h / 55%);
-    cursor: grab;
-
-    @media (hover: none) {
-      display: inline-flex;
     }
   }
   .rename {
