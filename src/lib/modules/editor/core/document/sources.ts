@@ -33,6 +33,10 @@ export const ID_LABELS: Record<number, string> = {
   0x11: "sec ones",
   0x12: "second (smooth hand)",
   0x13: "AM/PM",
+  // The watch's 12/24h setting, read off the stock faces that carry both clocks: nine of them
+  // (Dual_View, Dash, Circularity, …) gate a 12h hour (0x01) on 0x14 == 0 and a 24h one (0x04
+  // or 0x07) on 0x14 == 1, at the same spot.
+  0x14: "12/24h flag",
   0x15: "month",
   0x16: "month",
   0x17: "day of month",
@@ -52,6 +56,9 @@ export const ID_LABELS: Record<number, string> = {
   0x27: "calories (slot)?",
   0x30: "battery",
   0x36: "temperature",
+  // Tumbler's needle round its BPM ring (11 frames) and InfoHub's ring by the heart — a heart
+  // rate gauge by placement only, its scale unknown.
+  0x3c: "heart rate (gauge)?",
   // Last night's sleep, on the same face: an hours/minutes pair reading "7.36" inside a ring
   // that gauges the same value against the wearer's sleep goal (0x81 ring, spec max 100).
   0x42: "sleep hours",
@@ -60,6 +67,10 @@ export const ID_LABELS: Record<number, string> = {
   0x48: "stand hours",
   0x49: "steps (slot)",
   0x5f: "temperature",
+  // Weather forecast high/low: Ring_data and Cirquary print them under ▲ and ▼ by the weather
+  // icon, each with its own minus-sign image and a no-data fallback.
+  0x60: "temp high",
+  0x61: "temp low",
   0x6a: "steps (slot)?",
   // slot-menu ids seen in the corpus with nothing to pin them to: a face's picker icons are its
   // own art and aren't laid out in metric order, so they can't name these
@@ -314,6 +325,8 @@ export const ID_METRIC: Record<number, SimMetric> = {
   0x27: "calories",
   0x36: "temp",
   0x5f: "temp",
+  0x60: "temp",
+  0x61: "temp",
   0x8b: "aqi",
   0x22: "distance", // derived below: km/mi, integer and fraction
   0x23: "distance",
@@ -389,6 +402,7 @@ export function idValue(id: number, sim: Sim, t: TimeParts): number {
       return Math.floor(Number(sim.distance) / 1000);
     case 0x23:
       return Math.floor(Number(sim.distance) / 1609.34);
+    case 0x14:
     case 0x73:
       return sim.is24h ? 1 : 0;
     case 0x74:
