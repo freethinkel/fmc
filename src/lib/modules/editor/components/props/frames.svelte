@@ -7,6 +7,7 @@
   import { editorModel } from "../../model";
   import { set } from "./patch";
   import FrameThumb from "./frame-thumb.svelte";
+  import DragGrip from "../DragGrip.svelte";
 
   const { layer }: { layer: Layer } = $props();
   const {
@@ -18,10 +19,19 @@
     ringImageAdded,
   } = editorModel;
 
-  // native HTML5 drag & drop over the frame list, same shape as TreePanel's layer reorder
+  // native HTML5 drag & drop over the frame list, same shape as TreePanel's layer reorder; the
+  // grip drives the same drag by touch, and the row isn't natively draggable while it's held
   let dragIdx = $state<number | null>(null);
   let ringFile = $state<HTMLInputElement | null>(null);
   let dropIdx = $state<number | null>(null);
+  let gripping = $state(false);
+
+  function onGripEnd(ok: boolean) {
+    if (ok && dragIdx !== null && dropIdx !== null)
+      frameMoved({ id: layer.id, from: dragIdx, to: dropIdx });
+    dragIdx = dropIdx = null;
+    gripping = false;
+  }
 
   // a fresh layer object arrives on every edit, so plain deriveds are enough here
   const images = $derived(framesOf(layer));
@@ -70,7 +80,8 @@
         <div
           class="frame-row"
           class:dragging={dragIdx === i}
-          draggable="true"
+          data-idx={i}
+          draggable={!gripping}
           role="listitem"
           ondragstart={(e) => {
             dragIdx = i;
@@ -90,7 +101,21 @@
           }}
           ondragend={() => (dragIdx = dropIdx = null)}
         >
-          <Icon name="drag_indicator" size={14} class="drag_indicator" />
+          <DragGrip
+            rows=".frame-row"
+            size={14}
+            always
+            onStart={() => {
+              dragIdx = i;
+              gripping = true;
+            }}
+            onMove={(row) => {
+              const at = row ? Number(row.dataset.idx) : null;
+
+              dropIdx = at === dragIdx ? null : at;
+            }}
+            onEnd={onGripEnd}
+          />
           <span class="frame-idx">{i}</span>
           {@render thumb(ri)}
           {#if frameLabels}<span class="thumb-cap">{frameLabels[i] ?? ""}</span>{/if}
@@ -184,10 +209,6 @@
       top: auto;
       bottom: -2px;
     }
-  }
-  :global(.grip) {
-    flex-shrink: 0;
-    color: oklch(from var(--color-text) l c h / 40%);
   }
   .frame-idx {
     width: 1rem;
