@@ -1,12 +1,16 @@
 // Copy/paste over the layer tree. Within one document the copies share the original's assets;
 // pasted into a document that was loaded separately they must bring their own, since asset ids
 // restart per document and would otherwise land on someone else's pixels.
-import { test, expect } from "vitest";
+import { test, expect, vi } from "vitest";
+import { buildBin } from "$lib/modules/editor/core/format";
 import { assetsOf } from "$lib/modules/editor/core/document/edits";
-import { framesOf, type Layer } from "$lib/modules/editor/core/document/doc";
+import { framesOf, toLegacy, type Layer } from "$lib/modules/editor/core/document/doc";
+import { accentFlaggedAssets } from "$lib/modules/editor/core/render/pixels";
 import { editorModel } from "$lib/modules/editor/model";
 import dialUrl from "./__fixtures__/Analog__287__Simple_Dial.bin?url";
 import discUrl from "./__fixtures__/Creative__312__Disc.bin?url";
+import moodUrl from "./__fixtures__/Default__273__Activity_Mood.bin?url"; // main screen only
+import dichotomyUrl from "./__fixtures__/Default__276__Dichotomy.bin?url"; // main only, accent art
 
 const doc = () => editorModel.$doc.getState()!;
 const layers = () => doc().screens[0].layers;
@@ -24,6 +28,20 @@ const load = async (label: string, url: string) => {
   });
   editorModel.simPatched({ live: false, time: new Date("2026-01-09T10:09:30").getTime() });
 };
+
+const file = async (url: string, name: string) =>
+  new File([await fetch(url).then((r) => r.arrayBuffer())], name);
+
+/** Import, and wait for the document to take the paste. */
+const importBins = (files: File[]) =>
+  new Promise<void>((resolve) => {
+    const unwatch = editorModel.$doc.updates.watch(() => {
+      unwatch();
+      resolve();
+    });
+
+    editorModel.binsImported(files);
+  });
 
 /** A layer that actually carries pixels — the interesting case for the asset handling. */
 const withFrames = (): Layer => layers().find((l) => framesOf(l).length > 0)!;
@@ -117,8 +135,6 @@ test("cut removes the layers and still pastes them back", async () => {
 });
 
 test("importing several .bin files pastes every file's layers, each with its own pixels", async () => {
-  const file = async (url: string, name: string) =>
-    new File([await fetch(url).then((r) => r.arrayBuffer())], name);
   const files = [await file(dialUrl, "dial.bin"), await file(discUrl, "disc.bin")];
   const assetCount = () => new Set(layers().flatMap((l) => [...assetsOf(l)])).size;
 
@@ -132,14 +148,7 @@ test("importing several .bin files pastes every file's layers, each with its own
   const n = layers().length;
   const before = doc().images.size;
 
-  await new Promise<void>((resolve) => {
-    const unwatch = editorModel.$doc.updates.watch(() => {
-      unwatch();
-      resolve();
-    });
-
-    editorModel.binsImported(files);
-  });
+  await importBins(files);
 
   expect(layers().length).toBe(n + dialLayers + discLayers);
   // both files number their assets from i0, so merging them by id would let one file's pixels
@@ -154,4 +163,61 @@ test("importing several .bin files pastes every file's layers, each with its own
   // one import, one undo step
   editorModel.undo();
   expect(layers().length).toBe(n);
+});
+
+test("importing on AOD takes each file's AOD layers, or its main ones when it has none", async () => {
+  const count = async (url: string, kind: "main" | "aod") => {
+    await load(`bins-${kind}`, url);
+    return doc().screens.find((s) => s.kind === kind)!.layers.length;
+  };
+  const [moodMain, discAod] = [await count(moodUrl, "main"), await count(discUrl, "aod")];
+  const aod = () => doc().screens.find((s) => s.kind === "aod")!.layers;
+
+  await load("bins-aod", dialUrl);
+  editorModel.screenSet("aod");
+  const [n, main] = [aod().length, layers().length];
+
+  await importBins([await file(moodUrl, "mood.bin"), await file(discUrl, "disc.bin")]);
+  expect(aod().length).toBe(n + moodMain + discAod);
+  expect(layers().length).toBe(main);
+  editorModel.screenSet("main");
+});
+
+test("imported accent-flagged art gets its accent tint", async () => {
+  await load("bins-accent", dialUrl);
+  editorModel.simPatched({ accentColor: "#ff00ff" });
+  const before = new Set(accentFlaggedAssets(doc()));
+
+  await importBins([await file(dichotomyUrl, "dichotomy.bin")]);
+  const imported = [...accentFlaggedAssets(doc())].filter((id) => !before.has(id));
+
+  expect(imported.length).toBeGreaterThan(0);
+  await vi.waitFor(() =>
+    expect(imported.every((id) => editorModel.$cache.getState().get(id)?.accent)).toBe(true),
+  );
+  editorModel.simPatched({ accentColor: null });
+});
+
+test("a file with no screens fails the import with an error that names it", async () => {
+  await load("bins-empty", dialUrl);
+  const empty = new File([buildBin(toLegacy({ ...doc(), screens: [] })).slice()], "empty.bin");
+  const n = layers().length;
+
+  editorModel.errored("");
+  editorModel.binsImported([empty]);
+  await vi.waitFor(() => expect(editorModel.$err.getState()).toContain("empty.bin"));
+  expect(layers().length).toBe(n);
+});
+
+test("an import is dropped when the face changes before it lands", async () => {
+  await load("bins-stale", dialUrl);
+  const n = layers().length;
+
+  const disc = await file(discUrl, "disc.bin");
+
+  editorModel.binsImported([disc]);
+  editorModel.select(withFrames().id);
+  editorModel.deleteRequested(); // lands while the file is still being parsed
+  await vi.waitFor(() => expect(editorModel.$err.getState()).toContain("changed"));
+  expect(layers().length).toBe(n - 1);
 });
