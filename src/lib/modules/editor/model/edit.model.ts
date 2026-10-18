@@ -57,10 +57,11 @@ import {
   type ImageId,
   type Layer,
   type NodeId,
+  type Screen,
 } from "../core/document/doc";
 import { $doc, committed, docLoaded } from "./doc.model";
 import { $screen, $sel, $selected, screenSet, select, selectionSet } from "./selection.model";
-import { $cache, cachePatched, glyphSpecRemembered } from "./assets.model";
+import { $cache, cachePatched, glyphSpecRemembered, retintRequested } from "./assets.model";
 import { $sim } from "./sim.model";
 import { errored } from "./ui.model";
 
@@ -890,40 +891,63 @@ sample({
 });
 
 // Every file parses into its own document, whose asset ids (i0, i1, …) collide with the next
-// file's — so each one is resolved on its own, and only the fresh ids are merged.
+// file's — so each one is resolved on its own, and only the fresh ids are merged. The document
+// and screen are captured up front: the paste only lands if both are still what they were.
 const importBinsFx = attach({
-  source: $screen,
-  effect: (screen, files: File[]) =>
-    Promise.all(
+  source: { doc: $doc, screen: $screen },
+  effect: async (target, files: File[]) => ({
+    ...target,
+    clips: await Promise.all(
       files.map(async (f) => {
         const { doc } = fromLegacy(parseBin(await f.arrayBuffer()));
-        const from = doc.screens.find((s) => s.kind === screen) ?? doc.screens[0];
+        const from = doc.screens.find((s) => s.kind === target.screen) ?? doc.screens[0];
 
+        if (!from) throw new Error(`${f.name} has no screens to take layers from`);
         return clipOf({ selected: [...from.layers], doc, cache: await decodeAssets(doc.images) });
       }),
     ),
+  }),
+});
+const current = { doc: $doc, screen: $screen };
+
+type ImportTarget = { doc: Doc | null; screen: Screen["kind"] };
+const unchanged = (now: ImportTarget, { doc, screen }: ImportTarget) =>
+  now.doc === doc && now.screen === screen;
+const imported = sample({
+  clock: importBinsFx.doneData,
+  source: current,
+  filter: (now, done) => unchanged(now, done) && done.clips.length > 0,
+  fn: (_, done) => done,
 });
 
 sample({
   clock: binsImported,
-  source: $doc,
-  filter: (doc, files) => Boolean(doc) && files.length > 0,
-  fn: (_, files) => files,
+  filter: $doc.map(Boolean),
   target: importBinsFx,
 });
 sample({
-  clock: importBinsFx.doneData,
-  source: $doc,
-  filter: Boolean,
-  fn: (doc, clips) =>
+  clock: imported,
+  fn: ({ doc, clips }) =>
     clips
-      .map((clip) => resolvePaste(clip, doc))
+      .map((clip) => resolvePaste(clip, doc!))
       .reduce((a, b) => ({
         layers: [...a.layers, ...b.layers],
         images: new Map([...a.images, ...b.images]),
         cache: new Map([...a.cache, ...b.cache]),
       })),
   target: pasted,
+});
+// the decoded pixels come untinted — the accent pass runs once they are in the document
+sample({
+  clock: imported,
+  target: retintRequested,
+});
+sample({
+  clock: importBinsFx.doneData,
+  source: current,
+  filter: (now, done) => !unchanged(now, done),
+  fn: () => "The face changed while the files were being read — import them again",
+  target: errored,
 });
 sample({
   clock: pasted,

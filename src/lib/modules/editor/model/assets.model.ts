@@ -88,6 +88,9 @@ export const resizeGroupRequested = createEvent<{
 export const rotateImageRequested = createEvent<{ layer: NodeId; deg: number }>();
 export const adjustImageRequested = createEvent<{ layer: NodeId; adjust: ImageAsset["adjust"] }>();
 export const invertColorsRequested = createEvent();
+/** Re-run the accent pass over the whole document — for pixels that arrived without a tint,
+ *  like layers imported from another face. */
+export const retintRequested = createEvent();
 
 // ---- effects ----
 // Serialized: a fresh load (re-tinting a just-parsed document) and an accent change can fire
@@ -568,6 +571,19 @@ sample({
   filter: ({ doc }) => Boolean(doc),
   fn: ({ doc, cache, sim }) => ({ doc: doc!, cache, color: sim.accentColor ?? null }),
   target: accentFx,
+});
+// an effect, not a sample: it reads the stores once the edit that asked for it has landed in them
+sample({
+  clock: retintRequested,
+  target: attach({
+    source: { doc: $doc, cache: $cache, sim: $sim },
+    mapParams: (_: void, { doc, cache, sim }) => ({
+      doc: doc!,
+      cache,
+      color: sim.accentColor ?? null,
+    }),
+    effect: accentFx,
+  }),
 });
 sample({
   clock: accentFx.doneData,
