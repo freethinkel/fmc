@@ -6,6 +6,7 @@ import { test, expect } from "vitest";
 import {
   ID_METRIC,
   SOURCE_IDS,
+  aliasIsGuess,
   aliasOf,
   defaultSim,
   goalOf,
@@ -61,7 +62,16 @@ test("aliases sit right under the id they duplicate", () => {
   expect(aliasOf(0x16)).toBe(0x15);
   expect(aliasOf(0x70)).toBe(0x0a);
   expect(aliasOf(0x19)).toBeNull();
-  expect(SOURCE_IDS.slice(SOURCE_IDS.indexOf(0x0a), SOURCE_IDS.indexOf(0x0a) + 2)).toEqual([
-    0x0a, 0x70,
-  ]);
+  expect(SOURCE_IDS.indexOf(0x70)).toBe(SOURCE_IDS.indexOf(0x0a) + 1);
+  // a four-id group: every alias names the first id and follows it in order
+  expect([0x6a, 0x6c, 0x6f].map(aliasOf)).toEqual([0x25, 0x25, 0x25]);
+  const at25 = SOURCE_IDS.indexOf(0x25);
+
+  expect(SOURCE_IDS.slice(at25, at25 + 4)).toEqual([0x25, 0x6a, 0x6c, 0x6f]);
+  expect(aliasIsGuess(0x6a)).toBe(true);
+  expect(aliasIsGuess(0x16)).toBe(false);
+  // the ticking second has a name of its own, not the smooth pair's
+  expect(aliasOf(0x12)).toBe(0x0f);
+  expect(aliasOf(0x72)).toBeNull();
+  expect(SOURCE_IDS.indexOf(0x12)).toBe(SOURCE_IDS.indexOf(0x0f) + 1);
 });

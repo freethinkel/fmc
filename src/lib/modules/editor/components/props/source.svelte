@@ -13,6 +13,7 @@
     type Layer,
   } from "../../core/document/doc";
   import {
+    aliasIsGuess,
     aliasOf,
     collectSlotsDoc,
     describeConditions,
@@ -62,7 +63,10 @@
 
     return {
       value: String(id),
-      label: of == null ? pickerLabel(id) : `${pickerLabel(id)} — same as 0x${of.toString(16)}`,
+      label:
+        of == null
+          ? pickerLabel(id)
+          : `${pickerLabel(id)} — ${aliasIsGuess(id) ? "probably " : ""}same as 0x${of.toString(16)}`,
       short: pickerLabel(id),
     };
   };
@@ -71,6 +75,13 @@
       meta && !ID_LABELS[meta.source] ? [sourceOption(meta.source)] : [],
     ),
   );
+  // a condition on an id the list lacks gets its own row — but only once: meta.source may
+  // already have added it, and a repeated value breaks Select's keyed each
+  const conditionOptions = (id: number) =>
+    sourceOptions.some((o) => o.value === String(id))
+      ? sourceOptions
+      : sourceOptions.concat(sourceOption(id));
+  const sourceAlias = $derived(meta ? aliasOf(meta.source) : null);
 
   // meta.flags === 4 marks this widget's assets accent-tintable on the real device — see
   // docs/cmf-protocol.md "Accent color". Every non-transparent pixel gets swapped, regardless of
@@ -152,11 +163,16 @@
   <div>
     <span class="muted-label">source</span>
     <Select value={String(meta.source)} options={sourceOptions} onChange={(v) => setSourceId(+v)} />
-    {#if aliasOf(meta.source) != null}
+    {#if sourceAlias != null}
       <p class="hint-xs">
-        a firmware alias: reads the same value as 0x{aliasOf(meta.source)?.toString(16)}. A second
-        id only matters when a number and a ring show one metric — on a shared id the number reads
-        the ring's percent
+        {#if aliasIsGuess(meta.source)}
+          probably reads the same value as 0x{sourceAlias.toString(16)} — what this id reads is unconfirmed,
+          so check it on the watch before relying on it.
+        {:else}
+          a firmware alias: reads the same value as 0x{sourceAlias.toString(16)}.
+        {/if}
+        A second id only matters when a number and a ring show one metric — on a shared id the number
+        reads the ring's percent
       </p>
     {/if}
     {#if frameLabels && images.length && images.length !== frameLabels.length}
@@ -199,7 +215,7 @@
     <p class="hint-xs">this source freezes a ring on the watch — it only animates a hand</p>
     <div class="row">
       <Button kind="secondary" onClick={() => setSourceId(0x0f)}>
-        <Icon name="undo" size={22} /> use the ticking second
+        <Icon name="undo" size={22} /> switch to second (0x0f)
       </Button>
     </div>
   </div>
@@ -279,7 +295,7 @@
       <div class="row">
         <Select
           value={String(c.source)}
-          options={sourceOptions.concat(ID_LABELS[c.source] ? [] : [sourceOption(c.source)])}
+          options={conditionOptions(c.source)}
           onChange={(v) => setCondition(i, { source: +v })}
         />
         <Select value={c.op} options={OPS} onChange={(v) => setCondition(i, { op: v as CondOp })} />
