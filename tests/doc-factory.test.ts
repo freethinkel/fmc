@@ -122,11 +122,12 @@ test("renaming keeps the header's trailing byte and cuts only the header copy", 
 });
 
 // #61: the format has no linear gauge, so a progress line is a battery picker with one frame per
-// percent — the shape Hemisphere's stock battery gauge already ships. Pinned against that file's
-// own node, and the frames have to fill in step with the percent that picks them.
-test("a progress line is written like Hemisphere's 101-frame battery gauge", () => {
+// percent — the node shape of Hemisphere's battery-percent text, whose 101 frames are rotated
+// '0%'..'100%' text, not a gauge (a filling bar on it is unverified on a watch). Pinned against
+// that file's own node, and the frames have to fill in step with the percent that picks them.
+test("a progress line is written like Hemisphere's 101-frame battery-percent picker", () => {
   const assets = Array.from({ length: PROGRESS_STEPS }, (_, i): ImageAsset => {
-    const r = encodePixels(progressLinePixels(200, 12, i), 200, 12, 5);
+    const r = encodePixels(progressLinePixels(200, 12, i, false), 200, 12, 5);
 
     return { id: newImageId(), cf: r.cf, w: r.w, h: r.h, data: r.data };
   });
@@ -170,4 +171,24 @@ test("a progress line is written like Hemisphere's 101-frame battery gauge", () 
     [255, 51],
     [255, 255],
   ]);
+});
+
+// Count filled (opaque) pixels exactly, so an off-by-one at 50% shows up, and check the vertical
+// bar fills from the bottom row up.
+test("progress-line frames fill exactly pct percent, vertical from the bottom", () => {
+  const opaque = (px: Uint8ClampedArray) => px.filter((v, i) => i % 4 === 3 && v === 255).length;
+  const row = (px: Uint8ClampedArray, w: number, y: number) =>
+    Array.from({ length: w }, (_, x) => px[(y * w + x) * 4 + 3]);
+
+  expect(opaque(progressLinePixels(200, 12, 50, false))).toBe(100 * 12);
+  expect(opaque(progressLinePixels(200, 12, 51, false))).toBe(102 * 12);
+  expect(row(progressLinePixels(200, 1, 50, false), 200, 0).indexOf(51)).toBe(100);
+
+  const v = progressLinePixels(12, 200, 50, true);
+
+  expect(opaque(v)).toBe(100 * 12);
+  expect(row(v, 12, 199)).toEqual(Array(12).fill(255));
+  expect(row(v, 12, 100)).toEqual(Array(12).fill(255));
+  expect(row(v, 12, 99)).toEqual(Array(12).fill(51));
+  expect(row(v, 12, 0)).toEqual(Array(12).fill(51));
 });

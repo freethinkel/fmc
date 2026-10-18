@@ -243,12 +243,15 @@ const addNumberFx = attach({
 const addProgressLineFx = attach({
   source: $screen,
   async effect(screen, dir: "horizontal" | "vertical") {
-    const [w, h] = dir === "horizontal" ? [200, 12] : [12, 200];
+    const vertical = dir === "vertical";
+    const [w, h] = vertical ? [12, 200] : [200, 12];
+    const frames = await Promise.all(
+      Array.from({ length: PROGRESS_STEPS }, (_, i) => progressLineFrame(w, h, i, vertical)),
+    );
     const assets = new Map<ImageId, ImageAsset>();
     const cache = new Map<ImageId, ImageCache>();
 
-    for (let i = 0; i < PROGRESS_STEPS; i++) {
-      const r = await progressLineFrame(w, h, i);
+    for (const r of frames) {
       const id = newImageId();
 
       assets.set(id, { id, cf: r.cf, w: r.w, h: r.h, data: r.data });
@@ -1169,6 +1172,7 @@ sample({
     sourceIdFx.failData,
     alignFx.failData,
     importBinsFx.failData,
+    addProgressLineFx.failData,
   ],
   fn: (e: Error) => e.message,
   target: errored,
