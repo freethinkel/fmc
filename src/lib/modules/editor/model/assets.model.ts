@@ -12,6 +12,8 @@ import {
   accentFlaggedAssets,
   bitmapOf,
   blankFrame,
+  encodeBitmap,
+  fitScreen,
   invertAsset,
   resourceFromFile,
   rotateAsset,
@@ -130,9 +132,15 @@ const replaceImageFx = attach({
 
     if (!a) return null;
     if (a.cf === 1) {
-      // JPEG stays JPEG — the file's own bytes are the resource
-      const data = new Uint8Array(await file.arrayBuffer());
-      const bitmap = await createImageBitmap(new Blob([data as BlobPart], { type: "image/jpeg" }));
+      // JPEG stays JPEG — the file's own bytes are the resource, unless it's past the panel
+      let data: Uint8Array = new Uint8Array(await file.arrayBuffer());
+      let bitmap = await createImageBitmap(new Blob([data as BlobPart], { type: "image/jpeg" }));
+      const fit = fitScreen(bitmap.width, bitmap.height);
+
+      if (fit.w !== bitmap.width || fit.h !== bitmap.height) {
+        data = await encodeBitmap(bitmap, fit.w, fit.h, 1);
+        bitmap = await createImageBitmap(new Blob([data as BlobPart], { type: "image/jpeg" }));
+      }
 
       return {
         // never turned, so no running angle either — the inspector would claim the old one
