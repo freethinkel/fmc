@@ -25,4 +25,3 @@ jobs:
       # browser project mounts components in real chromium
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm test
-
