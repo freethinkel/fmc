@@ -33,11 +33,11 @@ Email login and registration work out of the box. For OAuth (Google/GitHub):
 
 ```sh
 pnpm build      # static output into build/
-make deploy DEPLOY_HOST=root@1.2.3.4   # builds and rsyncs to the VPS
+make deploy     # builds and rsyncs to the home server (ssh alias kuzyo)
 ```
 
-`make deploy` uploads `build/` into `www/` inside the `fmc_pocketbase` clone on the
-server — served by Caddy. Prod infra details — in
+`make deploy` uploads `build/` into `/srv/pets/fmc/www` on kuzyo (the `fmc_pocketbase`
+stack inside the `pets` incus container) — served by Caddy. Prod infra details — in
 [`fmc_pocketbase/README.md`](../fmc_pocketbase/README.md).
 
 ## Type checking and tests
