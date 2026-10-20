@@ -5,6 +5,7 @@
   import { sendEvent } from "$lib/modules/analytics/lib/aptabase";
   // one global mount: flashing is triggered from the editor, the popover lives in the app chrome
   import SlotDialog from "$lib/modules/device/components/slot-dialog.svelte";
+  import SizeDialog from "$lib/modules/device/components/size-dialog.svelte";
 
   let { children } = $props();
 
@@ -15,3 +16,4 @@
 
 {@render children()}
 <SlotDialog />
+<SizeDialog />

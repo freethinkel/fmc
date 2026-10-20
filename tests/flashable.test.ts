@@ -1,6 +1,12 @@
 import { readFileSync } from "node:fs";
 import { expect, test } from "vitest";
-import { assertFlashable, buildBin, parseBin, TAG } from "$lib/modules/editor/core/format";
+import {
+  assertFlashable,
+  buildBin,
+  flashWarning,
+  parseBin,
+  TAG,
+} from "$lib/modules/editor/core/format";
 import { fromLegacy, toLegacy } from "$lib/modules/editor/core/document/doc";
 import { withPreviews } from "$lib/modules/editor/core/document/factory";
 
@@ -18,6 +24,18 @@ test("an image far past the panel is refused", () => {
 
   face.resources[0] = { ...face.resources[0], w: 1386, h: 1386 };
   expect(() => assertFlashable(buildBin(face))).toThrow(/1386×1386/);
+});
+
+// one Pro 3 factory face ships a 576x530 image, so that size installs, but only once confirmed
+test("an image past every factory face but under the limit asks first", () => {
+  const face = parseBin(bytes);
+
+  expect(flashWarning(bytes)).toBeNull();
+  face.resources[0] = { ...face.resources[0], w: 576, h: 530 };
+  const big = buildBin(face);
+
+  expect(() => assertFlashable(big)).not.toThrow();
+  expect(flashWarning(big)).toMatch(/576×530/);
 });
 
 // #49: the FMC face that crash-looped a Watch 3 Pro on AOD was the one whose AOD screen had lost

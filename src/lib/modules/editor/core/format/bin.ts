@@ -393,12 +393,19 @@ export function buildBin(face: Face): Uint8Array {
 /**
  * Largest image side we let onto the watch. The firmware decodes every bitmap into RAM when it
  * loads a face, and one far past the panel runs it out: a 1386x1386 AOD image boot-looped a
- * Watch 3 Pro. Official faces top out at 467 (the panel is 466).
+ * Watch 3 Pro. Official faces top out at 470 (the panel is 466), with one exception: a Pro 3 face
+ * ships a 576x530 image, so the hard limit sits just past it and the gap needs a confirmation
+ * (SAFE_IMAGE_SIDE).
  *
  * ponytail: a per-image side cap, not a total-memory budget — we don't know the firmware's real
  * limit. Upgrade path: sum decoded bytes per screen once someone measures where it falls over.
  */
-export const MAX_IMAGE_SIDE = 480;
+export const MAX_IMAGE_SIDE = 580;
+/** No stock face goes past this but the one above — beyond it the user has to confirm the flash. */
+export const SAFE_IMAGE_SIDE = 470;
+
+const largest = (resources: Resource[], side: number) =>
+  resources.find((r) => r.w > side || r.h > side);
 
 /** Throws when the file holds something the watch may not survive: an image too big to load, or
  *  an always-on screen without its thumbnail. A file we can't parse isn't blocked here — the
@@ -422,10 +429,25 @@ export function assertFlashable(bin: Uint8Array): void {
     throw new Error(
       "the always-on screen has no preview thumbnail, and the watch can crash in a loop on it. Open the face in the editor and flash it from there — the editor puts the thumbnail back.",
     );
-  const big = resources.find((r) => r.w > MAX_IMAGE_SIDE || r.h > MAX_IMAGE_SIDE);
+  const big = largest(resources, MAX_IMAGE_SIDE);
 
   if (big)
     throw new Error(
       `an image is ${big.w}×${big.h} px, over the ${MAX_IMAGE_SIDE} px limit — the watch can run out of memory loading it and restart in a loop. Resize it in the editor first.`,
     );
+}
+
+/** What the user has to accept before this file goes to the watch, or null when nothing. Only
+ *  meant for a file assertFlashable already let through. */
+export function flashWarning(bin: Uint8Array): string | null {
+  let big: Resource | undefined;
+
+  try {
+    big = largest(parseBin(bin).resources, SAFE_IMAGE_SIDE);
+  } catch {
+    return null;
+  }
+  return big
+    ? `This face has a ${big.w}×${big.h} px image, larger than factory faces use. The watch may run out of memory loading it and restart in a loop, and there is no confirmed way out of that loop yet.`
+    : null;
 }

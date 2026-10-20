@@ -3,7 +3,7 @@ import { createEffect, createEvent, createStore, sample } from "effector";
 import { reset } from "patronum";
 import { NoFreeSlotError, Watch, type WatchDials, type WatchInfo } from "../lib/ble";
 import { rememberDial, unclaimDial } from "../lib/catalog-names";
-import { assertFlashable } from "$lib/modules/editor/core/format";
+import { assertFlashable, flashWarning } from "$lib/modules/editor/core/format";
 import * as bleApi from "./ble.api";
 
 // what a flash needs: the file, a thumbnail of the face so the watch's id list can show it
@@ -17,6 +17,13 @@ export interface FlashPayload {
 
 export type { WatchDials };
 
+// a file the watch may not survive, held back until the user accepts the risk in the size dialog
+class NeedsConfirmError extends Error {}
+// neither is a failed flash: each opens a dialog that turns it into another attempt
+const asksUser = (e: Error) => e instanceof NoFreeSlotError || e instanceof NeedsConfirmError;
+
+type Pending = FlashPayload & { slot?: number; confirmed?: boolean };
+
 let watch: Watch | null = null; // live connection — not serialized, lives outside the store
 
 // ---- stores ----
@@ -28,7 +35,9 @@ export const $dials = createStore<WatchDials | null>(null);
 // a flash appends into a free slot; when the watch has none, the file waits here while the
 // user picks which dial to overwrite in the slot dialog
 export const $slotDialogOpen = createStore(false);
-const $pendingBin = createStore<FlashPayload | null>(null);
+const $pendingBin = createStore<Pending | null>(null);
+// the risk the user is asked to accept before an oversized face goes out — null while not asking
+export const $sizeWarning = createStore<string | null>(null);
 // the watch a flash went to: $bleInfo resets the moment the link drops, which is before a flash
 // cut off by that drop fails — so the outcome reads who it was from here, not from $bleInfo
 const $flashWatch = createStore<WatchInfo | null>(null);
@@ -42,6 +51,8 @@ export const connectRequested = createEvent();
 export const flashRequested = createEvent<FlashPayload>();
 export const slotPicked = createEvent<number>();
 export const slotDialogClosed = createEvent();
+export const sizeConfirmed = createEvent();
+export const sizeWarningClosed = createEvent();
 // the user says a dial flashed from here is gone — deleted on the watch or in Nothing X, which
 // FMC never hears about: a055 doesn't list side-loaded dials, so their slot is only a local claim
 export const dialRemoved = createEvent<number>();
@@ -78,21 +89,22 @@ const connectFx = createEffect(async () => {
   return info;
 });
 export const $connecting = connectFx.pending;
-const flashFx = createEffect(
-  async ({ bin, preview, key, slot }: FlashPayload & { slot?: number }) => {
-    // every install — editor and marketplace — comes through here, so this is the one gate
-    assertFlashable(bin);
-    const { id, name } = await watch!.uploadWatchface(bin, slot, key);
+const flashFx = createEffect(async ({ bin, preview, key, slot, confirmed }: Pending) => {
+  // every install — editor and marketplace — comes through here, so this is the one gate
+  assertFlashable(bin);
+  const warning = confirmed ? null : flashWarning(bin);
 
-    // the watch will only ever report this dial by its id — this is the one moment the name
-    // and the picture are both in hand. The serial goes with them: a055 won't list this dial on
-    // the next connection, so this record is what keeps its slot counted (see mergeDials)
-    rememberDial(id, name, preview, watch!.serial);
-    // …and only now does the merged dial list know about it, so refresh it
-    watch!.mergeDials();
-    return id;
-  },
-);
+  if (warning) throw new NeedsConfirmError(warning);
+  const { id, name } = await watch!.uploadWatchface(bin, slot, key);
+
+  // the watch will only ever report this dial by its id — this is the one moment the name
+  // and the picture are both in hand. The serial goes with them: a055 won't list this dial on
+  // the next connection, so this record is what keeps its slot counted (see mergeDials)
+  rememberDial(id, name, preview, watch!.serial);
+  // …and only now does the merged dial list know about it, so refresh it
+  watch!.mergeDials();
+  return id;
+});
 export const $flashing = flashFx.pending;
 const removeDialFx = createEffect((id: number) => {
   unclaimDial(id);
@@ -134,8 +146,8 @@ reset({ clock: disconnected, target: $dials });
 
 sample({
   clock: flashFx.failData,
-  // a full watch isn't an error — the slot dialog handles it below
-  filter: (e) => !(e instanceof NoFreeSlotError),
+  // a full watch or an oversized face isn't an error — the dialogs below handle them
+  filter: (e) => !asksUser(e),
   fn: (e) => `error: ${e.message}`,
   target: statusChanged,
 });
@@ -168,7 +180,33 @@ reset({
   target: $slotDialogOpen,
 });
 // the bin outlives the dialog on purpose — slotPicked re-runs flashFx with it
-reset({ clock: [slotDialogClosed, flashFx.done, disconnected], target: $pendingBin });
+// an oversized face waits for the user to accept the risk; accepting re-runs it marked as such,
+// and pending keeps the mark so the slot dialog's retry doesn't ask a second time
+sample({
+  clock: flashFx.failData,
+  filter: (e) => e instanceof NeedsConfirmError,
+  fn: (e) => e.message,
+  target: $sizeWarning,
+});
+sample({
+  clock: sizeConfirmed,
+  source: $pendingBin,
+  filter: Boolean,
+  fn: (pending) => ({ ...pending, confirmed: true }),
+  target: [$pendingBin, flashFx],
+});
+// the dialog also reports a close when accepting shut it — only a close while it still asks is a no
+const sizeDeclined = sample({
+  clock: sizeWarningClosed,
+  source: $sizeWarning,
+  filter: Boolean,
+});
+
+reset({ clock: [sizeConfirmed, sizeWarningClosed, disconnected], target: $sizeWarning });
+reset({
+  clock: [slotDialogClosed, sizeDeclined, flashFx.done, disconnected],
+  target: $pendingBin,
+});
 
 sample({
   clock: flashFx,
@@ -183,8 +221,8 @@ sample({
 sample({
   clock: flashFx.failData,
   source: $flashWatch,
-  // a full watch isn't a failure either — the slot dialog above turns it into another attempt
-  filter: (_watch, e) => !(e instanceof NoFreeSlotError),
+  // not failures either — the dialogs above turn them into another attempt
+  filter: (_watch, e) => !asksUser(e),
   fn: (watch, error) => ({ watch, error }),
   target: flashFailed,
 });
