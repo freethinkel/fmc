@@ -17,6 +17,8 @@
     frameMoved,
     glyphDialogOpened,
     ringImageAdded,
+    $progressLine: progressLine,
+    progressLineColored,
   } = editorModel;
 
   // native HTML5 drag & drop over the frame list, same shape as TreePanel's layer reorder; the
@@ -159,6 +161,20 @@
   </div>
 {/if}
 
+{#if $progressLine?.id === layer.id}
+  <div>
+    <span class="muted-label">progress line color</span>
+    <!-- onchange, not oninput: every pick redraws all 101 frames and is one undo step -->
+    <input
+      class="swatch"
+      type="color"
+      value={$progressLine.color}
+      aria-label="Progress line color"
+      onchange={(e) => progressLineColored({ id: layer.id, color: e.currentTarget.value })}
+    />
+  </div>
+{/if}
+
 {#if layer.kind === "number" || layer.kind === "image" || frameLabels}
   <div class="row">
     <Button kind="secondary" onClick={() => glyphDialogOpened(layer.id)}>
@@ -221,6 +237,16 @@
     display: flex;
     flex-wrap: wrap;
     gap: 0.5rem;
+  }
+  .swatch {
+    display: block;
+    width: 1.875rem;
+    height: 1.875rem;
+    padding: 0;
+    border: 1px solid oklch(from var(--color-text) l c h / 12%);
+    border-radius: var(--border-radius);
+    background: transparent;
+    cursor: pointer;
   }
   .thumb-cap {
     font-size: 0.625rem;

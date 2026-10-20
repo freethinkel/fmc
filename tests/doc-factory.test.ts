@@ -14,9 +14,11 @@ import {
   type Resource,
 } from "../src/lib/modules/editor/core/format";
 import {
+  fromLegacy,
   newImageId,
   toLegacy,
   type ImageAsset,
+  type Layer,
   type RingLayer,
 } from "../src/lib/modules/editor/core/document/doc";
 import {
@@ -24,9 +26,14 @@ import {
   blankDoc,
   newProgressLine,
   newRing,
+  progressLineOf,
   withName,
 } from "../src/lib/modules/editor/core/document/factory";
-import { progressLinePixels } from "../src/lib/modules/editor/core/render/pixels";
+import {
+  progressLineColor,
+  progressLinePixels,
+  progressLineStored,
+} from "../src/lib/modules/editor/core/render/pixels";
 import { SCREEN } from "../src/lib/modules/editor/core/render/screen";
 
 const res = (w: number, h: number): Resource => ({
@@ -191,4 +198,50 @@ test("progress-line frames fill exactly pct percent, vertical from the bottom", 
   expect(row(v, 12, 100)).toEqual(Array(12).fill(255));
   expect(row(v, 12, 99)).toEqual(Array(12).fill(51));
   expect(row(v, 12, 0)).toEqual(Array(12).fill(51));
+});
+
+// The colour lives only in the frames, so the inspector reads it back off the full one, and a
+// recolour must find the line again by shape — but not Hemisphere's '0%'..'100%' text, which has
+// the same meta and frame count and would be overwritten with bars.
+test("a progress line's colour reads back off its frames; Hemisphere's text is no progress line", () => {
+  const frame = (pct: number): ImageAsset => {
+    const r = encodePixels(progressLinePixels(12, 200, pct, true, "#ff5c00"), 12, 200, 5);
+
+    return { id: newImageId(), cf: r.cf, w: r.w, h: r.h, data: r.data };
+  };
+  const assets = Array.from({ length: PROGRESS_STEPS }, (_, i) => frame(i));
+  const doc = blankDoc("Line", res(2, 2), res(SCREEN, SCREEN));
+  const line = newProgressLine(
+    assets.map((a) => a.id),
+    12,
+    200,
+  );
+  const images = new Map([...doc.images, ...assets.map((a) => [a.id, a] as const)]);
+  const found = progressLineOf({ ...doc, images }, line);
+
+  expect(found?.vertical).toBe(true);
+  // cf 5 keeps 5/6/5 bits: 0x5c green comes back as 0x5d — the same value picking it again
+  // compares against, so a re-pick is a no-op
+  expect(progressLineColor(found!.full)).toBe("#ff5d00");
+  expect(progressLineStored("#ff5c00")).toBe("#ff5d00");
+
+  // a turn is baked into the pixels, and a redraw would lay the line flat again
+  const turned = new Map(images).set(found!.full.id, { ...found!.full, rotate: 10 });
+
+  expect(progressLineOf({ ...doc, images: turned }, line)).toBeNull();
+
+  const hemi = fromLegacy(
+    parseBin(readFileSync("tests/__fixtures__/Analog__370__Hemisphere.bin")),
+  ).doc;
+  const layers: Layer[] = [];
+  const walk = (l: Layer) => {
+    layers.push(l);
+    if (l.kind === "group") l.children.forEach(walk);
+  };
+
+  hemi.screens.forEach((sc) => sc.layers.forEach(walk));
+  const text = layers.filter((l) => l.kind === "image" && l.frames.length === PROGRESS_STEPS);
+
+  expect(text).toHaveLength(1);
+  expect(progressLineOf(hemi, text[0])).toBeNull();
 });

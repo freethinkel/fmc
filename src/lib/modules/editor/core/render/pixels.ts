@@ -105,21 +105,28 @@ export async function blankFrame(w: number, h: number): Promise<Resource> {
   return r;
 }
 
-/** One progress-line frame at `pct` percent: a white fill over a faint track, filling left to
- *  right, or bottom-up when `vertical`.
- *  ponytail: baked white, no accent flag (Hemisphere's picker has none); recolor by replacing frames. */
+/** One progress-line frame at `pct` percent: a `color` fill over a faint track of the same colour,
+ *  filling left to right, or bottom-up when `vertical`.
+ *  ponytail: baked colour, no accent flag (Hemisphere's picker has none); recolouring redraws
+ *  all 101 frames (progressLineColored). */
 export function progressLinePixels(
   w: number,
   h: number,
   pct: number,
   vertical: boolean,
+  color = "#ffffff",
 ): Uint8ClampedArray {
   const px = new Uint8ClampedArray(w * h * 4).fill(255);
+  const rgb = [1, 3, 5].map((i) => parseInt(color.slice(i, i + 2), 16));
   const filled = Math.round(((vertical ? h : w) * pct) / 100);
 
   for (let y = 0; y < h; y++)
-    for (let x = 0; x < w; x++)
-      if (vertical ? h - 1 - y >= filled : x >= filled) px[(y * w + x) * 4 + 3] = 51;
+    for (let x = 0; x < w; x++) {
+      const o = (y * w + x) * 4;
+
+      px.set(rgb, o);
+      if (vertical ? h - 1 - y >= filled : x >= filled) px[o + 3] = 51;
+    }
   return px;
 }
 
@@ -128,12 +135,40 @@ export async function progressLineFrame(
   h: number,
   pct: number,
   vertical: boolean,
+  color?: string,
 ): Promise<Resource> {
-  const r = encodePixels(progressLinePixels(w, h, pct, vertical), w, h, 5);
+  const r = encodePixels(progressLinePixels(w, h, pct, vertical, color), w, h, 5);
 
   r.bitmap = await bitmapOf(r);
   return r;
 }
+
+const lineColors = new WeakMap<object, string>();
+
+/** The colour a progress line was drawn in, read back off its full (100%) frame — through the
+ *  cache, since a resize leaves `data` stale. cf 5 keeps 5/6/5 bits, so it comes back rounded:
+ *  #ff5c00 reads #ff5d00. Memoised per bitmap/asset: the inspector asks on every document edit. */
+export function progressLineColor(full: ImageAsset, cache?: ImageCache): string {
+  const key = cache?.bitmap ?? full;
+  let color = lineColors.get(key);
+
+  if (!color) {
+    const px = cachedPixels(full, cache);
+
+    color = px
+      ? "#" + [...px.subarray(0, 3)].map((v) => v.toString(16).padStart(2, "0")).join("")
+      : "#ffffff";
+    lineColors.set(key, color);
+  }
+  return color;
+}
+
+/** `color` as a progress line's cf 5 frames store it — what progressLineColor would read back. */
+export const progressLineStored = (color: string) =>
+  progressLineColor({
+    id: "" as ImageId,
+    ...encodePixels(progressLinePixels(1, 1, 100, false, color), 1, 1, 5),
+  });
 
 export async function opaqueBlack(w: number, h: number): Promise<Resource> {
   const px = new Uint8ClampedArray(w * h * 4);

@@ -1,7 +1,7 @@
 // Everything the user can do to the layer tree. Each action is an event a component fires plus a
 // pure `Doc -> Doc` edit handed to `committed`, so the history and the "what changed" logic stay
 // in one place — this file only decides which edit runs and what ends up selected.
-import { attach, createEffect, createEvent, createStore, sample } from "effector";
+import { attach, combine, createEffect, createEvent, createStore, sample } from "effector";
 import { TAG, parseBin } from "../core/format";
 import { PREVIEW, SCREEN } from "../core/render/screen";
 import { renderDoc } from "../core/render/render";
@@ -9,7 +9,9 @@ import {
   blankFrame,
   decodeAssets,
   opaqueBlack,
+  progressLineColor,
   progressLineFrame,
+  progressLineStored,
   resourceFromFile,
 } from "../core/render/pixels";
 import { glyphSprites, type GlyphSpec } from "../core/render/glyphs";
@@ -43,6 +45,7 @@ import {
   newImage,
   newNumber,
   newProgressLine,
+  progressLineOf,
   newRing,
   newSlot,
 } from "../core/document/factory";
@@ -98,6 +101,8 @@ export const imageAdded = createEvent();
 export const slotAdded = createEvent();
 /** A battery progress line: 101 pre-drawn frames, one per percent (see newProgressLine). */
 export const progressLineAdded = createEvent<"horizontal" | "vertical">();
+/** Redraw a progress line's frames in another colour — the frames are the only place it lives. */
+export const progressLineColored = createEvent<{ id: NodeId; color: string }>();
 /** Give the face an always-on screen. A new document starts with the main screen only, and until
  *  this runs the AOD tab has nothing to show. */
 export const aodAdded = createEvent();
@@ -241,25 +246,62 @@ const addNumberFx = attach({
 
 // A progress line's frames are drawn here, not dropped in: one per percent, so the art can't
 // drift out of step with the value that picks it.
+async function progressLineAssets(w: number, h: number, vertical: boolean, color?: string) {
+  const frames = await Promise.all(
+    Array.from({ length: PROGRESS_STEPS }, (_, i) => progressLineFrame(w, h, i, vertical, color)),
+  );
+  const assets = new Map<ImageId, ImageAsset>();
+  const cache = new Map<ImageId, ImageCache>();
+
+  for (const r of frames) {
+    const id = newImageId();
+
+    assets.set(id, { id, cf: r.cf, w: r.w, h: r.h, data: r.data });
+    cache.set(id, { bitmap: r.bitmap });
+  }
+  return { assets, cache };
+}
+
 const addProgressLineFx = attach({
   source: $screen,
   async effect(screen, dir: "horizontal" | "vertical") {
     const vertical = dir === "vertical";
     const [w, h] = vertical ? [12, 200] : [200, 12];
-    const frames = await Promise.all(
-      Array.from({ length: PROGRESS_STEPS }, (_, i) => progressLineFrame(w, h, i, vertical)),
-    );
-    const assets = new Map<ImageId, ImageAsset>();
-    const cache = new Map<ImageId, ImageCache>();
+    const { assets, cache } = await progressLineAssets(w, h, vertical);
 
-    for (const r of frames) {
-      const id = newImageId();
-
-      assets.set(id, { id, cf: r.cf, w: r.w, h: r.h, data: r.data });
-      cache.set(id, { bitmap: r.bitmap });
-    }
     return { screen, assets, cache, layer: newProgressLine([...assets.keys()], w, h) };
   },
+});
+
+const recolorProgressLineFx = attach({
+  source: { doc: $doc, cache: $cache },
+  async effect({ doc, cache }, { id, color }: { id: NodeId; color: string }) {
+    const l = doc ? findLayer(doc, id) : null;
+    const line = doc && l && !l.locked ? progressLineOf(doc, l) : null;
+
+    // the same colour again (or one cf 5 rounds to it) would only spend an undo step
+    if (
+      !line ||
+      progressLineStored(color) === progressLineColor(line.full, cache.get(line.full.id))
+    )
+      return null;
+    const { assets, cache: drawn } = await progressLineAssets(
+      line.full.w,
+      line.full.h,
+      line.vertical,
+      color,
+    );
+
+    return { id, full: line.full, ids: [...assets.keys()], assets, cache: drawn };
+  },
+});
+
+/** The selected progress line and the colour it is drawn in, for the inspector — null for
+ *  anything else. */
+export const $progressLine = combine($doc, $selected, $cache, (doc, [l], cache) => {
+  const line = doc && l ? progressLineOf(doc, l) : null;
+
+  return line && { id: l.id, color: progressLineColor(line.full, cache.get(line.full.id)) };
 });
 
 // A slot needs one placeholder plus one icon per metric, all blank frames to be encoded first.
@@ -580,6 +622,32 @@ sample({
   filter: Boolean,
   fn: ({ layer }) => layer.id,
   target: select,
+});
+
+sample({
+  clock: progressLineColored,
+  target: recolorProgressLineFx,
+});
+sample({
+  clock: recolorProgressLineFx.doneData,
+  filter: Boolean,
+  fn: ({ id, full, ids, assets }) => ({
+    edit: (doc: Doc) => {
+      const l = findLayer(doc, id);
+
+      // redrawn off `full`: if the line was deleted, resized or turned meanwhile, these frames
+      // are for a line that no longer exists
+      if (!l || progressLineOf(doc, l)?.full !== full) return doc;
+      return patchLayer(withAssets(doc, assets), id, { frames: ids } as Partial<Layer>);
+    },
+  }),
+  target: committed,
+});
+sample({
+  clock: recolorProgressLineFx.doneData,
+  filter: Boolean,
+  fn: ({ cache }) => cache,
+  target: cachePatched,
 });
 
 sample({
@@ -1197,6 +1265,7 @@ sample({
     alignFx.failData,
     importBinsFx.failData,
     addProgressLineFx.failData,
+    recolorProgressLineFx.failData,
   ],
   fn: (e: Error) => e.message,
   target: errored,
