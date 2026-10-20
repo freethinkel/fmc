@@ -3,8 +3,18 @@
 // Bluetooth here — ble.ts owns the connection and drives this.
 
 // debug: everything is logged to console with the [ble] prefix; window.fmcBleVerbose = true enables frame logging
-export const dbg = (...a: unknown[]) =>
-  console.log("[ble]", new Date().toISOString().slice(11, 23), ...a);
+// the rescue page mirrors the log on screen so a user can paste it to us — one listener at a time
+export const dbgListeners = new Set<(line: string) => void>();
+export const dbg = (...a: unknown[]) => {
+  const t = new Date().toISOString().slice(11, 23);
+
+  console.log("[ble]", t, ...a);
+  if (dbgListeners.size) {
+    const line = `${t} ${a.map((x) => (typeof x === "string" ? x : JSON.stringify(x))).join(" ")}`;
+
+    for (const l of dbgListeners) l(line);
+  }
+};
 export const verbose = () => (window as { fmcBleVerbose?: boolean } & Window).fmcBleVerbose;
 // keys are (c1 << 16) | c2 and c1 is 0xffff, so they come out negative — print them unsigned
 export const cmdName = (key: number) =>

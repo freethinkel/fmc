@@ -4,7 +4,15 @@
   import { Button } from "$lib/shared/components/button";
   import { rescueModel } from "../model";
 
-  const { resetRequested, $status: status, $error: error, $done: done, $busy: busy } = rescueModel;
+  const {
+    resetRequested,
+    $status: status,
+    $error: error,
+    $done: done,
+    $busy: busy,
+    $log: log,
+  } = rescueModel;
+  const copy = () => navigator.clipboard.writeText($log.join("\n")).catch(() => {});
 </script>
 
 <svelte:head>
@@ -37,6 +45,13 @@
         — nobody has confirmed this path yet.
       </p>
     {/if}
+    {#if $log.length}
+      <p>
+        Whatever happened, send us this log:
+        <Button kind="secondary" size="small" onClick={copy}>Copy log</Button>
+      </p>
+      <pre>{$log.join("\n")}</pre>
+    {/if}
     <a class="back" href="/help">Back to "Before you connect"</a>
   </article>
 </div>
@@ -68,6 +83,19 @@
   }
   .error {
     color: var(--color-error);
+  }
+  pre {
+    width: 100%;
+    max-height: 20rem;
+    overflow: auto;
+    padding: 0.75rem;
+    border-radius: var(--border-radius);
+    background: oklch(from var(--color-text) l c h / 6%);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    word-break: break-all;
   }
   .back {
     color: var(--color-text);
