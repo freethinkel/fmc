@@ -428,7 +428,7 @@ export class Watch {
     if (!oldId && this.installedWf.length >= WF_CAPACITY)
       throw new NoFreeSlotError(`all ${WF_CAPACITY} slots taken`);
 
-    const attempt = async (oldId: number, retry = false) => {
+    const attempt = async (oldId: number, picked = false) => {
       dbg("upload ids:", {
         newId: id,
         oldId,
@@ -525,12 +525,15 @@ export class Watch {
               // way — leaving it a plain Error is what made every flash after the first one a
               // dead end on a full watch (#43). With a real old_wf_id it means that dial isn't
               // installed, which attempt() below retries as an append.
-              // `retry` is the append that already followed one refusal: 0a a second time on
-              // the same file isn't about slots, so let it surface as a plain error instead of
-              // reopening the slot dialog on a loop the user can't see the reason for.
+              // `picked` is the append that follows a refused overwrite of the slot the user
+              // chose in the dialog: 0a a second time on the same file isn't about slots, so
+              // let it surface as a plain error instead of reopening the slot dialog on a loop
+              // the user can't see the reason for. The append after a stale *guessed* id (a
+              // re-flash after a reset, or a dial deleted on the watch) is still the first
+              // append, and its 0a is the full-watch answer — it has to reach the dialog (#62).
               const kb = Math.round(data.length / 1024);
 
-              if (p[0] === 0x0a && !retry)
+              if (p[0] === 0x0a && !picked)
                 reject(
                   oldId
                     ? new StaleSlotError(`dial ${oldId} not installed (finish: 0a)`)
@@ -564,7 +567,7 @@ export class Watch {
       this.mergeDials();
       if (this.installedWf.length >= WF_CAPACITY)
         throw new NoFreeSlotError(`all ${WF_CAPACITY} slots taken`);
-      return attempt(0, true);
+      return attempt(0, slot !== undefined);
     });
     onProgress(100);
     this.status("connected");
