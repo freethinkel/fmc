@@ -15,6 +15,7 @@ import {
   type ImageAsset,
   type ImageId,
   type ImageLayer,
+  type Layer,
   type NumberLayer,
   type RingLayer,
   type Screen,
@@ -57,14 +58,29 @@ export const PROGRESS_STEPS = 101;
  *  Analog__370__Hemisphere's battery-percent text: a plain image widget on battery (0x24) picking
  *  one of 101 pre-drawn frames (rotated '0%'..'100%' text there, not a gauge), meta copied from
  *  that face (max 100000, no w/h). Filling-bar frames on this picker are unverified on a watch.
- *  ponytail: battery only. It is the one source the corpus proves reads 0..100 into a picker;
- *  the goal-percent ids would need a stock face that pickers them before they can drive one. */
+ *  ponytail: battery only. Across the 100 stock faces every goal-percent id (0x25/0x26/0x46/
+ *  0x49/0x6a/0x6c/0x6f/0x82) drives a 0x80/0x81 ring and nothing else — no 0x30 picker and no
+ *  0x38 bucketed gauge (the tag Energetic/Vintage/Widgets/Tumbler draw battery and heart rate
+ *  through, 7..26 frames). A picker on them, and how 0x38 buckets a value, needs a watch. */
 export const newProgressLine = (frames: readonly ImageId[], w: number, h: number): ImageLayer => ({
   ...newImage(frames),
   x: CENTER - (w >> 1),
   y: CENTER - (h >> 1),
   meta: metaWith({ source: 0x24, max: 100000 }),
 });
+
+/** The progress line `l` is, or null for any other widget. Hemisphere's stock '0%'..'100%' text
+ *  has the same meta and frame count, so the bar shape is what tells them apart.
+ *  ponytail: shape heuristic (one side >= 4x the other); store a marker if a hand-made 101-frame
+ *  battery strip ever gets mistaken for one. */
+export function progressLineOf(doc: Doc, l: Layer): { vertical: boolean; full: ImageAsset } | null {
+  if (l.kind !== "image" || l.meta.source !== 0x24 || l.frames.length !== PROGRESS_STEPS)
+    return null;
+  const full = doc.images.get(l.frames[PROGRESS_STEPS - 1]);
+
+  if (!full || Math.max(full.w, full.h) < 4 * Math.min(full.w, full.h)) return null;
+  return { vertical: full.h > full.w, full };
+}
 
 /** A step counter over a 10-glyph atlas. fmt byte 0x82 = two digits, zero-padded. */
 export const newNumber = (glyphs: readonly ImageId[]): NumberLayer => ({
