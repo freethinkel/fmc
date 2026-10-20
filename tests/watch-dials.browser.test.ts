@@ -87,9 +87,25 @@ test("re-flashing a dial gone from a full watch opens the slot dialog (#62)", as
 });
 
 test("0a again after the user picked a slot is an error, not the dialog again", async () => {
-  const w = refusingWatch([1, 2, 3, 4, 5, 6]);
-  const err = await w.uploadWatchface(BIN, 3, "rec1").catch((e: Error) => e);
+  rememberDial(4242, "mine", undefined, SERIAL);
+  const w = refusingWatch([1, 2, 3, 4, 5]);
+  const err = await w.uploadWatchface(BIN, 4242, "rec1").catch((e: Error) => e);
 
   expect(err).not.toBeInstanceOf(NoFreeSlotError);
   expect(err).toBeInstanceOf(Error);
+});
+
+test("a refused replace of a dial the watch listed keeps it and costs one transfer (#62)", async () => {
+  const w = refusingWatch([273, 274, 275, 276, 277, 280]);
+  let transfers = 0;
+  const send = w.sendData;
+
+  w.sendData = async (cmd, p) => {
+    if (cmd === CMD.wfInit2Req) transfers++;
+    return send(cmd, p);
+  };
+  // the watch says 0a to this target; the dial is still there and still another one's turn
+  await expect(w.uploadWatchface(BIN, 276, "rec1")).rejects.toThrow(/pick a different dial/);
+  expect(transfers).toBe(1);
+  expect(w.installedWf).toContain(276);
 });

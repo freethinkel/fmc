@@ -3,7 +3,7 @@
 // upload watchfaces. The wire format it speaks lives in ble-protocol.ts.
 // Chromium only (no Web Bluetooth in Firefox/Safari); requires a user gesture and
 // localhost or HTTPS.
-import { flashedOn, unclaimDial } from "./catalog-names";
+import { dialLabel, flashedOn, unclaimDial } from "./catalog-names";
 import {
   cat,
   CMD,
@@ -524,7 +524,8 @@ export class Watch {
               // the same as `append refused` above and has to reach the slot dialog the same
               // way — leaving it a plain Error is what made every flash after the first one a
               // dead end on a full watch (#43). With a real old_wf_id it means that dial isn't
-              // installed, which attempt() below retries as an append.
+              // installed, which attempt() below retries as an append — or, for a dial a055
+              // listed, that the watch won't take it as a target (see below).
               // `picked` is the append that follows a refused overwrite of the slot the user
               // chose in the dialog: 0a a second time on the same file isn't about slots, so
               // let it surface as a plain error instead of reopening the slot dialog on a loop
@@ -557,6 +558,16 @@ export class Watch {
     // isn't there, fall back to a plain append instead of failing the flash
     await attempt(oldId).catch((e) => {
       if (!(e instanceof StaleSlotError)) throw e;
+      // …but a dial a055 listed this session is no guess: the watch has it. Refusing to replace
+      // it is the watch's state talking — after a reset one watch took a single stock dial out
+      // of five as a replace target and answered 0a to the rest, appends included (watch_health
+      // docs/cmf-protocol.md §9.5h). Dropping it from the list and appending threw away a real
+      // slot and spent a second transfer on a certain refusal (#62); the way out is another
+      // target. ponytail: which targets a given watch accepts is unknown — the user bisects.
+      if (this.reportedWf.includes(oldId))
+        throw new Error(
+          `the watch refused to replace “${dialLabel(oldId, this.installedWf.indexOf(oldId))}” — flash again and pick a different dial to replace`,
+        );
       dbg("stale old_wf_id", oldId, "→ retrying as append:", (e as Error).message);
       // stop counting it as a taken slot — otherwise a face deleted on the watch keeps the
       // count at six and every later flash pays this same wasted round trip. The claim is all
