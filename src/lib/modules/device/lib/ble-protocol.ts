@@ -57,6 +57,8 @@ export const CMD = {
   serialGet: C(0x00de, 0x0002),
   serialRet: C(0x00de, 0x0001),
   battery: C(0x005c, 0x0001),
+  // the one write that wipes the watch — rescue.model only, after the owner asks for it
+  factoryReset: C(0x009a, 0x0001),
   // watchface upload over the data channel (upload.go, §9.5)
   wfInit1Req: C(0xffff, 0x8052),
   wfInit1Rep: C(0xffff, 0x0052),

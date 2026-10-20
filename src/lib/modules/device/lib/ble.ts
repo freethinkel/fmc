@@ -116,7 +116,9 @@ export class Watch {
     this.onDials?.([...this.installedWf]);
   }
 
-  async connect(): Promise<WatchInfo> {
+  // rescue: stop right after auth — a watch wedged on a bad face may never answer fwGet/a055,
+  // and the only thing the caller wants to send is factoryReset
+  async connect({ rescue = false } = {}): Promise<WatchInfo> {
     if (!navigator.bluetooth) throw new Error("Web Bluetooth unavailable — use Chrome or Edge");
     this.status("requesting device…");
     // like in fmc CLI: the advertisement doesn't always carry the service, so match by name and by manufacturer id too
@@ -281,7 +283,7 @@ export class Watch {
           await this.pair();
         }
       } else await this.pair();
-      await this.fetchInfo();
+      if (!rescue) await this.fetchInfo();
     } catch (e) {
       // without this a failed pair()/authenticate() leaves the physical GATT link hanging:
       // the watch thinks it's busy with us, and the next Connect won't see the shell service again
@@ -662,6 +664,12 @@ export class Watch {
     } finally {
       this.waiters.delete(CMD.authFailed);
     }
+  }
+
+  // Gadgetbridge's FACTORY_RESET: the marker byte and nothing else. The watch wipes itself and
+  // reboots; it won't answer, so there is nothing to wait for.
+  async factoryReset() {
+    await this.send(CMD.factoryReset, new Uint8Array([MARKER]));
   }
 
   async fetchInfo() {

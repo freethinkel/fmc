@@ -44,8 +44,9 @@ If your watch is already stuck in the loop, we don't have a confirmed fix yet. T
 
 1. Right after it restarts, keep the screen awake by tapping it. The large image in the reported case was the always-on one, so the crash may only come when the screen dims.
 2. If the face shows up even briefly, long-press it and swipe it away. If you have time, also turn off the always-on display in settings.
-3. Let the battery run out completely, then charge it and try again.
-4. If none of that works, contact Nothing support. The firmware itself is untouched, so this is a repair they can do.
+3. If the watch goes black after the logo but still shows up in the Bluetooth picker, try the [rescue page](/rescue): it sends a factory reset the moment the watch lets us in, and asks for nothing else. Use the browser you installed the face from.
+4. Let the battery run out completely, then charge it and try again.
+5. If none of that works, contact Nothing support. The firmware itself is untouched, so this is a repair they can do.
 
 <p class="note">If one of these steps worked for you, or something else did, please <a href="https://github.com/freethinkel/fmc/issues">tell us</a> so we can put it at the top of this list.</p>
 
