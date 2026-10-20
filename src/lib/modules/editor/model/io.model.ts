@@ -7,7 +7,7 @@ import { buildBin, parseBin } from "../core/format";
 import { fromLegacy, toLegacy, type Doc, type ImageId } from "../core/document/doc";
 import { saveNames, withNames } from "../core/document/names";
 import { previewSim } from "../core/document/sources";
-import { blankDoc } from "../core/document/factory";
+import { blankDoc, withPreviews } from "../core/document/factory";
 import { decodeAssets, flushAssets, opaqueBlack, regenPreviewAssets } from "../core/render/pixels";
 import { renderDoc } from "../core/render/render";
 import { PREVIEW, SCREEN } from "../core/render/screen";
@@ -122,10 +122,12 @@ const binOf = async ({
   sim: Parameters<typeof regenPreviewAssets>[2];
   dirty: boolean;
 }) => {
-  const images = await flushAssets(doc!.images, cache);
-  let next: Doc = { ...doc!, images };
+  // a screen whose Preview layer was deleted gets a blank one back here, baked below like any other
+  const fixed = withPreviews(doc!, await opaqueBlack(PREVIEW, PREVIEW));
+  const images = await flushAssets(fixed.images, cache);
+  let next: Doc = { ...fixed, images };
 
-  if (dirty) {
+  if (dirty || fixed !== doc) {
     const fresh = await regenPreviewAssets(next, { assets: images, cache }, previewSim(sim));
     const merged = new Map(images);
 

@@ -400,16 +400,28 @@ export function buildBin(face: Face): Uint8Array {
  */
 export const MAX_IMAGE_SIDE = 480;
 
-/** Throws when the file holds an image the watch may not survive loading. A file we can't parse
- *  isn't blocked here — the watch's installer still gets to refuse it. */
+/** Throws when the file holds something the watch may not survive: an image too big to load, or
+ *  an always-on screen without its thumbnail. A file we can't parse isn't blocked here — the
+ *  watch's installer still gets to refuse it. */
 export function assertFlashable(bin: Uint8Array): void {
-  let resources: Resource[];
+  let resources: Resource[], screens: FaceNode[];
 
   try {
-    ({ resources } = parseBin(bin));
+    ({ resources, screens } = parseBin(bin));
   } catch {
     return;
   }
+  // all 223 stock AOD screens (Pro 2 and Pro 3) carry a 0x28 thumbnail, and the FMC face that
+  // crash-looped a Watch 3 Pro on AOD was the one whose AOD screen had none (#49). ponytail: the
+  // cause is inferred from that diff, not confirmed on the watch. A main screen without one is
+  // just as far from the corpus but nothing has crashed on it, so it isn't refused — the editor's
+  // export restores both (withPreviews).
+  const aod = screens.find((s) => s.tag === TAG.aod);
+
+  if (aod && !aod.subs?.some((n) => n.tag === TAG.preview))
+    throw new Error(
+      "the always-on screen has no preview thumbnail, and the watch can crash in a loop on it. Open the face in the editor and flash it from there — the editor puts the thumbnail back.",
+    );
   const big = resources.find((r) => r.w > MAX_IMAGE_SIDE || r.h > MAX_IMAGE_SIDE);
 
   if (big)

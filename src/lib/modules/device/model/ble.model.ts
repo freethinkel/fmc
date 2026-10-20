@@ -2,7 +2,7 @@
 import { createEffect, createEvent, createStore, sample } from "effector";
 import { reset } from "patronum";
 import { NoFreeSlotError, Watch, type WatchDials, type WatchInfo } from "../lib/ble";
-import { rememberDial } from "../lib/catalog-names";
+import { rememberDial, unclaimDial } from "../lib/catalog-names";
 import { assertFlashable } from "$lib/modules/editor/core/format";
 import * as bleApi from "./ble.api";
 
@@ -42,6 +42,9 @@ export const connectRequested = createEvent();
 export const flashRequested = createEvent<FlashPayload>();
 export const slotPicked = createEvent<number>();
 export const slotDialogClosed = createEvent();
+// the user says a dial flashed from here is gone — deleted on the watch or in Nothing X, which
+// FMC never hears about: a055 doesn't list side-loaded dials, so their slot is only a local claim
+export const dialRemoved = createEvent<number>();
 // cross-module signals (market.model bumps the download counter on a successful flash,
 // analytics.model counts both) — exposed as events, not the effects themselves, so other models
 // react without touching connectFx/flashFx. They carry the connected watch because who it was is
@@ -91,6 +94,10 @@ const flashFx = createEffect(
   },
 );
 export const $flashing = flashFx.pending;
+const removeDialFx = createEffect((id: number) => {
+  unclaimDial(id);
+  watch?.mergeDials();
+});
 
 // ---- business logic ----
 sample({
@@ -118,6 +125,10 @@ reset({ clock: [connectFx, disconnected], target: $bleInfo });
 sample({
   clock: dialsChanged,
   target: $dials,
+});
+sample({
+  clock: dialRemoved,
+  target: removeDialFx,
 });
 reset({ clock: disconnected, target: $dials });
 

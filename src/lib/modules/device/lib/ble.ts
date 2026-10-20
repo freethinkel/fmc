@@ -48,6 +48,14 @@ class StaleSlotError extends Error {}
 // count itself is the only evidence left. If an append ever succeeds with 6 installed, this
 // number is wrong — raise it or drop the gate.
 export const WF_CAPACITY = 6;
+// ponytail: also taken on report, not measured — a Watch 3 Pro owner on #49 found Nothing X asking
+// to replace a face at the 8th after a factory reset (Album/Video/Studio dials sit outside it).
+// The a055 header's 07 (see onNotify) may be this number reported by the watch itself; read the
+// capacity from there instead once a second sample confirms it.
+export const WF_CAPACITY_PRO3 = 7;
+// the advertised name is the only model id there is: "CMF Watch Pro 2-1A2B", "CMF Watch 3 Pro-9A9D"
+export const capacityOf = (name: string | null) =>
+  /watch (3 pro|pro 3)/i.test(name ?? "") ? WF_CAPACITY_PRO3 : WF_CAPACITY;
 
 const KEY_STORE = "fmc_authkey";
 const loadKey = (): Uint8Array | null => {
@@ -82,6 +90,7 @@ export class Watch {
   battery: number | null = null;
   firmware: string | null = null;
   serial: string | null = null;
+  capacity = WF_CAPACITY; // per model, set once the advertised name is known
   reportedWf: number[] = []; // dial ids exactly as cmdWfInstalled listed them (§9.5g)
   installedWf: number[] = []; // …plus the side-loaded ones a055 leaves out, see mergeDials
 
@@ -129,6 +138,8 @@ export class Watch {
       return d;
     };
     let device = await pick();
+
+    this.capacity = capacityOf(device.name ?? null);
 
     (window as unknown as { __wf?: BluetoothDevice }).__wf = device; // ponytail: dev console hook, remove after debugging
     this.status("connecting…");
@@ -425,8 +436,8 @@ export class Watch {
 
     // the watch only refuses an append at the very end of the upload, so check the count up
     // front rather than shipping the whole file over BLE to be told no
-    if (!oldId && this.installedWf.length >= WF_CAPACITY)
-      throw new NoFreeSlotError(`all ${WF_CAPACITY} slots taken`);
+    if (!oldId && this.installedWf.length >= this.capacity)
+      throw new NoFreeSlotError(`all ${this.capacity} slots taken`);
 
     const attempt = async (oldId: number, picked = false) => {
       dbg("upload ids:", {
@@ -576,8 +587,8 @@ export class Watch {
       this.reportedWf = this.reportedWf.filter((x) => x !== oldId);
       unclaimDial(oldId);
       this.mergeDials();
-      if (this.installedWf.length >= WF_CAPACITY)
-        throw new NoFreeSlotError(`all ${WF_CAPACITY} slots taken`);
+      if (this.installedWf.length >= this.capacity)
+        throw new NoFreeSlotError(`all ${this.capacity} slots taken`);
       return attempt(0, slot !== undefined);
     });
     onProgress(100);

@@ -15,6 +15,7 @@ import {
   type ImageAsset,
   type ImageId,
   type ImageLayer,
+  type Layer,
   type NumberLayer,
   type RingLayer,
   type Screen,
@@ -206,6 +207,39 @@ const assetOf = (r: Resource): ImageAsset => ({
   data: r.data,
 });
 
+const previewLayer = (previewId: ImageId): Layer => ({
+  ...base(),
+  tag: TAG.preview,
+  kind: "raw",
+  children: [
+    {
+      ...base(),
+      tag: TAG.pvStruct,
+      kind: "raw",
+      prefix: "0000000000",
+      refType: 0x61,
+      frames: [previewId],
+    },
+  ],
+});
+
+/** Every screen of every stock face carries a 0x28 thumbnail — all 223 AOD screens across the
+ *  Pro 2 and Pro 3 corpora included. An FMC face whose AOD had lost it crash-looped a Watch 3 Pro
+ *  on AOD (#49), and the tree lets the Preview layer be deleted, so the export puts a `blank` one
+ *  back in front for regenPreviewAssets to bake. Unchanged doc when every screen has one. */
+export function withPreviews(doc: Doc, blank: Resource): Doc {
+  const images = new Map(doc.images);
+  const screens = doc.screens.map((s): Screen => {
+    if (s.layers.some((l) => l.kind === "raw" && l.tag === TAG.preview)) return s;
+    const a = assetOf(blank);
+
+    images.set(a.id, a);
+    return { ...s, layers: [previewLayer(a.id), ...s.layers] };
+  });
+
+  return screens.every((s, k) => s === doc.screens[k]) ? doc : { ...doc, screens, images };
+}
+
 /** A screen with nothing on it but the thumbnail the store list reads and a black background —
  *  the shape every screen in the corpus starts with, AOD included (a 0x28 preview, then art). */
 export function blankScreen(
@@ -218,21 +252,7 @@ export function blankScreen(
     kind,
     // no 0x86 name layer here — toLegacy synthesizes one from doc.name for every main screen
     layers: [
-      {
-        ...base(),
-        tag: TAG.preview,
-        kind: "raw",
-        children: [
-          {
-            ...base(),
-            tag: TAG.pvStruct,
-            kind: "raw",
-            prefix: "0000000000",
-            refType: 0x61,
-            frames: [previewId],
-          },
-        ],
-      },
+      previewLayer(previewId),
       {
         ...base(),
         tag: 0x30,

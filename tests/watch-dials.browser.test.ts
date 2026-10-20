@@ -3,7 +3,13 @@
 // after a reconnect a full watch reports room it doesn't have. mergeDials is what closes that
 // gap; these check it does, and that a dial the watch turns out not to have stops counting.
 import { beforeEach, expect, test } from "vitest";
-import { NoFreeSlotError, Watch, WF_CAPACITY } from "$lib/modules/device/lib/ble";
+import {
+  capacityOf,
+  NoFreeSlotError,
+  Watch,
+  WF_CAPACITY,
+  WF_CAPACITY_PRO3,
+} from "$lib/modules/device/lib/ble";
 import { CMD, dialId } from "$lib/modules/device/lib/ble-protocol";
 import { dialLabel, rememberDial, unclaimDial } from "$lib/modules/device/lib/catalog-names";
 
@@ -108,4 +114,11 @@ test("a refused replace of a dial the watch listed keeps it and costs one transf
   await expect(w.uploadWatchface(BIN, 276, "rec1")).rejects.toThrow(/pick a different dial/);
   expect(transfers).toBe(1);
   expect(w.installedWf).toContain(276);
+});
+
+test("a Watch 3 Pro gets its own slot count, matched by the advertised name", () => {
+  expect(capacityOf("CMF Watch 3 Pro-9A9D")).toBe(WF_CAPACITY_PRO3);
+  expect(capacityOf("CMF Watch Pro 3-1A2B")).toBe(WF_CAPACITY_PRO3);
+  expect(capacityOf("CMF Watch Pro 2-1A2B")).toBe(WF_CAPACITY);
+  expect(capacityOf(null)).toBe(WF_CAPACITY);
 });
