@@ -54,33 +54,60 @@ export const newImage = (frames: readonly ImageId[]): ImageLayer => ({
 /** One frame per battery percent, 0..100: the image widget draws frames[value % count]. */
 export const PROGRESS_STEPS = 101;
 
-/** A progress line. The format has no linear gauge, so this borrows the node shape of the stock
- *  Analog__370__Hemisphere's battery-percent text: a plain image widget on battery (0x24) picking
- *  one of 101 pre-drawn frames (rotated '0%'..'100%' text there, not a gauge), meta copied from
- *  that face (max 100000, no w/h). Filling-bar frames on this picker are unverified on a watch.
- *  ponytail: battery only. Across the 100 stock faces every goal-percent id (0x25/0x26/0x46/
+/** What a progress line can read. Each row copies a stock picker on that source: `frames` is how
+ *  many it holds (the watch draws frames[value % frames]) and frame i is drawn i/`full` filled.
+ *  ponytail: seconds are left out — no stock face pickers a second id, so whether the watch
+ *  redraws an image widget every second is unverified; the ring covers seconds (Flux). */
+export const LINE_SOURCES = {
+  // Analog__370__Hemisphere: 101 frames on battery, one per percent
+  battery: { source: 0x24, max: 100000, frames: PROGRESS_STEPS, full: 100 },
+  // Creative__343__Progress_Day: 24 pickers of 60 frames on the minute, each a dot filling up
+  minute: { source: 0x0b, max: 60, frames: 60, full: 60 },
+  // Analog__341__Dual_View: 24 frames on the 24h hour, one per hour of the day
+  hour: { source: 0x04, max: 0, frames: 24, full: 24 },
+} as const;
+
+export type LineSource = keyof typeof LINE_SOURCES;
+
+/** A progress line. The format has no linear gauge, so this borrows the node shape of a stock
+ *  picker (see LINE_SOURCES): a plain image widget picking one of its pre-drawn frames, meta copied
+ *  from that face (no w/h). Filling-bar frames on these pickers are unverified on a watch.
+ *  ponytail: no goal sources. Across the 100 stock faces every goal-percent id (0x25/0x26/0x46/
  *  0x49/0x6a/0x6c/0x6f/0x82) drives a 0x80/0x81 ring and nothing else — no 0x30 picker and no
  *  0x38 bucketed gauge (the tag Energetic/Vintage/Widgets/Tumbler draw battery and heart rate
  *  through, 7..26 frames). A picker on them, and how 0x38 buckets a value, needs a watch. */
-export const newProgressLine = (frames: readonly ImageId[], w: number, h: number): ImageLayer => ({
+export const newProgressLine = (
+  frames: readonly ImageId[],
+  w: number,
+  h: number,
+  on: LineSource = "battery",
+): ImageLayer => ({
   ...newImage(frames),
   x: CENTER - (w >> 1),
   y: CENTER - (h >> 1),
-  meta: metaWith({ source: 0x24, max: 100000 }),
+  meta: metaWith({ source: LINE_SOURCES[on].source, max: LINE_SOURCES[on].max }),
 });
 
-/** The progress line `l` is, or null for any other widget. Hemisphere's stock '0%'..'100%' text
- *  has the same meta and frame count, so the bar shape is what tells them apart. A turned one is
- *  left out: the turn is baked into its pixels, and a redraw would lay it flat again.
- *  ponytail: shape heuristic (one side >= 4x the other); store a marker if a hand-made 101-frame
- *  battery strip ever gets mistaken for one. */
-export function progressLineOf(doc: Doc, l: Layer): { vertical: boolean; full: ImageAsset } | null {
-  if (l.kind !== "image" || l.meta.source !== 0x24 || l.frames.length !== PROGRESS_STEPS)
-    return null;
-  const full = doc.images.get(l.frames[PROGRESS_STEPS - 1]);
+/** The progress line `l` is, or null for any other widget: a picker matching one of LINE_SOURCES,
+ *  drawn as a bar. `full` is its last, fullest frame. Hemisphere's stock '0%'..'100%' text has the
+ *  same meta and frame count as a battery line, and Progress_Day's dots as a minute one, so the bar
+ *  shape is what tells them apart. A turned one is left out: the turn is baked into its pixels, and
+ *  a redraw would lay it flat again.
+ *  ponytail: shape heuristic (one side >= 4x the other); store a marker if a hand-made strip on
+ *  one of these sources ever gets mistaken for one. */
+export function progressLineOf(
+  doc: Doc,
+  l: Layer,
+): { on: LineSource; vertical: boolean; full: ImageAsset } | null {
+  if (l.kind !== "image") return null;
+  const on = (Object.keys(LINE_SOURCES) as LineSource[]).find(
+    (k) => LINE_SOURCES[k].source === l.meta.source && LINE_SOURCES[k].frames === l.frames.length,
+  );
+  const full = on && doc.images.get(l.frames[l.frames.length - 1]);
 
-  if (!full || full.rotate || Math.max(full.w, full.h) < 4 * Math.min(full.w, full.h)) return null;
-  return { vertical: full.h > full.w, full };
+  if (!on || !full || full.rotate || Math.max(full.w, full.h) < 4 * Math.min(full.w, full.h))
+    return null;
+  return { on, vertical: full.h > full.w, full };
 }
 
 /** A step counter over a 10-glyph atlas. fmt byte 0x82 = two digits, zero-padded. */

@@ -22,6 +22,7 @@ import {
   type RingLayer,
 } from "../src/lib/modules/editor/core/document/doc";
 import {
+  LINE_SOURCES,
   PROGRESS_STEPS,
   blankDoc,
   newProgressLine,
@@ -34,6 +35,7 @@ import {
   progressLinePixels,
   progressLineStored,
 } from "../src/lib/modules/editor/core/render/pixels";
+import { TIME_RING_RANGE, gaugeOnSource } from "../src/lib/modules/editor/core/render/arc";
 import { SCREEN } from "../src/lib/modules/editor/core/render/screen";
 
 const res = (w: number, h: number): Resource => ({
@@ -244,4 +246,87 @@ test("a progress line's colour reads back off its frames; Hemisphere's text is n
 
   expect(text).toHaveLength(1);
   expect(progressLineOf(hemi, text[0])).toBeNull();
+});
+
+// #63: a time-driven progress line is a minute picker. Creative__343__Progress_Day draws its dots
+// with 60-frame pickers on 0x0b; the line has to be written like the plain one, and frame i has
+// to be i/60 filled, because the watch draws frames[minute % 60]. The colour picker must find it
+// again, and must leave Progress_Day's own dots alone.
+test("a minute progress line is written like Progress_Day's 60-frame minute picker", () => {
+  const { frames, full } = LINE_SOURCES.minute;
+  const assets = Array.from({ length: frames }, (_, i): ImageAsset => {
+    const r = encodePixels(progressLinePixels(200, 12, (i * 100) / full, false), 200, 12, 5);
+
+    return { id: newImageId(), cf: r.cf, w: r.w, h: r.h, data: r.data };
+  });
+  const doc = blankDoc("Line", res(2, 2), res(SCREEN, SCREEN));
+  const line = newProgressLine(
+    assets.map((a) => a.id),
+    200,
+    12,
+    "minute",
+  );
+  const images = new Map([...doc.images, ...assets.map((a) => [a.id, a] as const)]);
+
+  expect(progressLineOf({ ...doc, images }, line)).toMatchObject({ on: "minute", vertical: false });
+  const built = parseBin(
+    buildBin(
+      toLegacy({
+        ...doc,
+        images,
+        screens: [{ ...doc.screens[0], layers: [...doc.screens[0].layers, line] }],
+      }),
+    ),
+  );
+  const written = built.screens[0].subs!.at(-1)!.subs![0];
+  const stock = parseBin(readFileSync("tests/__fixtures__/Creative__343__Progress_Day.bin"));
+  const metas = new Set<string>();
+  const walk = (n: FaceNode) => {
+    if (n.tag === TAG.struct && n.images?.length === 60) metas.add(`${n.meta}/${n.refType}`);
+    n.subs?.forEach(walk);
+  };
+
+  stock.screens.forEach(walk);
+  expect(metas).toContain(`${written.meta}/${written.refType}`);
+  expect(written.images).toHaveLength(60);
+
+  const filled = (i: number) =>
+    decodePixels(built.resources[written.images![i]])!.filter(
+      (v, k) => k % 4 === 3 && k < 200 * 4 && v === 255,
+    ).length;
+
+  expect([filled(0), filled(30), filled(59)]).toEqual([0, 100, 197]);
+
+  const day = fromLegacy(stock).doc;
+  const dots = day.screens[0].layers.flatMap(function all(l): Layer[] {
+    return l.kind === "group" ? l.children.flatMap(all) : [l];
+  });
+
+  expect(dots.filter((l) => l.kind === "image" && l.frames.length === 60).length).toBeGreaterThan(
+    0,
+  );
+  expect(dots.filter((l) => progressLineOf(day, l))).toEqual([]);
+});
+
+// #63: a ring moved onto a time source gauges it in its own units, the way Digital__337__
+// Time_Finder's hour/minute/second rings do; moving it back to a metric makes it a percent again.
+test("a ring switched to a time source takes the stock ring's gauge", () => {
+  const { doc } = fromLegacy(
+    parseBin(readFileSync("tests/__fixtures__/Digital__337__Time_Finder.bin")),
+  );
+  const rings = doc.screens[0].layers.flatMap(function all(l): RingLayer[] {
+    return l.kind === "ring" ? [l] : l.kind === "group" ? l.children.flatMap(all) : [];
+  });
+  const timed = rings.filter((r) => TIME_RING_RANGE[r.meta.source]);
+  const fresh = newRing();
+
+  expect(timed.map((r) => r.meta.source).sort()).toEqual([0x0a, 0x0b, 0x0f]);
+  for (const r of timed) {
+    const g = gaugeOnSource(fresh.spec, fresh.meta.source, r.meta.source);
+
+    expect([g.min, g.max, r.meta.max]).toEqual([r.spec.min, r.spec.max, 100000]);
+    expect(gaugeOnSource(g, r.meta.source, 0x24)).toMatchObject({ min: 0, max: 100 });
+  }
+  // a range the user typed survives a move between two metrics
+  expect(gaugeOnSource({ ...fresh.spec, max: 80 }, 0x19, 0x24).max).toBe(80);
 });

@@ -304,11 +304,19 @@
       <MenuItem onClick={() => nodeAdded("ring")}>
         <Icon name="progress_activity" size={22} /> Progress ring
       </MenuItem>
-      <MenuItem onClick={() => progressLineAdded("horizontal")}>
+      <MenuItem onClick={() => progressLineAdded({ dir: "horizontal", on: "battery" })}>
         <Icon name="linear_scale" size={22} /> Progress line
       </MenuItem>
-      <MenuItem onClick={() => progressLineAdded("vertical")}>
+      <MenuItem onClick={() => progressLineAdded({ dir: "vertical", on: "battery" })}>
         <Icon name="height" size={22} /> Vertical progress line
+      </MenuItem>
+      <!-- ponytail: time lines come horizontal only; a vertical one is the same frames turned,
+           add the entries if someone asks -->
+      <MenuItem onClick={() => progressLineAdded({ dir: "horizontal", on: "minute" })}>
+        <Icon name="timer" size={22} /> Minute progress line
+      </MenuItem>
+      <MenuItem onClick={() => progressLineAdded({ dir: "horizontal", on: "hour" })}>
+        <Icon name="hourglass_empty" size={22} /> Hour progress line
       </MenuItem>
       <MenuItem onClick={() => nodeAdded("group")}>
         <Icon name="folder" size={22} /> Group
