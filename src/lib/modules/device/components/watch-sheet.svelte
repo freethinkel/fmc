@@ -7,8 +7,8 @@
   import { Button } from "$lib/shared/components/button";
   import { Icon } from "$lib/shared/components/icon";
   import { bleModel } from "../model";
-  import { dialLabel, dialPreview, dialTitle } from "../lib/catalog-names";
-  import { WF_CAPACITY } from "../lib/ble";
+  import { dialLabel, dialPreview, dialTitle, flashedOn } from "../lib/catalog-names";
+  import { capacityOf } from "../lib/ble";
   import WatchSelector from "./watch-selector.svelte";
 
   interface Props {
@@ -35,6 +35,7 @@
     $dials: dials,
     connectRequested,
     forgetRequested,
+    dialRemoved,
     $connecting: connecting,
     $forgetting: forgetting,
   } = bleModel;
@@ -108,7 +109,7 @@
     {#if $dials}
       <div class="section">
         <h2 class="title">
-          Watchfaces on the watch ({$dials.length}/{WF_CAPACITY})
+          Watchfaces on the watch ({$dials.length}/{capacityOf($bleInfo.name)})
         </h2>
         <div class="badges">
           {#each $dials as id, i (id)}
@@ -116,6 +117,9 @@
               name={dialLabel(id, i)}
               preview={dialPreview(id)}
               title={dialTitle(id)}
+              onRemove={$bleInfo.serial && flashedOn($bleInfo.serial).includes(id)
+                ? () => dialRemoved(id)
+                : undefined}
             />
           {:else}
             <span class="none">the watch reported none</span>

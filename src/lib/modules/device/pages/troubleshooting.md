@@ -30,13 +30,15 @@ This one looks like a bricked watch. It isn't. The phone has a Bluetooth pairing
 
 You don't need FMC or Nothing X for this. Long-press the current face until the list of installed faces appears. Swipe to the one you want gone and swipe up on it.
 
-The watch holds {WF_CAPACITY} watchfaces. Once they're all taken, FMC asks which one to overwrite. The factory faces count too, and Nothing X can reinstall them.
+A Watch Pro 2 holds {WF_CAPACITY} watchfaces, a Watch 3 Pro {WF_CAPACITY_PRO3}. Once they're all taken, FMC asks which one to overwrite. The factory faces count too, and Nothing X can reinstall them.
 
 ## The watch restarts in a loop
 
 The watch has to hold every image of a face in memory. A face with a 1386×1386 image, three times the screen, ran a CMF Watch 3 Pro out of memory: it showed the logo, went black and restarted, again and again, and nothing could connect to it.
 
-FMC now prevents this in two places. Images you add in the editor are scaled down to fit the screen. Before any install, FMC also checks the file and refuses it if an image is more than {MAX_IMAGE_SIDE} px on a side, wherever the file came from.
+FMC now prevents this in two places. Images you add in the editor are scaled down to fit the screen. Before any install, FMC also checks the file and refuses it if an image is more than {MAX_IMAGE_SIDE} px on a side, wherever the file came from. Past {SAFE_IMAGE_SIDE} px, bigger than factory faces use, it asks you to confirm before installing.
+
+A second loop shows up only on the always-on display: the screen flashes to full brightness over and over until you switch to a factory face. The face reported doing this on a Watch 3 Pro had lost the small thumbnail every factory always-on screen carries. That is our best lead, not a confirmed cause. FMC now refuses a file like that before the install, and the editor puts the thumbnail back, so open the face in the editor and install it from there.
 
 If your watch is already stuck in the loop, we don't have a confirmed fix yet. These are the things worth trying, in order:
 

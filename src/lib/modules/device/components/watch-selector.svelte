@@ -2,14 +2,18 @@
   // One watchface installed on the watch: its thumbnail if we've ever flashed it from here,
   // otherwise a blank dial with the label doing the work. Picking is optional — the popover
   // only lists them, the slot dialog picks one to overwrite.
+  import { Icon } from "$lib/shared/components/icon";
+
   interface Props {
     name: string;
     preview?: string;
     title?: string;
     selected?: boolean;
     onClick?: () => void;
+    // drops it from the list — only on a dial that isn't itself a button (no onClick)
+    onRemove?: () => void;
   }
-  const { name, preview, title, selected = false, onClick }: Props = $props();
+  const { name, preview, title, selected = false, onClick, onRemove }: Props = $props();
 </script>
 
 <svelte:element
@@ -34,11 +38,23 @@
     {/if}
   </span>
   <span class="label">{name}</span>
+  {#if onRemove}
+    <button
+      type="button"
+      class="remove"
+      aria-label="Remove {name} from this list"
+      title="Deleted it on the watch? FMC can't see that. Remove it from this list."
+      onclick={onRemove}
+    >
+      <Icon name="close" size={14} />
+    </button>
+  {/if}
 </svelte:element>
 
 <style>
   .watch {
     --size: 3.75rem;
+    position: relative;
     flex: 0 0 auto;
     width: var(--size);
     display: flex;
@@ -84,6 +100,27 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  .remove {
+    position: absolute;
+    /* inside the dial's box: the row scrolls sideways, so anything past its edge is clipped */
+    top: 0;
+    right: 0;
+    display: grid;
+    place-items: center;
+    width: 1.25rem;
+    height: 1.25rem;
+    padding: 0;
+    border: 1px solid oklch(from var(--color-text) l c h / 12%);
+    border-radius: 50%;
+    background: var(--color-background);
+    color: oklch(from var(--color-text) l c h / 55%);
+    cursor: pointer;
+
+    &:hover,
+    &:focus-visible {
+      color: var(--color-text);
+    }
   }
   .pickable {
     cursor: pointer;

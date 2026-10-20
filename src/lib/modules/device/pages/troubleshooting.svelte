@@ -4,15 +4,17 @@
   // report we can point at, and it deliberately stops short of "nothing can go wrong".
   import { marked } from "marked";
   import { Icon } from "$lib/shared/components/icon";
-  import { MAX_IMAGE_SIDE } from "$lib/modules/editor/core/format";
-  import { WF_CAPACITY } from "../lib/ble";
+  import { MAX_IMAGE_SIDE, SAFE_IMAGE_SIDE } from "$lib/modules/editor/core/format";
+  import { WF_CAPACITY, WF_CAPACITY_PRO3 } from "../lib/ble";
   import source from "./troubleshooting.md?raw";
 
   // our own file, so {@html} is safe
   const html = marked.parse(
     source
       .replaceAll("{WF_CAPACITY}", String(WF_CAPACITY))
-      .replaceAll("{MAX_IMAGE_SIDE}", String(MAX_IMAGE_SIDE)),
+      .replaceAll("{WF_CAPACITY_PRO3}", String(WF_CAPACITY_PRO3))
+      .replaceAll("{MAX_IMAGE_SIDE}", String(MAX_IMAGE_SIDE))
+      .replaceAll("{SAFE_IMAGE_SIDE}", String(SAFE_IMAGE_SIDE)),
     { async: false },
   );
 </script>
