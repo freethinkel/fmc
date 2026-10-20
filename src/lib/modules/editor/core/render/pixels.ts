@@ -77,19 +77,19 @@ export function resourceFromCanvas(canvas: OffscreenCanvas, cf: number): Resourc
   return encodePixels(canvas.getContext("2d")!.getImageData(0, 0, w, h).data, w, h, cf);
 }
 
-/** A dropped/picked image file as a ready-to-use resource (bitmap included). */
+/** A size scaled down, never up, so neither side passes the panel. Nothing larger shows on the
+ *  watch, and the firmware has to hold every image in RAM (see MAX_IMAGE_SIDE). */
+export function fitScreen(w: number, h: number): { w: number; h: number } {
+  const k = Math.min(1, SCREEN / Math.max(w, h));
+
+  return { w: Math.max(1, Math.round(w * k)), h: Math.max(1, Math.round(h * k)) };
+}
+
+/** A dropped/picked image file as a ready-to-use resource (bitmap included), fitted to the panel. */
 export async function resourceFromFile(file: File, cf: number): Promise<Resource> {
   const img = await createImageBitmap(file);
-  const c = new OffscreenCanvas(img.width, img.height);
-  const cx = c.getContext("2d")!;
-
-  cx.drawImage(img, 0, 0);
-  const r = encodePixels(
-    cx.getImageData(0, 0, img.width, img.height).data,
-    img.width,
-    img.height,
-    cf,
-  );
+  const { w, h } = fitScreen(img.width, img.height);
+  const r = encodePixels(pixelsOf(img, w, h), w, h, cf);
 
   r.bitmap = await bitmapOf(r);
   return r;

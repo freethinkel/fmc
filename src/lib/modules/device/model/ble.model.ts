@@ -3,6 +3,7 @@ import { createEffect, createEvent, createStore, sample } from "effector";
 import { reset } from "patronum";
 import { NoFreeSlotError, Watch, type WatchDials, type WatchInfo } from "../lib/ble";
 import { rememberDial } from "../lib/catalog-names";
+import { assertFlashable } from "$lib/modules/editor/core/format";
 import * as bleApi from "./ble.api";
 
 // what a flash needs: the file, a thumbnail of the face so the watch's id list can show it
@@ -76,6 +77,8 @@ const connectFx = createEffect(async () => {
 export const $connecting = connectFx.pending;
 const flashFx = createEffect(
   async ({ bin, preview, key, slot }: FlashPayload & { slot?: number }) => {
+    // every install — editor and marketplace — comes through here, so this is the one gate
+    assertFlashable(bin);
     const { id, name } = await watch!.uploadWatchface(bin, slot, key);
 
     // the watch will only ever report this dial by its id — this is the one moment the name

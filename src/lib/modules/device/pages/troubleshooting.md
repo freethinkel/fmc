@@ -6,7 +6,7 @@ FMC talks to your watch straight from the browser, with no phone app in between.
 
 - **It cannot write firmware.** The protocol FMC speaks has one firmware command, and it only asks the watch which version it runs. There is nothing that writes. You can check this yourself in [`ble-protocol.ts`](https://github.com/freethinkel/fmc/blob/main/src/lib/modules/device/lib/ble-protocol.ts), where `fwGet` and `fwRet` are the whole firmware story.
 - **It installs watchfaces through the watch's own installer.** The upload follows the same steps the official app takes. FMC starts an install, describes the file, sends it in chunks and finishes. The watch answers every step and can refuse the file. When it does, FMC shows you the refusal and stops.
-- **The worst case we know of is a bad watchface.** The watch refuses it, or installs it and it looks wrong. Either way you delete it on the watch and move on.
+- **A bad watchface is the worst case we know of, and it can be bad.** Usually the watch refuses the file, or installs it and it looks wrong, and you delete it on the watch. Once, a face with an image far larger than the screen made a Watch 3 Pro restart in a loop. See "The watch restarts in a loop" below.
 - **We won't tell you nothing can go wrong.** We build and test FMC on a CMF Watch Pro 2. Firmware we haven't seen may behave differently, and we can't promise anything about it. If something breaks, [tell us](https://github.com/freethinkel/fmc/issues). The Nothing X fix below exists because someone did.
 
 ## Only one app can hold the watch at a time
@@ -31,6 +31,21 @@ This one looks like a bricked watch. It isn't. The phone has a Bluetooth pairing
 You don't need FMC or Nothing X for this. Long-press the current face until the list of installed faces appears. Swipe to the one you want gone and swipe up on it.
 
 The watch holds {WF_CAPACITY} watchfaces. Once they're all taken, FMC asks which one to overwrite. The factory faces count too, and Nothing X can reinstall them.
+
+## The watch restarts in a loop
+
+The watch has to hold every image of a face in memory. A face with a 1386×1386 image, three times the screen, ran a CMF Watch 3 Pro out of memory: it showed the logo, went black and restarted, again and again, and nothing could connect to it.
+
+FMC now prevents this in two places. Images you add in the editor are scaled down to fit the screen. Before any install, FMC also checks the file and refuses it if an image is more than {MAX_IMAGE_SIDE} px on a side, wherever the file came from.
+
+If your watch is already stuck in the loop, we don't have a confirmed fix yet. These are the things worth trying, in order:
+
+1. Right after it restarts, keep the screen awake by tapping it. The large image in the reported case was the always-on one, so the crash may only come when the screen dims.
+2. If the face shows up even briefly, long-press it and swipe it away. If you have time, also turn off the always-on display in settings.
+3. Let the battery run out completely, then charge it and try again.
+4. If none of that works, contact Nothing support. The firmware itself is untouched, so this is a repair they can do.
+
+<p class="note">If one of these steps worked for you, or something else did, please <a href="https://github.com/freethinkel/fmc/issues">tell us</a> so we can put it at the top of this list.</p>
 
 ## When the watch refuses an upload
 

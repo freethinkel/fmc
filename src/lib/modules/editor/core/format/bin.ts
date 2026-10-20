@@ -389,3 +389,31 @@ export function buildBin(face: Face): Uint8Array {
   putU32(0, rawCRC32(concat([hdr.subarray(4, HDR), treeSec])));
   return concat([hdr, treeSec, rb, hdr]);
 }
+
+/**
+ * Largest image side we let onto the watch. The firmware decodes every bitmap into RAM when it
+ * loads a face, and one far past the panel runs it out: a 1386x1386 AOD image boot-looped a
+ * Watch 3 Pro. Official faces top out at 467 (the panel is 466).
+ *
+ * ponytail: a per-image side cap, not a total-memory budget — we don't know the firmware's real
+ * limit. Upgrade path: sum decoded bytes per screen once someone measures where it falls over.
+ */
+export const MAX_IMAGE_SIDE = 480;
+
+/** Throws when the file holds an image the watch may not survive loading. A file we can't parse
+ *  isn't blocked here — the watch's installer still gets to refuse it. */
+export function assertFlashable(bin: Uint8Array): void {
+  let resources: Resource[];
+
+  try {
+    ({ resources } = parseBin(bin));
+  } catch {
+    return;
+  }
+  const big = resources.find((r) => r.w > MAX_IMAGE_SIDE || r.h > MAX_IMAGE_SIDE);
+
+  if (big)
+    throw new Error(
+      `an image is ${big.w}×${big.h} px, over the ${MAX_IMAGE_SIDE} px limit — the watch can run out of memory loading it and restart in a loop. Resize it in the editor first.`,
+    );
+}
