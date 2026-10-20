@@ -11,6 +11,7 @@ import {
   opaqueBlack,
   progressLineColor,
   progressLineFrame,
+  progressLineStored,
   resourceFromFile,
 } from "../core/render/pixels";
 import { glyphSprites, type GlyphSpec } from "../core/render/glyphs";
@@ -273,29 +274,34 @@ const addProgressLineFx = attach({
 });
 
 const recolorProgressLineFx = attach({
-  source: $doc,
-  async effect(doc, { id, color }: { id: NodeId; color: string }) {
+  source: { doc: $doc, cache: $cache },
+  async effect({ doc, cache }, { id, color }: { id: NodeId; color: string }) {
     const l = doc ? findLayer(doc, id) : null;
     const line = doc && l && !l.locked ? progressLineOf(doc, l) : null;
 
-    if (!line) return null;
-    const { assets, cache } = await progressLineAssets(
+    // the same colour again (or one cf 5 rounds to it) would only spend an undo step
+    if (
+      !line ||
+      progressLineStored(color) === progressLineColor(line.full, cache.get(line.full.id))
+    )
+      return null;
+    const { assets, cache: drawn } = await progressLineAssets(
       line.full.w,
       line.full.h,
       line.vertical,
       color,
     );
 
-    return { id, ids: [...assets.keys()], assets, cache };
+    return { id, full: line.full, ids: [...assets.keys()], assets, cache: drawn };
   },
 });
 
 /** The selected progress line and the colour it is drawn in, for the inspector — null for
  *  anything else. */
-export const $progressLine = combine($doc, $selected, (doc, [l]) => {
+export const $progressLine = combine($doc, $selected, $cache, (doc, [l], cache) => {
   const line = doc && l ? progressLineOf(doc, l) : null;
 
-  return line && { id: l.id, color: progressLineColor(line.full) };
+  return line && { id: l.id, color: progressLineColor(line.full, cache.get(line.full.id)) };
 });
 
 // A slot needs one placeholder plus one icon per metric, all blank frames to be encoded first.
@@ -625,8 +631,15 @@ sample({
 sample({
   clock: recolorProgressLineFx.doneData,
   filter: Boolean,
-  fn: ({ id, ids, assets }) => ({
-    edit: (doc: Doc) => patchLayer(withAssets(doc, assets), id, { frames: ids } as Partial<Layer>),
+  fn: ({ id, full, ids, assets }) => ({
+    edit: (doc: Doc) => {
+      const l = findLayer(doc, id);
+
+      // redrawn off `full`: if the line was deleted, resized or turned meanwhile, these frames
+      // are for a line that no longer exists
+      if (!l || progressLineOf(doc, l)?.full !== full) return doc;
+      return patchLayer(withAssets(doc, assets), id, { frames: ids } as Partial<Layer>);
+    },
   }),
   target: committed,
 });

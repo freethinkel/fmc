@@ -173,7 +173,9 @@
       onchange={(e) => progressLineColored({ id: layer.id, color: e.currentTarget.value })}
     />
   </div>
-{:else if layer.kind === "number" || layer.kind === "image" || frameLabels}
+{/if}
+
+{#if layer.kind === "number" || layer.kind === "image" || frameLabels}
   <div class="row">
     <Button kind="secondary" onClick={() => glyphDialogOpened(layer.id)}>
       <Icon name="text_fields" />

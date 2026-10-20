@@ -32,6 +32,7 @@ import {
 import {
   progressLineColor,
   progressLinePixels,
+  progressLineStored,
 } from "../src/lib/modules/editor/core/render/pixels";
 import { SCREEN } from "../src/lib/modules/editor/core/render/screen";
 
@@ -215,14 +216,19 @@ test("a progress line's colour reads back off its frames; Hemisphere's text is n
     12,
     200,
   );
-  const found = progressLineOf(
-    { ...doc, images: new Map([...doc.images, ...assets.map((a) => [a.id, a] as const)]) },
-    line,
-  );
+  const images = new Map([...doc.images, ...assets.map((a) => [a.id, a] as const)]);
+  const found = progressLineOf({ ...doc, images }, line);
 
   expect(found?.vertical).toBe(true);
-  // cf 5 keeps 5/6/5 bits: 0x5c green comes back as 0x5d
+  // cf 5 keeps 5/6/5 bits: 0x5c green comes back as 0x5d — the same value picking it again
+  // compares against, so a re-pick is a no-op
   expect(progressLineColor(found!.full)).toBe("#ff5d00");
+  expect(progressLineStored("#ff5c00")).toBe("#ff5d00");
+
+  // a turn is baked into the pixels, and a redraw would lay the line flat again
+  const turned = new Map(images).set(found!.full.id, { ...found!.full, rotate: 10 });
+
+  expect(progressLineOf({ ...doc, images: turned }, line)).toBeNull();
 
   const hemi = fromLegacy(
     parseBin(readFileSync("tests/__fixtures__/Analog__370__Hemisphere.bin")),

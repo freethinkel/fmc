@@ -70,7 +70,8 @@ export const newProgressLine = (frames: readonly ImageId[], w: number, h: number
 });
 
 /** The progress line `l` is, or null for any other widget. Hemisphere's stock '0%'..'100%' text
- *  has the same meta and frame count, so the bar shape is what tells them apart.
+ *  has the same meta and frame count, so the bar shape is what tells them apart. A turned one is
+ *  left out: the turn is baked into its pixels, and a redraw would lay it flat again.
  *  ponytail: shape heuristic (one side >= 4x the other); store a marker if a hand-made 101-frame
  *  battery strip ever gets mistaken for one. */
 export function progressLineOf(doc: Doc, l: Layer): { vertical: boolean; full: ImageAsset } | null {
@@ -78,7 +79,7 @@ export function progressLineOf(doc: Doc, l: Layer): { vertical: boolean; full: I
     return null;
   const full = doc.images.get(l.frames[PROGRESS_STEPS - 1]);
 
-  if (!full || Math.max(full.w, full.h) < 4 * Math.min(full.w, full.h)) return null;
+  if (!full || full.rotate || Math.max(full.w, full.h) < 4 * Math.min(full.w, full.h)) return null;
   return { vertical: full.h > full.w, full };
 }
 

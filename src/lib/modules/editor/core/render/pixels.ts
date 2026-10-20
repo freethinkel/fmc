@@ -143,15 +143,32 @@ export async function progressLineFrame(
   return r;
 }
 
-/** The colour a progress line was drawn in, read back off its full (100%) frame. cf 5 keeps
- *  5/6/5 bits, so it comes back rounded: #ff5c00 reads #ff5d00. */
-export function progressLineColor(full: ImageAsset): string {
-  const px = decodePixels(full);
+const lineColors = new WeakMap<object, string>();
 
-  return px
-    ? "#" + [...px.subarray(0, 3)].map((v) => v.toString(16).padStart(2, "0")).join("")
-    : "#ffffff";
+/** The colour a progress line was drawn in, read back off its full (100%) frame — through the
+ *  cache, since a resize leaves `data` stale. cf 5 keeps 5/6/5 bits, so it comes back rounded:
+ *  #ff5c00 reads #ff5d00. Memoised per bitmap/asset: the inspector asks on every document edit. */
+export function progressLineColor(full: ImageAsset, cache?: ImageCache): string {
+  const key = cache?.bitmap ?? full;
+  let color = lineColors.get(key);
+
+  if (!color) {
+    const px = cachedPixels(full, cache);
+
+    color = px
+      ? "#" + [...px.subarray(0, 3)].map((v) => v.toString(16).padStart(2, "0")).join("")
+      : "#ffffff";
+    lineColors.set(key, color);
+  }
+  return color;
 }
+
+/** `color` as a progress line's cf 5 frames store it — what progressLineColor would read back. */
+export const progressLineStored = (color: string) =>
+  progressLineColor({
+    id: "" as ImageId,
+    ...encodePixels(progressLinePixels(1, 1, 100, false, color), 1, 1, 5),
+  });
 
 export async function opaqueBlack(w: number, h: number): Promise<Resource> {
   const px = new Uint8ClampedArray(w * h * 4);
