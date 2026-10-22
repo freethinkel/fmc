@@ -14,6 +14,6 @@ build:
 # Prod build env: same-origin PocketBase (overrides a dev VITE_PB_URL in .env) and the
 # Aptabase key, which is public and ends up in the bundle anyway.
 deploy: export VITE_PB_URL =
-deploy: export VITE_APTABASE_KEY = A-EU-4670014985
+deploy: export VITE_APTABASE_KEY = A-SH-4670014985
 deploy: build
 	rsync -az --delete build/ $(DEPLOY_HOST):$(DEPLOY_PATH)/

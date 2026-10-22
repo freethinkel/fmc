@@ -1,6 +1,7 @@
 # Analytics
 
-[Aptabase](https://aptabase.com), EU region. No cookies, no consent banner: events carry a
+[Aptabase](https://aptabase.com), self-hosted on our own server in Cyprus
+(`aptabase.freethinkel.dev`). No cookies, no consent banner: events carry a
 random session id that rotates after an hour idle, the locale, and the properties listed below —
 nothing that identifies a person.
 
@@ -66,9 +67,10 @@ so `tests/analytics-events.browser.test.ts` is what catches a name or payload dr
 
 ## Deploying it
 
-Nothing on the backend: events go straight to `eu.aptabase.com`. The deploy job in
-`.github/workflows/ci.yml` sets `VITE_APTABASE_KEY` for `make deploy` — in plain text, not a
-secret, because the key ends up in the bundle anyway. Building by hand: put the same line in
+Nothing on the PocketBase backend: events go straight to `aptabase.freethinkel.dev` (the host is
+set in `aptabase.ts`; an `A-SH-` self-hosted key has none built in). The `deploy` target in the
+`Makefile` sets `VITE_APTABASE_KEY` for `make deploy` — in plain text, not a secret, because the
+key ends up in the bundle anyway. Building by hand: put the same line in
 `.env`.
 
 Your own visits on `localhost` are flagged as debug by the SDK and kept out of the release
@@ -76,4 +78,4 @@ numbers; the dashboard has a toggle between the two.
 
 ## Cost
 
-The SDK is 2.6 KB, 1.3 KB gzipped, bundled — no extra request, nothing to self-host.
+The SDK is 2.6 KB, 1.3 KB gzipped, bundled — no extra request, no tracker script to host.
