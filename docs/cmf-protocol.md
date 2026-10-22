@@ -103,6 +103,24 @@ ring, so the simulator feeds it minutes and `goalOf` answers with the goal in mi
 Any id can drive a `number` widget, an `image`-pick widget, or an arc ring — the mechanism
 is generic (see below), not hardcoded per id.
 
+#### No phone-connection source on the Watch Pro 2 (#68)
+
+None of the 230 corpus faces (100 Pro 2 stock, 130 Pro 3 from #49) gates anything on the phone
+connection. On 2026-10-21 we tested it directly on a real Watch Pro 2. Probe faces put a
+`number` widget on every id in 0x01..0x8d that had no confirmed label: everything absent from
+`ID_LABELS` plus the "?"-labelled ids, except the synthetic 0x79..0x7e. Each face was read with
+the phone connected through Nothing X, connected only to FMC, and disconnected. A control cell
+on 0x0b (minute) ticked, so the widgets were live.
+
+- No id follows the connection, so the Pro 2 firmware gives faces no connection status.
+- `0x37` is the only id that reacts to the phone: 1 while disconnected, 69 once connected. It is
+  data the phone pushes (next to `0x36` temperature; °F, humidity or phone battery are the
+  guesses), not a state, and 1 does not reliably mean "disconnected".
+- Non-zero but unexplained: `0x6e` = 12 (the stand goal?), `0x6b` = 30, `0x83` = 34, and
+  `0x3c` = 26, which doesn't fit its "heart rate (gauge)?" label. `0x44`/`0x45` print no digits.
+  Everything else read 0.
+- Not covered: 0x8e..0x9f, which only Pro 3 faces use (the Pro 2 getter table ends at 0x8d).
+
 ### `image` (0x30): static or pick-by-value
 
 Struct has an `images` array (resource indices). If length 1 → always drawn. If length N>1 →
