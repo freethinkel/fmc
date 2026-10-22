@@ -198,6 +198,9 @@
     align-items: center;
     gap: 0.25rem;
     margin-top: auto;
+    /* the row is 2rem whether or not it holds the "more" button, so the preview above it
+       (flex: 1, max-height: 100%) comes out the same size on own and foreign cards */
+    min-height: 2rem;
   }
 
   :global(.open) .action-btn {
