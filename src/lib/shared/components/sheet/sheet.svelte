@@ -243,9 +243,7 @@
     position: relative;
     height: 150%;
     overflow-y: scroll;
-    /* none, not contain: contain still lets the sheet rubber-band on its own, and a long pull up
-       outruns the bleed and shows its edge */
-    overscroll-behavior-y: none;
+    overscroll-behavior-y: contain;
     overflow-x: hidden;
     scrollbar-width: none;
     scroll-snap-type: y mandatory;
@@ -292,6 +290,10 @@
     z-index: -1;
     border-radius: calc(3 * var(--border-radius, 0.5rem)) calc(3 * var(--border-radius, 0.5rem)) 0 0;
     background: var(--color-background, Canvas);
+    /* its own copy another half screen down: the sheet keeps its rubber-band (it's what makes the
+       swipe feel right), and a long pull up outran the bleed and showed its edge. A shadow, since
+       a longer box would add to the scroll range and let the sheet scroll past open. */
+    box-shadow: 0 50svh 0 var(--color-background, Canvas);
   }
   .grabber {
     width: 2.25rem;
