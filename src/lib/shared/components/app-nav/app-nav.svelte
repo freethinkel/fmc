@@ -1,6 +1,7 @@
 <script lang="ts">
   import { page } from "$app/state";
   import { authModel } from "$lib/modules/auth/model";
+  import { fileUrl } from "$lib/shared/api";
   import WatchSheet from "$lib/modules/device/components/watch-sheet.svelte";
   import { Avatar } from "$lib/shared/components/avatar";
   import { Icon, type IconName } from "$lib/shared/components/icon";
@@ -50,11 +51,18 @@
         {#snippet trigger({ toggle })}
           <button onclick={toggle}>
             <span class="icon">
-              <Avatar name={$user.name || $user.email} />
+              <Avatar
+                name={$user.name || $user.email}
+                src={$user.avatar ? fileUrl($user, "avatar") : undefined}
+              />
             </span>
             Account
           </button>
         {/snippet}
+        <MenuItem href="/user/{$user.id}">
+          <Icon name="person" size={16} />
+          Profile
+        </MenuItem>
         <MenuItem href="https://github.com/freethinkel/fmc/issues">
           <Icon name="help" size={16} />
           Report an issue

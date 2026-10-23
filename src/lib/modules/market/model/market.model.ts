@@ -4,7 +4,7 @@ import { reset } from "patronum";
 import type { RecordModel } from "pocketbase";
 import { goto } from "$app/navigation";
 import { fileUrl } from "$lib/shared/api";
-import { authModel } from "$lib/modules/auth/model";
+import { authModel, profileModel } from "$lib/modules/auth/model";
 import { bleModel } from "$lib/modules/device/model";
 import { editorModel } from "$lib/modules/editor/model";
 // The watchface page draws the real dial rather than the still preview, so it needs the editor's
@@ -238,6 +238,14 @@ sample({
 });
 // don't let the previous creator's name and grid sit on screen while the next one loads
 reset({ clock: profileLoadRequested, target: [$profile, $profileItems] });
+// the owner edited their own profile: show it in place, no reload
+sample({
+  clock: profileModel.profileSaved,
+  source: $profile,
+  filter: (p, saved) => p?.id === saved.id,
+  fn: (_, saved) => saved,
+  target: $profile,
+});
 
 sample({
   clock: showcaseRequested,

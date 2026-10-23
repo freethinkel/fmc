@@ -1,10 +1,14 @@
 <script lang="ts">
   import { Avatar } from "$lib/shared/components/avatar";
+  import { Button } from "$lib/shared/components/button";
+  import { Icon } from "$lib/shared/components/icon";
   import { Skeleton } from "$lib/shared/components/skeleton";
   import { fileUrl } from "$lib/shared/api";
   import { marketModel } from "../model";
   import { creatorTitle } from "$lib/shared/seo";
   import { WatchfaceList } from "../components/watchface-list";
+  import { authModel, profileModel } from "$lib/modules/auth/model";
+  import ProfileEditor from "$lib/modules/auth/components/profile-editor.svelte";
 
   interface Props {
     userId: string;
@@ -19,11 +23,14 @@
     $marketErr: marketErr,
     profileLoadRequested,
   } = marketModel;
+  const { $user: user } = authModel;
+  const { profileEditOpened } = profileModel;
 
   $effect(() => {
     profileLoadRequested(userId);
   });
 
+  const own = $derived($user?.id === userId);
   const name = $derived($profile?.name || "Creator");
   const avatar = $derived($profile?.avatar ? fileUrl($profile, "avatar") : undefined);
   const joined = $derived(
@@ -50,8 +57,6 @@
         <Avatar {name} src={avatar} />
         <div class="identity">
           <h1>{name}</h1>
-          <!-- ponytail: users has no `bio` field yet (see fmc_pocketbase migrations) — the
-               line renders as soon as one exists, nothing else to change here -->
           {#if $profile.bio}<p class="bio">{$profile.bio}</p>{/if}
           <p class="meta">Joined {joined}</p>
           <dl class="stats">
@@ -68,6 +73,14 @@
               <dd>{totalDownloads}</dd>
             </div>
           </dl>
+          {#if own}
+            <div class="edit">
+              <Button kind="secondary" size="small" onClick={() => profileEditOpened()}>
+                <Icon name="edit" size={18} />
+                Edit profile
+              </Button>
+            </div>
+          {/if}
         </div>
       {:else if $profileLoading}
         <Skeleton height="5rem" width="5rem" />
@@ -86,6 +99,8 @@
     />
   </main>
 </div>
+
+{#if own}<ProfileEditor />{/if}
 
 <style>
   .page {
@@ -125,11 +140,16 @@
     margin: 0;
     max-width: 40rem;
     font-size: 0.8125rem;
+    white-space: pre-line;
+    overflow-wrap: anywhere;
   }
   .meta {
     margin: 0;
     font-size: 0.75rem;
     color: oklch(from var(--color-text) l c h / 55%);
+  }
+  .edit {
+    margin-top: 0.5rem;
   }
   .stats {
     display: flex;

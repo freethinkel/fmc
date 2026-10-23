@@ -23,3 +23,11 @@ export const registerFx = createEffect(
 );
 
 export const logoutFx = createEffect(() => pb.authStore.clear());
+
+// avatar: a File replaces it, null removes it, undefined leaves it alone. The SDK switches the
+// request to multipart on its own when the body holds a File, and — since this is the auth
+// record — saves the answer into pb.authStore, which is what refreshes $user.
+export const updateProfileFx = createEffect(
+  ({ id, ...body }: { id: string; name: string; bio: string; avatar?: File | null }) =>
+    pb.collection("users").update(id, body),
+);
