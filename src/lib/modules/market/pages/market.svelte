@@ -1,6 +1,7 @@
 <script lang="ts">
   import { page } from "$app/state";
   import { goto } from "$app/navigation";
+  import { tick } from "svelte";
   import { SearchInput } from "$lib/shared/components/search-input";
   import { Select } from "$lib/shared/components/select";
   import { Tabs } from "$lib/shared/components/tabs";
@@ -17,6 +18,8 @@
     $marketErr: marketErr,
     $marketLoading: marketLoading,
     $myLoading: myLoading,
+    $marketView: marketView,
+    marketViewSaved,
     marketLoadRequested,
     myLoadRequested,
   } = marketModel;
@@ -32,8 +35,8 @@
     if (mine && uid) myLoadRequested(uid);
   });
 
-  let query = $state("");
-  let sort = $state("new"); // new | popular | downloads
+  let query = $state($marketView.query);
+  let sort = $state($marketView.sort); // new | popular | downloads
   const SORT_OPTIONS = [
     { value: "new", label: "Newest" },
     { value: "popular", label: "Popular" },
@@ -42,7 +45,7 @@
 
   // "" — every watch. The shelf is mostly Watch 3 Pro faces right now, so a Watch Pro 2 owner
   // needs a way to see their own watch's faces without us moving or hiding anyone's work.
-  let device = $state("");
+  let device = $state($marketView.device);
   const DEVICE_OPTIONS = [
     { value: "", label: "All devices" },
     ...DEVICES.map((d) => ({ value: d.value, label: d.label, short: d.short })),
@@ -64,15 +67,31 @@
   );
 
   const PAGE = 60;
-  let visibleCount = $state(PAGE);
+  let visibleCount = $state($marketView.visibleCount);
+
+  let scroller = $state<HTMLElement | null>(null);
+  const restoreTop = $marketView.scrollTop;
+  let restoring = true;
+
+  $effect(() => {
+    if (!visible.length || !scroller || !restoring) return;
+    tick().then(() => {
+      if (!scroller) return;
+      scroller.scrollTop = restoreTop;
+      if (scroller.scrollTop === restoreTop) restoring = false;
+    });
+  });
 
   /* oxlint-disable no-unused-expressions -- bare refs register these as $effect deps */
+  let filterMounted = false;
+
   $effect(() => {
     query;
     sort;
     device;
     mine;
-    visibleCount = PAGE;
+    if (filterMounted) visibleCount = PAGE;
+    filterMounted = true;
   });
 
   const visible = $derived(shown.slice(0, visibleCount));
@@ -101,7 +120,13 @@
     </div>
   </div>
 
-  <main>
+  <main
+    bind:this={scroller}
+    onscroll={() => {
+      if (!restoring && scroller)
+        marketViewSaved({ scrollTop: scroller.scrollTop, visibleCount, query, sort, device });
+    }}
+  >
     <WatchfaceList
       items={visible}
       loading={mine ? $myLoading : $marketLoading}
@@ -111,7 +136,16 @@
         ? "Nothing here yet — create a watchface in the editor and hit Save."
         : "No community watchfaces yet — publish yours from the editor."}
       onMore={visibleCount < shown.length
-        ? () => (visibleCount = Math.min(visibleCount + PAGE, shown.length))
+        ? () => {
+            visibleCount = Math.min(visibleCount + PAGE, shown.length);
+            marketViewSaved({
+              scrollTop: scroller?.scrollTop ?? 0,
+              visibleCount,
+              query,
+              sort,
+              device,
+            });
+          }
         : undefined}
     />
   </main>

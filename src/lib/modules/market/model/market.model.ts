@@ -97,6 +97,23 @@ export const $likes = createStore<RecordModel[]>([]);
 export const $watchface = createStore<RecordModel | null>(null);
 export const $watchfaceLoading = marketApi.loadWatchfaceFx.pending;
 export const $items = createStore<RecordModel[]>([]);
+
+interface MarketView {
+  scrollTop: number;
+  visibleCount: number;
+  query: string;
+  sort: string;
+  device: string;
+}
+
+export const $marketView = createStore<MarketView>({
+  scrollTop: 0,
+  visibleCount: 60,
+  query: "",
+  sort: "new",
+  device: "",
+});
+
 export const $myItems = createStore<RecordModel[]>([]);
 export const $marketErr = createStore("");
 // creator profile (/user/[id]) — the viewed user and their published faces
@@ -106,6 +123,13 @@ export const $profileLoading = marketApi.loadProfileFx.pending;
 
 // ---- events ----
 export const marketLoadRequested = createEvent();
+export const marketViewSaved = createEvent<MarketView>();
+
+sample({
+  clock: marketViewSaved,
+  target: $marketView,
+});
+
 export const myLoadRequested = createEvent<string>();
 // fired by profile.svelte on mount and whenever the id in the url changes
 export const profileLoadRequested = createEvent<string>();
@@ -126,7 +150,6 @@ export const publishDialogClosed = createEvent();
 export const publishFormPatched = createEvent<Partial<PublishForm>>();
 // showcase page: load one watchface by id, and open its page from a card
 export const watchfaceRequested = createEvent<string>();
-export const showcaseRequested = createEvent<RecordModel>();
 // cross-module signal (analytics counts views): a finished load, unlike $watchface, which a
 // download bump rewrites too
 export const watchfaceLoaded = createEvent<RecordModel>();
@@ -182,7 +205,6 @@ const saveFx = attach({
 });
 export const $savePending = saveFx.pending;
 const navigateToMarketFx = createEffect(() => goto("/"));
-const navigateToShowcaseFx = createEffect((wf: RecordModel) => goto(`/market/${wf.id}`));
 // resolves the caller's existing like id from $likes so the api layer doesn't need to know about model state
 const toggleLikeFx = attach({
   source: $likes,
@@ -238,11 +260,6 @@ sample({
 });
 // don't let the previous creator's name and grid sit on screen while the next one loads
 reset({ clock: profileLoadRequested, target: [$profile, $profileItems] });
-
-sample({
-  clock: showcaseRequested,
-  target: navigateToShowcaseFx,
-});
 
 sample({
   clock: watchfaceRequested,

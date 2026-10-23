@@ -30,7 +30,6 @@
     removeRequested,
     publishToggleRequested,
     editRequested,
-    showcaseRequested,
   } = marketModel;
 
   const likeCount = (id: string) => $likes.filter((l) => l.watchface === id).length;
@@ -70,7 +69,6 @@
         liked={liked(wf.id)}
         canLike={!!$user}
         canRemove={manage || $user?.id === wf.owner}
-        onOpen={() => showcaseRequested(wf)}
         onLike={() => $user && likeToggleRequested({ wf, userId: $user.id })}
         onRemove={() => remove(wf)}
         onEdit={() => editRequested(wf)}
