@@ -174,6 +174,8 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
-    padding: 1rem 1rem calc(1rem + var(--safe-area-bottom));
+    /* the dock is 100vh but the dialog clips at 100svh: in iOS Safari that hides the strip
+       under the toolbar (lvh - svh), so the content has to end above it. 0 everywhere else. */
+    padding: 1rem 1rem calc(1rem + var(--safe-area-bottom) + 100vh - 100svh);
   }
 </style>
