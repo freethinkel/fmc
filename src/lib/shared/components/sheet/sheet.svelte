@@ -11,7 +11,11 @@
   let el = $state<HTMLDialogElement>();
   let scroller = $state<HTMLDivElement>();
   let dock = $state<HTMLDivElement>();
+  let panel = $state<HTMLDivElement>();
   let travel = $state(0);
+  // the keyboard's height over the layout viewport: iOS lays the keyboard over the page instead
+  // of resizing it
+  let kb = $state(0);
   let armed = false;
 
   $effect(() => {
@@ -23,6 +27,107 @@
       armed = true;
     } else if (!open && el.open) dismiss();
   });
+
+  // the sheet sits on the keyboard's top edge
+  $effect(() => {
+    const vv = window.visualViewport;
+
+    if (!open || !vv) return;
+    // from the dialog's own bottom edge: innerHeight and 100vh need not be the box it fills
+    const fit = () =>
+      (kb = Math.max(
+        0,
+        (el?.getBoundingClientRect().bottom ?? innerHeight) - vv.height - vv.offsetTop,
+      ));
+
+    fit();
+    vv.addEventListener("resize", fit);
+    vv.addEventListener("scroll", fit);
+    return () => {
+      vv.removeEventListener("resize", fit);
+      vv.removeEventListener("scroll", fit);
+    };
+  });
+
+  // After Silk's nativeFocusScrollPrevention (same as makiba's Sheet): a field inside never takes
+  // focus natively, since iOS then scrolls the page to reveal it, but by focus({ preventScroll });
+  // the sheet itself rises over the keyboard instead.
+  // ponytail: no scrolling a field into view inside the body — add it when a sheet holds more
+  // than a screen of fields
+  const NOT_TEXT = new Set([
+    "button",
+    "checkbox",
+    "color",
+    "file",
+    "hidden",
+    "image",
+    "radio",
+    "range",
+    "reset",
+    "submit",
+  ]);
+  const typable = (e: EventTarget | null): e is HTMLElement =>
+    e instanceof HTMLTextAreaElement ||
+    (e instanceof HTMLInputElement && !NOT_TEXT.has(e.type)) ||
+    (e instanceof HTMLElement && e.isContentEditable);
+  const keyboard = () => innerHeight - 200 > (visualViewport?.height ?? innerHeight);
+  // the element's bottom edge lies within about its own height of the keyboard's top
+  function nearKeyboard(e: HTMLElement) {
+    const r = e.getBoundingClientRect();
+    const gap = (visualViewport?.height ?? innerHeight) - r.bottom;
+
+    return gap > -r.height / 2 && gap < r.height + 32;
+  }
+
+  // a tap on a field with the keyboard down: the panel takes focus first, so the field's native
+  // focus arrives as the panel's focusout, where it is redone without the scroll
+  function onTouchEnd(e: TouchEvent) {
+    const now = document.activeElement;
+
+    if (typable(e.target) && !(typable(now) && now.contains(e.target)) && !keyboard())
+      panel?.focus({ preventScroll: true });
+  }
+
+  function onFocusOut(e: FocusEvent) {
+    const from = e.target as HTMLElement;
+    const to = e.relatedTarget;
+
+    if (!typable(to) || !panel?.contains(to) || "twin" in from.dataset) return;
+    if (typable(from) && nearKeyboard(from)) {
+      // from field to field right over the keyboard: a stand-in off screen holds the keyboard up
+      // meanwhile; inside the dialog, since a modal one makes the rest of the page inert
+      const twin = from.cloneNode(false) as HTMLElement;
+
+      twin.removeAttribute("id");
+      twin.removeAttribute("name");
+      twin.dataset.twin = "";
+      twin.style.cssText =
+        "position: fixed; left: 0; top: 0; transform: translateY(-3000px) scale(0)";
+      el?.append(twin);
+      twin.focus({ preventScroll: true });
+      setTimeout(() => {
+        to.focus({ preventScroll: true });
+        twin.remove();
+      }, 32);
+    } else to.focus({ preventScroll: true });
+  }
+
+  // the refocus loses the tapped caret position, so a field first focused gets its caret at the
+  // end, as Silk does
+  const focused = new WeakSet<EventTarget>();
+
+  function onFocusIn(e: FocusEvent) {
+    const f = e.target;
+
+    if (!(f instanceof HTMLInputElement || f instanceof HTMLTextAreaElement)) return;
+    if (!typable(f) || focused.has(f)) return;
+    focused.add(f);
+    try {
+      f.setSelectionRange(f.value.length, f.value.length);
+    } catch {
+      // email and number fields have no selection
+    }
+  }
 
   function dismiss() {
     // already at the top: a smooth scroll to 0 fires no scroll event, so onScroll would
@@ -53,6 +158,7 @@
   bind:this={el}
   autofocus
   style:--travel={travel}
+  style:--kb="{kb}px"
   onclose={() => {
     armed = false;
     travel = 0;
@@ -62,6 +168,9 @@
     e.preventDefault(); /* let Esc slide it out too */
     dismiss();
   }}
+  ontouchend={onTouchEnd}
+  onfocusout={onFocusOut}
+  onfocusin={onFocusIn}
 >
   <div class="overlay"></div>
   <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -71,7 +180,7 @@
     <div class="dock" bind:this={dock}>
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <!-- svelte-ignore a11y_click_events_have_key_events -->
-      <div class="sheet" onclick={(e) => e.stopPropagation()}>
+      <div class="sheet" tabindex="-1" bind:this={panel} onclick={(e) => e.stopPropagation()}>
         <div class="bleed"></div>
         <div class="grabber"></div>
         <div class="body">{@render children?.({ travel })}</div>
@@ -89,8 +198,11 @@
     padding: 0;
     width: 100vw;
     max-width: 100vw;
-    height: 100svh;
-    max-height: 100svh;
+    /* every height below is a share of the dialog's (as in makiba's Sheet): Safari's 100vh is the
+       viewport with its bars hidden, taller than the one the dialog fills while they show, which
+       pushed the dock's bottom — the panel's buttons — under the toolbar */
+    height: 100%;
+    max-height: none;
     /* clip, not hidden: a hidden box is still a scroll container, and iOS Safari scrolls it
        itself (focus reveal on showModal, chained rubber-band) — which slid the clipped tail
        zone up into view. clip forbids scrolling outright; Silk's view wrapper does the same. */
@@ -115,7 +227,7 @@
   }
   .scroll {
     position: relative;
-    height: calc(100vh + 50vh);
+    height: 150%;
     overflow-y: scroll;
     overscroll-behavior-y: contain;
     overflow-x: hidden;
@@ -127,18 +239,18 @@
     }
   }
   .spacer {
-    height: 100vh;
+    height: calc(100% / 1.5);
     scroll-snap-align: start;
   }
   .dock {
-    height: 100vh;
-    height: 100vh;
+    height: calc(100% / 1.5);
     display: flex;
     flex-direction: column;
     justify-content: flex-end;
+    padding-bottom: var(--kb);
   }
   .tail {
-    height: 50svh;
+    height: calc(50% / 1.5);
     scroll-snap-align: end;
   }
   .sheet {
@@ -147,9 +259,11 @@
     display: flex;
     flex-direction: column;
     width: min(30rem, 100%);
-    max-height: 90svh;
+    /* the dock's content box: its height less the keyboard's padding */
+    max-height: calc(100% - var(--safe-area-top) - 1.5rem);
     margin-inline: auto;
-    padding-bottom: var(--safe-area-bottom);
+    padding-bottom: max(0px, var(--safe-area-bottom) - var(--kb));
+    outline: none;
     translate: 0 0;
     transition: translate 0.4s cubic-bezier(0.32, 0.72, 0, 1);
     @starting-style {
@@ -174,8 +288,6 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
-    /* the dock is 100vh but the dialog clips at 100svh: in iOS Safari that hides the strip
-       under the toolbar (lvh - svh), so the content has to end above it. 0 everywhere else. */
-    padding: 1rem 1rem calc(1rem + var(--safe-area-bottom) + 100vh - 100svh);
+    padding: 1rem 1rem calc(1rem + var(--safe-area-bottom));
   }
 </style>
