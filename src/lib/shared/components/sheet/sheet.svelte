@@ -25,6 +25,7 @@
       scroller.scrollTop = dock.offsetHeight;
       travel = 1;
       armed = true;
+      focusArmed = true;
     } else if (!open && el.open) dismiss();
   });
 
@@ -79,12 +80,23 @@
     return gap > -r.height / 2 && gap < r.height + 32;
   }
 
-  // a tap on a field with the keyboard down: the panel takes focus first, so the field's native
-  // focus arrives as the panel's focusout, where it is redone without the scroll
-  function onTouchEnd(e: TouchEvent) {
-    const now = document.activeElement;
+  // Until the first focus inside, focus sits on the dialog (autofocus, see below), and iOS
+  // scrolling to keep it in view fights the swipe — the jitter before the first field gets focus.
+  // So the first touch anywhere in the panel moves focus onto the panel, before the browser focuses
+  // anything itself; a field's native focus then arrives as the panel's focusout, where it is
+  // redone without the scroll. Re-armed whenever focus leaves for nothing (the keyboard's Done).
+  let focusArmed = true;
 
-    if (typable(e.target) && !(typable(now) && now.contains(e.target)) && !keyboard())
+  function onTouchStart(e: TouchEvent) {
+    if (!focusArmed || !panel?.contains(e.target as Node)) return;
+    focusArmed = false;
+    panel.focus({ preventScroll: true });
+  }
+
+  // a tap on the field that still has focus with the keyboard down: iOS would scroll to reveal it
+  // again, so hand focus to the panel first and let focusout redo it
+  function onTouchEnd(e: TouchEvent) {
+    if (e.target === document.activeElement && typable(e.target) && !keyboard())
       panel?.focus({ preventScroll: true });
   }
 
@@ -92,6 +104,7 @@
     const from = e.target as HTMLElement;
     const to = e.relatedTarget;
 
+    if (!to) focusArmed = true;
     if (!typable(to) || !panel?.contains(to) || "twin" in from.dataset) return;
     if (typable(from) && nearKeyboard(from)) {
       // from field to field right over the keyboard: a stand-in off screen holds the keyboard up
@@ -168,6 +181,7 @@
     e.preventDefault(); /* let Esc slide it out too */
     dismiss();
   }}
+  ontouchstart={onTouchStart}
   ontouchend={onTouchEnd}
   onfocusout={onFocusOut}
   onfocusin={onFocusIn}
@@ -229,7 +243,9 @@
     position: relative;
     height: 150%;
     overflow-y: scroll;
-    overscroll-behavior-y: contain;
+    /* none, not contain: contain still lets the sheet rubber-band on its own, and a long pull up
+       outruns the bleed and shows its edge */
+    overscroll-behavior-y: none;
     overflow-x: hidden;
     scrollbar-width: none;
     scroll-snap-type: y mandatory;
