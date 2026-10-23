@@ -111,7 +111,10 @@
     inset: 0;
     /* a fallback is taken only if the menu fits whole: the phone's tab bar needs it to open
        upward, and a trigger at the screen edge — the Account tab — leftward too */
-    position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline;
+    position-try-fallbacks:
+      flip-block,
+      flip-inline,
+      flip-block flip-inline;
   }
 
   .anchored.align__end {
