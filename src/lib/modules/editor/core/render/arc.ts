@@ -83,6 +83,25 @@ export function progressFrac(id: number, sim: Sim, t: TimeParts, spec: ArcSpec):
   return Math.max(0, Math.min(1, (v - spec.min) / (spec.max - spec.min || 1)));
 }
 
+/** The gauge range stock rings give a time source. The fill is (value - min) / (max - min) in the
+ *  source's own units, so a ring moved onto one needs this range, not a percent's 0..100. Every
+ *  stock time ring also carries meta max 100000. */
+export const TIME_RING_RANGE: Record<number, readonly [number, number]> = {
+  0x04: [0, 24], // Digital__353__Dual_phase: hour (24h), one turn a day
+  0x0a: [0, 3600], // Digital__337__Time_Finder: the 12h hour-hand value (see progressFrac)
+  0x0b: [0, 60], // Time_Finder
+  0x0f: [0, 60], // Time_Finder, Creative__332__Flux
+};
+
+/** A ring's gauge after its source moves `from` -> `to`: a time source gets its stock range, and
+ *  leaving one goes back to a percent. Any other move keeps the range the user typed. */
+export function gaugeOnSource(spec: ArcSpec, from: number, to: number): ArcSpec {
+  const [min, max] =
+    TIME_RING_RANGE[to] ?? (TIME_RING_RANGE[from] ? [0, 100] : [spec.min, spec.max]);
+
+  return { ...spec, min, max };
+}
+
 /** A ring this big is drawn from the screen centre, ignoring its own x/y — a dial-sized ring in the
  *  corpus sits at 0,0 or 3,3, and only the centre reading makes those land concentric. Editing has
  *  to stay below it (see scaleRing), or a resize would silently throw the position away. */
