@@ -81,10 +81,10 @@
     appearance: none;
     width: 1.5rem;
     height: 1.5rem;
-    margin-top: -8px; /* centres the thumb on the 4px track */
+    margin-top: calc((0.3rem - 1.5rem) / 2); /* centres the thumb on the track */
     border: none;
     border-radius: 50%;
-    background: #fff;
+    background: oklch(1 0 0);
     box-shadow: 0 1px 4px oklch(from var(--color-background) l c h / 45%);
     transition: transform var(--spring-transition, 0.15s ease);
   }

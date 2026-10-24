@@ -297,10 +297,10 @@
   }
   .face {
     position: relative;
-    max-width: 500px;
+    max-width: 31.25rem;
     width: 50%;
     margin: 0 auto;
-    min-width: 350px;
+    min-width: 21.875rem;
   }
   .dial {
     display: flex;
