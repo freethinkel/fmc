@@ -3,7 +3,7 @@
 // bitmaps and fires the events, and decides nothing itself.
 //
 // The sprites previewed here are NOT the ones that land in the document: `glyphsRequested` runs
-// the same pure `glyphSprites` again in edit.model, so the preview is a promise about the result
+// the same pure `glyphSprites` again in create.model, so the preview is a promise about the result
 // rather than the result itself.
 import { createEffect, createEvent, createStore, sample } from "effector";
 import {
@@ -17,7 +17,7 @@ import { frameLabelsOf } from "../core/document/sources";
 import { findLayer } from "../core/document/edits";
 import type { NodeId } from "../core/document/doc";
 import { $doc } from "./doc.model";
-import { glyphsRequested } from "./edit.model";
+import { glyphsRequested } from "./create.model";
 import { errored } from "./ui.model";
 
 /** One entry of the font picker: a CSS family list, and what to call it. */

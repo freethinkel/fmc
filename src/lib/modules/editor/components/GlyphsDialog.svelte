@@ -208,7 +208,7 @@
     margin-top: 0.75rem;
     padding: 0.5rem;
     border-radius: var(--border-radius);
-    background: #000;
+    background: oklch(0 0 0);
     overflow-x: auto;
   }
   canvas {

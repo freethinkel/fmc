@@ -6,7 +6,8 @@
 //   sim.model        the simulated watch state the canvas renders against
 //   ui.model         panel tab and the last error
 //   assets.model     image assets, the decoded-bitmap cache, and pixel operations
-//   edit.model       every action on the layer tree
+//   edit.model       every action on the layer tree that already exists
+//   create.model     adding what wasn't there: new widgets, generated frames, the AOD screen
 //   io.model         open, create, import, export
 //   font-sprite.model  the "sprites from a font" generator: its dialog, form and preview
 //
@@ -17,5 +18,6 @@ export * from "./sim.model";
 export * from "./ui.model";
 export * from "./assets.model";
 export * from "./edit.model";
+export * from "./create.model";
 export * from "./io.model";
 export * from "./font-sprite.model";

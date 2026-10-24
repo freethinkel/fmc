@@ -20,6 +20,7 @@
   // The drawer light-dismisses on pointerdown; without this guard the click that follows
   // would toggle it straight back open, so a toggle right after a close means "close".
   let closedAt = 0;
+
   function toggle() {
     if (open) open = false;
     else if (Date.now() - closedAt > 250) open = true;

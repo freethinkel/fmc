@@ -4,16 +4,20 @@
   import { Input } from "$lib/shared/components/input";
   import { authModel } from "../model";
 
-  const { loginRequested, oauthRequested, $loginPending: busy, $loginErr: err } = authModel;
-
-  let email = $state("");
-  let password = $state("");
+  const {
+    loginRequested,
+    loginFormPatched,
+    oauthRequested,
+    $loginForm: form,
+    $loginPending: busy,
+    $loginErr: err,
+  } = authModel;
 </script>
 
 <form
   onsubmit={(e) => {
     e.preventDefault();
-    loginRequested({ email, password });
+    loginRequested();
   }}
 >
   <Button type="button" kind="secondary" disabled={$busy} onClick={() => oauthRequested("google")}>
@@ -32,7 +36,8 @@
       placeholder="m@example.com"
       required
       autocomplete="email"
-      bind:value={email}
+      value={$form.email}
+      onInput={(email) => loginFormPatched({ email })}
     />
   </Field>
   <Field label="Password">
@@ -41,7 +46,8 @@
       required
       minlength={8}
       autocomplete="current-password"
-      bind:value={password}
+      value={$form.password}
+      onInput={(password) => loginFormPatched({ password })}
     />
   </Field>
   {#if $err}
