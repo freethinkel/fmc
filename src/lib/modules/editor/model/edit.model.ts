@@ -35,7 +35,7 @@ import {
   wrapInGroup,
 } from "../core/document/edits";
 import {
-  PROGRESS_STEPS,
+  LINE_SOURCES,
   SLOT_METRICS,
   SLOT_SIZE,
   blankScreen,
@@ -48,7 +48,9 @@ import {
   progressLineOf,
   newRing,
   newSlot,
+  type LineSource,
 } from "../core/document/factory";
+import { TIME_RING_RANGE, gaugeOnSource } from "../core/render/arc";
 import { FRAME_LABELS } from "../core/document/sources";
 import {
   framesOf,
@@ -99,8 +101,8 @@ export const numberAdded = createEvent();
  *  the font generator — for when the picture doesn't exist at add time. */
 export const imageAdded = createEvent();
 export const slotAdded = createEvent();
-/** A battery progress line: 101 pre-drawn frames, one per percent (see newProgressLine). */
-export const progressLineAdded = createEvent<"horizontal" | "vertical">();
+/** A progress line: one pre-drawn frame per step of its source (see LINE_SOURCES). */
+export const progressLineAdded = createEvent<{ dir: "horizontal" | "vertical"; on: LineSource }>();
 /** Redraw a progress line's frames in another colour — the frames are the only place it lives. */
 export const progressLineColored = createEvent<{ id: NodeId; color: string }>();
 /** Give the face an always-on screen. A new document starts with the main screen only, and until
@@ -244,11 +246,20 @@ const addNumberFx = attach({
   },
 });
 
-// A progress line's frames are drawn here, not dropped in: one per percent, so the art can't
-// drift out of step with the value that picks it.
-async function progressLineAssets(w: number, h: number, vertical: boolean, color?: string) {
+// A progress line's frames are drawn here, not dropped in: one per step of its source, so the art
+// can't drift out of step with the value that picks it.
+async function progressLineAssets(
+  w: number,
+  h: number,
+  vertical: boolean,
+  on: LineSource,
+  color?: string,
+) {
+  const { frames: steps, full } = LINE_SOURCES[on];
   const frames = await Promise.all(
-    Array.from({ length: PROGRESS_STEPS }, (_, i) => progressLineFrame(w, h, i, vertical, color)),
+    Array.from({ length: steps }, (_, i) =>
+      progressLineFrame(w, h, (i * 100) / full, vertical, color),
+    ),
   );
   const assets = new Map<ImageId, ImageAsset>();
   const cache = new Map<ImageId, ImageCache>();
@@ -264,12 +275,12 @@ async function progressLineAssets(w: number, h: number, vertical: boolean, color
 
 const addProgressLineFx = attach({
   source: $screen,
-  async effect(screen, dir: "horizontal" | "vertical") {
+  async effect(screen, { dir, on }: { dir: "horizontal" | "vertical"; on: LineSource }) {
     const vertical = dir === "vertical";
     const [w, h] = vertical ? [12, 200] : [200, 12];
-    const { assets, cache } = await progressLineAssets(w, h, vertical);
+    const { assets, cache } = await progressLineAssets(w, h, vertical, on);
 
-    return { screen, assets, cache, layer: newProgressLine([...assets.keys()], w, h) };
+    return { screen, assets, cache, layer: newProgressLine([...assets.keys()], w, h, on) };
   },
 });
 
@@ -289,6 +300,7 @@ const recolorProgressLineFx = attach({
       line.full.w,
       line.full.h,
       line.vertical,
+      line.on,
       color,
     );
 
@@ -1201,9 +1213,14 @@ sample({
       if (!l || l.kind === "group" || l.kind === "raw") return doc;
       const framesPatch = frames ? (kind === "number" ? { glyphs: frames } : { frames }) : {};
 
+      // a ring moved onto a time source takes the stock ring's gauge and meta max with it
+      const ring = l.kind === "ring" ? { spec: gaugeOnSource(l.spec, l.meta.source, source) } : {};
+      const max = l.kind === "ring" && TIME_RING_RANGE[source] ? 100000 : l.meta.max;
+
       return patchLayer(withAssets(doc, assets), id, {
-        meta: { ...l.meta, source },
+        meta: { ...l.meta, source, max },
         ...framesPatch,
+        ...ring,
       } as Partial<Layer>);
     },
   }),
