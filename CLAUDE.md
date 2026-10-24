@@ -108,7 +108,9 @@ and `frames` sections; `PropsPanel.svelte` is the container and owns the shared 
   so components keep importing a single `editorModel`:
   `doc.model` (the `Doc` + history), `selection.model` (`$sel`/`$more`/`$screen`, by `NodeId`),
   `sim.model`, `ui.model` (panel tab, last error), `assets.model` (assets + the bitmap cache),
-  `edit.model` (every action on the layer tree), `io.model` (open/create/import/export),
+  `edit.model` (every action on the existing layer tree), `create.model` (adding what wasn't
+  there: new widgets, generated frames, slot metric icons, the AOD screen), `io.model`
+  (open/create/import/export),
   `font-sprite.model` (the "sprites from a font" generator: dialog, form, preview).
 - **The document is immutable.** Every edit is a pure `Doc -> Doc` function from
   `core/document/edits.ts`, handed to `committed` — which checkpoints and applies in one step, and
