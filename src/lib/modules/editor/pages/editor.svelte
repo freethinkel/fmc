@@ -10,13 +10,32 @@
   import PublishDialog from "../components/PublishDialog.svelte";
   import GlyphsDialog from "../components/GlyphsDialog.svelte";
   import { bleModel } from "$lib/modules/device/model";
-  import { renderDoc, type ResizePreview } from "../core/render/render";
-  import { CENTER, SCREEN } from "../core/render/screen";
-  import type { LayerHit } from "../core/render/canvas";
-  import { framesOf, isPlaced, type Layer, type NodeId } from "../core/document/doc";
-  import { containerOrigin, findLayer, parentOf } from "../core/document/edits";
-  import { snapAxis, snapTargets, type SnapTargets } from "../core/render/snap";
+  import { renderDoc } from "../core/render/render";
+  import { SCREEN } from "../core/render/screen";
+  import type { LayerHit, Point } from "../core/render/canvas";
+  import { drawOverlay, hitOf, resizable, type Guides } from "../core/render/overlay";
+  import { snapTargets, type SnapTargets } from "../core/render/snap";
   import { SNAP_THRESHOLD, GUIDE_WIDTH, GUIDE_COLOR } from "../shared/constants";
+  import {
+    cursorAt,
+    dragDelta,
+    dragItem,
+    firstAsset,
+    handleAt,
+    movePatch,
+    nudgeRequest,
+    onRotateHandle,
+    resizePreview,
+    resizeRequest,
+    resizeTo,
+    rotateTo,
+    startResize,
+    startRotate,
+    type DragItem,
+    type ResizeRequest,
+    type Rot,
+    type Rz,
+  } from "../shared/drag";
   import { inField, isRoving, matchShortcut, type ShortcutActions } from "../shared/shortcuts";
   import { editorModel } from "../model";
   import TreePanel from "../components/TreePanel.svelte";
@@ -244,17 +263,25 @@
     const ctx = canvas.getContext("2d");
 
     if (!ctx) return;
+    const color = getComputedStyle(document.documentElement)
+      .getPropertyValue("--color-selection")
+      .trim();
     let raf = 0;
     const loop = () => {
       const s = scene;
       const t0 = perf && performance.now();
 
       if (s.doc) {
-        hits = renderDoc(ctx, s.doc, s.store, s.screen, s.sim, resizePreview());
-        // extra picks get a plain box; the primary one carries the handles and the pivot cross
-        for (const l of s.selected.slice(1)) drawBox(ctx, l.id);
-        drawSelection(ctx, s.sel);
-        drawGuides(ctx);
+        hits = renderDoc(ctx, s.doc, s.store, s.screen, s.sim, resizePreview(rz, rot));
+        drawOverlay(ctx, {
+          doc: s.doc,
+          hits,
+          sel: s.sel,
+          selected: s.selected,
+          guides,
+          color,
+          guide: { color: GUIDE_COLOR, width: GUIDE_WIDTH * cvScale },
+        });
       } else {
         ctx.clearRect(0, 0, SCREEN, SCREEN);
       }
@@ -266,256 +293,28 @@
     return () => cancelAnimationFrame(raf);
   });
 
-  const hitOf = (id: NodeId | null) => (id ? hits.findLast((h) => h.layer.id === id) : undefined);
-
-  function ghostBox(id: NodeId | null) {
-    const l = id && $doc ? findLayer($doc, id) : null;
-
-    if (!l || !isPlaced(l) || !l.meta.w || !l.meta.h) return null;
-    const o = containerOrigin($doc!, parentOf($doc!, l.id)?.id ?? null);
-
-    return {
-      x: o.x + l.x,
-      y: o.y + l.y,
-      w: l.meta.w,
-      h: l.meta.h,
-      ghost: true as const,
-    };
-  }
-
-  const boxOf = (id: NodeId | null) => hitOf(id) ?? ghostBox(id);
-
-  function outline(
-    ctx: CanvasRenderingContext2D,
-    b: { x: number; y: number; w: number; h: number },
-    ghost = false,
-  ) {
-    ctx.save();
-    ctx.strokeStyle = "#4af";
-    ctx.lineWidth = 2;
-    ctx.setLineDash(ghost ? [2, 5] : [6, 4]);
-    ctx.strokeRect(b.x - 1, b.y - 1, b.w + 2, b.h + 2);
-    ctx.restore();
-  }
-
-  function drawBox(ctx: CanvasRenderingContext2D, id: NodeId) {
-    const b = boxOf(id);
-
-    if (b) outline(ctx, b, "ghost" in b);
-  }
-
-  function drawSelection(ctx: CanvasRenderingContext2D, id: NodeId | null) {
-    const h = hitOf(id);
-
-    if (!h) {
-      const g = ghostBox(id);
-
-      if (g) outline(ctx, g, true);
-      return;
-    }
-    outline(ctx, h);
-    ctx.save();
-
-    if (h.layer.locked) {
-      ctx.restore();
-      return;
-    }
-    if (resizable(h.layer)) {
-      ctx.setLineDash([]);
-      ctx.fillStyle = "#4af";
-      for (const [cx, cy] of CORNERS) {
-        const p = onDisc(h.x + cx * h.w, h.y + cy * h.h);
-
-        ctx.fillRect(p.x - HANDLE / 2, p.y - HANDLE / 2, HANDLE, HANDLE);
-      }
-    }
-    // round, and off the box, so it doesn't read as a fifth corner
-    if (rotatable(h.layer)) {
-      const p = rotateHandle(h);
-
-      ctx.setLineDash([]);
-      ctx.fillStyle = "#4af";
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, HANDLE / 2, 0, 2 * Math.PI);
-      ctx.fill();
-    }
-    // a hand rotates around x+pivot — mark that point, it's what the user aims when centring
-    if (h.layer.kind === "hand") {
-      const px = h.layer.x + h.layer.pivotX,
-        py = h.layer.y + h.layer.pivotY;
-
-      ctx.setLineDash([]);
-      ctx.beginPath();
-      ctx.moveTo(px - 8, py);
-      ctx.lineTo(px + 8, py);
-      ctx.moveTo(px, py - 8);
-      ctx.lineTo(px, py + 8);
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
-
-  const HANDLE = 10;
-  const CORNERS = [
-    [0, 0],
-    [1, 0],
-    [0, 1],
-    [1, 1],
-  ] as const;
-
-  const onDisc = (x: number, y: number): XY => {
-    const dx = x - CENTER,
-      dy = y - CENTER,
-      d = Math.hypot(dx, dy),
-      max = CENTER - HANDLE;
-
-    return d <= max ? { x, y } : { x: CENTER + (dx / d) * max, y: CENTER + (dy / d) * max };
-  };
-  const firstAsset = (l: Layer | null) => {
-    const ids = l && l.kind !== "group" ? framesOf(l) : [];
-
-    return ids.length ? $doc?.images.get(ids[0]) : undefined;
-  };
-
-  const hasArt = (l: Layer): boolean =>
-    framesOf(l).length > 0 || (l.kind === "group" && l.children.some(hasArt));
-  const isBareRing = (l: Layer): boolean => l.kind === "ring" && !l.frames.length;
-  const resizable = (l: Layer | null): boolean =>
-    Boolean(l) && (hasArt(l!) || isBareRing(l!)) && !l!.locked;
-  const rotatable = (l: Layer | null): boolean =>
-    Boolean(l) && framesOf(l!).length > 0 && !l!.locked;
-  const rotateHandle = (h: LayerHit): XY => onDisc(h.x + h.w / 2, h.y - HANDLE * 1.5);
-
-  type Rz = {
-    layer: Layer;
-    dirX: number;
-    dirY: number;
-    ax: number;
-    ay: number;
-    w0: number;
-    h0: number;
-    x0: number;
-    y0: number;
-    bx: number;
-    by: number;
-    gx: number;
-    gy: number;
-    gw: number;
-    gh: number;
-    rw0: number; // the asset's size when the drag started — the target scales off it
-    rh0: number;
-    dx0: number; // anchor -> grab point. The scale is measured against THIS, not against the box:
-    dy0: number; // a handle drawn off the true corner (see onDisc) would otherwise jump on move 1
-    started: boolean; // the pointer actually moved — until then there's nothing to preview
-  };
   let rz: Rz | null = null;
-
-  type Rot = {
-    layer: Layer;
-    cx: number;
-    cy: number;
-    a0: number;
-    deg: number;
-    started: boolean;
-  };
   let rot: Rot | null = null;
-  const ROT_STEP = 15; // ⇧ snap, the usual increment
-
-  const resizePreview = (): ResizePreview | null =>
-    rz && rz.started
-      ? {
-          id: rz.layer.id,
-          kw: rz.gw / rz.w0,
-          kh: rz.gh / rz.h0,
-          ax: rz.ax,
-          ay: rz.ay,
-        }
-      : rot && rot.started
-        ? {
-            id: rot.layer.id,
-            kw: 1,
-            kh: 1,
-            ax: rot.cx,
-            ay: rot.cy,
-            deg: rot.deg,
-          }
-        : null;
-
-  function applyResize(z: Rz) {
-    const kw = z.gw / z.w0,
-      kh = z.gh / z.h0;
-    const pinned = z.layer.kind === "hand";
-
-    const at = pinned
-      ? undefined
-      : {
-          x: z.x0 + Math.round(z.gx - z.bx),
-          y: z.y0 + Math.round(z.gy - z.by),
-        };
-
-    if (z.layer.kind === "group") {
-      resizeGroupRequested({ layer: z.layer.id, kw, kh, at });
-      return;
-    }
-    if (isBareRing(z.layer)) {
-      ringResized({ layer: z.layer.id, kw, kh, at });
-      return;
-    }
-    resizeImageRequested({
-      layer: z.layer.id,
-      w: Math.round(z.rw0 * kw),
-      h: Math.round(z.rh0 * kh),
-      at,
-    });
-  }
-
-  const selHit = () => {
-    const h = hitOf($sel);
-
-    return h && resizable(h.layer) ? h : null;
-  };
-  const onRotateHandle = (p: XY, h: LayerHit) => {
-    const c = rotateHandle(h);
-
-    return rotatable(h.layer) && Math.hypot(p.x - c.x, p.y - c.y) <= HANDLE;
-  };
-  const handleAt = (p: XY, h: LayerHit) => {
-    for (const [cx, cy] of CORNERS) {
-      const c = onDisc(h.x + cx * h.w, h.y + cy * h.h);
-
-      if (Math.abs(p.x - c.x) <= HANDLE && Math.abs(p.y - c.y) <= HANDLE) return { cx, cy };
-    }
-    return null;
-  };
-
   let snapT: SnapTargets | null = null;
   let cvScale = 1; // canvas units per screen px — the thresholds are in screen px
   let box0: LayerHit | null = null;
-  let guides: { x: number[]; y: number[] } = { x: [], y: [] };
+  let guides: Guides = { x: [], y: [] };
 
-  function drawGuides(ctx: CanvasRenderingContext2D) {
-    if (!guides.x.length && !guides.y.length) return;
-    ctx.save();
-    ctx.strokeStyle = GUIDE_COLOR;
-    ctx.lineWidth = GUIDE_WIDTH * cvScale;
-    ctx.beginPath();
-    for (const x of guides.x) {
-      ctx.moveTo(x + 0.5, 0);
-      ctx.lineTo(x + 0.5, SCREEN);
-    }
-    for (const y of guides.y) {
-      ctx.moveTo(0, y + 0.5);
-      ctx.lineTo(SCREEN, y + 0.5);
-    }
-    ctx.stroke();
-    ctx.restore();
+  const selHit = () => {
+    const h = hitOf(hits, $sel);
+
+    return h && resizable(h.layer) ? h : null;
+  };
+
+  function requestResize(r: ResizeRequest | null) {
+    if (r?.to === "group") resizeGroupRequested(r.p);
+    else if (r?.to === "ring") ringResized(r.p);
+    else if (r?.to === "image") resizeImageRequested(r.p);
   }
 
   // ---- selection and drag ----
-  type XY = { x: number; y: number };
-  type DragItem = { layer: Layer; x0: number; y0: number };
-  let drag: { p: XY; items: DragItem[]; moved: boolean } | null = null;
-  const canvasXY = (e: PointerEvent): XY => {
+  let drag: { p: Point; items: DragItem[]; moved: boolean } | null = null;
+  const canvasXY = (e: PointerEvent): Point => {
     const r = canvas!.getBoundingClientRect();
 
     return {
@@ -524,37 +323,13 @@
     };
   };
 
-  function dragItem(l: Layer): DragItem | null {
-    if (l.locked) return null;
-    if (l.kind === "group") return { layer: l, x0: l.frame.x, y0: l.frame.y };
-    return l.kind === "raw" ? null : { layer: l, x0: l.x, y0: l.y };
-  }
-
-  const moveItem = (it: DragItem, x: number, y: number) =>
-    layerPatched({
-      id: it.layer.id,
-      patch: (it.layer.kind === "group"
-        ? { frame: { ...it.layer.frame, x, y } }
-        : { x, y }) as Partial<Layer>,
-    });
-
   function onDown(e: PointerEvent) {
     if (!$doc) return;
     const p = canvasXY(e);
     const sh = selHit();
 
     if (sh && onRotateHandle(p, sh)) {
-      const cx = sh.x + sh.w / 2,
-        cy = sh.y + sh.h / 2;
-
-      rot = {
-        layer: sh.layer,
-        cx,
-        cy,
-        a0: Math.atan2(p.y - cy, p.x - cx),
-        deg: 0,
-        started: false,
-      };
+      rot = startRotate(sh, p);
       canvas?.setPointerCapture(e.pointerId);
       return;
     }
@@ -562,34 +337,7 @@
 
     if (sh && c) {
       // a group scales by factor, so its base size is the box itself
-      const r0 = firstAsset(sh.layer) ?? { w: sh.w, h: sh.h };
-      const origin = dragItem(sh.layer);
-      const hand = sh.layer.kind === "hand" ? sh.layer : null;
-      const ax = hand ? hand.x + hand.pivotX : c.cx ? sh.x : sh.x + sh.w;
-      const ay = hand ? hand.y + hand.pivotY : c.cy ? sh.y : sh.y + sh.h;
-
-      rz = {
-        started: false,
-        rw0: r0.w,
-        rh0: r0.h,
-        layer: sh.layer,
-        dirX: c.cx,
-        dirY: c.cy,
-        ax,
-        ay,
-        w0: sh.w,
-        h0: sh.h,
-        x0: origin?.x0 ?? 0,
-        y0: origin?.y0 ?? 0,
-        bx: sh.x,
-        by: sh.y,
-        gx: sh.x,
-        gy: sh.y,
-        gw: sh.w,
-        gh: sh.h,
-        dx0: Math.max(1, Math.abs(p.x - ax)),
-        dy0: Math.max(1, Math.abs(p.y - ay)),
-      };
+      rz = startResize(sh, c, p, firstAsset($doc, sh.layer) ?? { w: sh.w, h: sh.h });
       canvas?.setPointerCapture(e.pointerId);
       return;
     }
@@ -624,69 +372,33 @@
 
   function onMove(e: PointerEvent) {
     if (rot) {
-      const p = canvasXY(e);
-      const d = ((Math.atan2(p.y - rot.cy, p.x - rot.cx) - rot.a0) * 180) / Math.PI;
-
-      rot.deg = e.shiftKey ? Math.round(d / ROT_STEP) * ROT_STEP : Math.round(d);
-      rot.started = true;
+      rot = rotateTo(rot, canvasXY(e), e.shiftKey);
       return;
     }
     if (rz) {
-      const p = canvasXY(e);
-      const rx = Math.abs(p.x - rz.ax) / rz.dx0,
-        ry = Math.abs(p.y - rz.ay) / rz.dy0;
-      const locked = isBareRing(rz.layer) || $lockAspect !== e.shiftKey;
-      const [sw, sh] = locked ? [Math.max(rx, ry), Math.max(rx, ry)] : [rx, ry];
-
-      rz.gw = Math.max(1, Math.round(rz.w0 * sw));
-      rz.gh = Math.max(1, Math.round(rz.h0 * sh));
-      rz.gx = rz.dirX ? rz.ax : rz.ax - rz.gw;
-      rz.gy = rz.dirY ? rz.ay : rz.ay - rz.gh;
-      rz.started = true; // from here the canvas draws the preview (resizePreview)
+      rz = resizeTo(rz, canvasXY(e), $lockAspect !== e.shiftKey);
       return;
     }
     const d = drag;
 
     if (!d) {
       const sh = canvas && selHit();
-      const p = sh ? canvasXY(e) : null;
-      const c = sh && p && handleAt(p, sh);
 
-      if (canvas)
-        canvas.style.cursor = c
-          ? c.cx === c.cy
-            ? "nwse-resize"
-            : "nesw-resize"
-          : sh && p && onRotateHandle(p, sh)
-            ? "grab"
-            : "";
+      if (canvas) canvas.style.cursor = sh ? cursorAt(canvasXY(e), sh) : "";
       return;
     }
     if (!d.moved) {
       checkpoint(0);
       d.moved = true;
     }
-    const p = canvasXY(e);
-    let dx = Math.round(p.x - d.p.x),
-      dy = Math.round(p.y - d.p.y);
+    const snap =
+      box0 && snapT && !e.altKey
+        ? { box: box0, targets: snapT, tol: SNAP_THRESHOLD * cvScale }
+        : null;
+    const m = dragDelta(d.p, canvasXY(e), snap);
 
-    guides = { x: [], y: [] };
-    if (box0 && snapT && !e.altKey) {
-      const tol = SNAP_THRESHOLD * cvScale;
-      const sx = snapAxis(box0.x + dx, box0.w, snapT.xs, tol);
-      const sy = snapAxis(box0.y + dy, box0.h, snapT.ys, tol);
-
-      if (sx) {
-        dx += Math.round(sx.corr);
-        guides.x = [sx.line];
-      }
-      if (sy) {
-        dy += Math.round(sy.corr);
-        guides.y = [sy.line];
-      }
-    }
-    // one delta for the whole drag, so a multi-selection keeps its shape while it snaps
-    for (const it of d.items) moveItem(it, it.x0 + dx, it.y0 + dy);
+    guides = m.guides;
+    for (const it of d.items) layerPatched(movePatch(it, it.x0 + m.dx, it.y0 + m.dy));
   }
   function onUp() {
     if (rot) {
@@ -694,7 +406,7 @@
       rot = null;
     }
     if (rz) {
-      if (rz.started) applyResize(rz); // the whole drag lands as one rescale
+      if (rz.started) requestResize(resizeRequest(rz)); // the whole drag lands as one rescale
       rz = null;
     }
     drag = box0 = snapT = null;
@@ -706,37 +418,12 @@
     for (const l of $selected) {
       const it = dragItem(l);
 
-      if (it) moveItem(it, it.x0 + dx, it.y0 + dy);
+      if (it) layerPatched(movePatch(it, it.x0 + dx, it.y0 + dy));
     }
   }
 
-  function nudgeResize(dw: number, dh: number) {
-    const l = $selected[0];
-
-    if (!resizable(l)) return;
-    const b = boxOf(l.id);
-
-    if (!b || b.w < 1 || b.h < 1) return;
-    const kw = Math.max(1, b.w + dw) / b.w,
-      kh = Math.max(1, b.h + dh) / b.h;
-
-    if (l.kind === "group") {
-      resizeGroupRequested({ layer: l.id, kw, kh });
-      return;
-    }
-    if (isBareRing(l)) {
-      ringResized({ layer: l.id, kw, kh });
-      return;
-    }
-    const r0 = firstAsset(l);
-
-    if (!r0) return;
-    resizeImageRequested({
-      layer: l.id,
-      w: Math.max(1, Math.round(r0.w * kw)),
-      h: Math.max(1, Math.round(r0.h * kh)),
-    });
-  }
+  const nudgeResize = (dw: number, dh: number) =>
+    requestResize(nudgeRequest($doc, hits, $selected[0], dw, dh));
 
   const actions: ShortcutActions = {
     undo: () => undo(),

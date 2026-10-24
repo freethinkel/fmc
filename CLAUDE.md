@@ -54,6 +54,7 @@ editor/core/
     arc.ts           progress rings: 0x5a/0x5b spec, fill fraction, both draw paths
     pixels.ts        asset pixels: decode, resize/adjust, accent tint, previews
     screen.ts        screen and panel dimensions
+    overlay.ts       editor chrome over a screen: selection boxes, handles, snap guides
   import/          # other apps' formats -> Face -> fromLegacy
     facer/           assets.ts (files/images/fonts), text.ts (tags), index.ts
     watchmaker.ts
@@ -126,9 +127,10 @@ and `frames` sections; `PropsPanel.svelte` is the container and owns the shared 
 
 - Design tokens in `lib/styles/tokens.css`: `--color-accent` (#ff5c00), `--color-text`,
   `--color-background`, `--color-error`, `--color-on-accent` (ink on an accent surface — the
-  dark shade in both schemes), `--border-radius`, `--font-family`,
-  `--font-display` (Unbounded, display headings only), `--font-mono`,
-  `--spring-transition`. Never hardcode a hex in a component — derive every shade via
+  dark shade in both schemes), `--color-selection` (#4af, the editor canvas's selection boxes
+  and handles — read once via `getComputedStyle`, since a canvas can't take a var),
+  `--border-radius`, `--font-family`, `--font-display` (Unbounded, display headings only),
+  `--font-mono`, `--spring-transition`. Never hardcode a hex in a component — derive every shade via
   relative color: `oklch(from var(--color-text) l c h / 55%)` (muted text), `/ 12%`
   (borders), `/ 6%` (tinted surfaces).
 - All sizes — `rem`, never `px`: `:root { font-size: 16px }` in tokens.css is the single
