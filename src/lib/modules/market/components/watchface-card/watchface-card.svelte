@@ -7,7 +7,6 @@
   import { fileUrl, downloadUrl } from "$lib/shared/api";
   import type { RecordModel } from "pocketbase";
   import { Avatar } from "$lib/shared/components/avatar";
-  import { goto } from "$app/navigation";
   import { deviceLabel } from "../../lib/devices";
 
   interface Props {
@@ -50,38 +49,12 @@
   // "" for a face that doesn't claim a device — most of the marketplace predates the field
   const device = $derived(deviceLabel(wf.device));
 
-  let taps = 0;
-  let tapTimer: ReturnType<typeof setTimeout>;
-  let touch = false;
   const href = $derived(`/market/${wf.id}`);
-
-  function openCard(event: MouseEvent) {
-    if (!touch) return; // native link behavior for mouse, keyboard and modifier clicks
-    event.preventDefault();
-    clearTimeout(tapTimer);
-    if (++taps === 3) {
-      taps = 0;
-      window.open(href, "_blank", "noopener");
-    } else {
-      tapTimer = setTimeout(() => {
-        taps = 0;
-        goto(href);
-      }, 500);
-    }
-  }
-
-  $effect(() => () => clearTimeout(tapTimer));
 </script>
 
 <Card>
   <div class="content">
-    <a
-      class="open-link"
-      {href}
-      aria-label="Open {wf.name}"
-      onpointerdown={(e) => (touch = e.pointerType === "touch")}
-      onclick={openCard}
-    ></a>
+    <a class="open-link" {href} aria-label="Open {wf.name}"></a>
     <div class="top-line">
       <h3 title={wf.name} class="name">{wf.name}</h3>
       <div class="stats">
@@ -170,7 +143,7 @@
   }
   .open-link {
     position: absolute;
-    inset: -0.8rem;
+    inset: -0.8rem; /* Keep in sync with shared/components/card's padding. */
     z-index: 1;
     border-radius: var(--border-radius);
     touch-action: manipulation;

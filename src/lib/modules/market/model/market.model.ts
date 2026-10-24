@@ -99,6 +99,7 @@ export const $watchfaceLoading = marketApi.loadWatchfaceFx.pending;
 export const $items = createStore<RecordModel[]>([]);
 
 interface MarketView {
+  mine: boolean;
   scrollTop: number;
   visibleCount: number;
   query: string;
@@ -107,6 +108,7 @@ interface MarketView {
 }
 
 export const $marketView = createStore<MarketView>({
+  mine: false,
   scrollTop: 0,
   visibleCount: 60,
   query: "",
@@ -123,10 +125,25 @@ export const $profileLoading = marketApi.loadProfileFx.pending;
 
 // ---- events ----
 export const marketLoadRequested = createEvent();
-export const marketViewSaved = createEvent<MarketView>();
+export const marketViewPatched = createEvent<Partial<MarketView>>();
 
 sample({
-  clock: marketViewSaved,
+  clock: marketViewPatched,
+  source: $marketView,
+  fn: (view, patch) => {
+    const next = { ...view, ...patch };
+
+    if (
+      next.query !== view.query ||
+      next.sort !== view.sort ||
+      next.device !== view.device ||
+      next.mine !== view.mine
+    ) {
+      next.visibleCount = 60;
+      next.scrollTop = 0;
+    }
+    return next;
+  },
   target: $marketView,
 });
 
