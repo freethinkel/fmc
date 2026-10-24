@@ -1,6 +1,4 @@
-// The whole card opens the showcase on click, and the overflow menu lives inside it — so every
-// menu click has to stop before it reaches the card, or deleting a watchface would also
-// navigate to it.
+// The stretched showcase link must leave the card's menu actions independently clickable.
 import { test, expect, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 import type { RecordModel } from "pocketbase";
@@ -15,14 +13,12 @@ const wf = {
 } as unknown as RecordModel;
 
 test("menu actions fire without opening the card", async () => {
-  const onOpen = vi.fn();
   const onRemove = vi.fn();
   const onPublishToggle = vi.fn();
   const screen = await render(WatchfaceCard, {
     wf,
     manage: true,
     canRemove: true,
-    onOpen,
     onRemove,
     onPublishToggle,
   });
@@ -35,9 +31,28 @@ test("menu actions fire without opening the card", async () => {
   await screen.getByRole("menuitem", { name: "Delete" }).click();
   expect(onRemove).toHaveBeenCalledOnce();
 
-  expect(onOpen).not.toHaveBeenCalled();
+  await expect
+    .element(screen.getByRole("link", { name: "Open Test face" }))
+    .toHaveAttribute("href", "/market/wf1");
+});
 
-  // the card itself still opens
-  await screen.getByRole("heading", { name: "Test face" }).click();
-  expect(onOpen).toHaveBeenCalledOnce();
+test("touch clicks keep native link behavior without a tap timer", async () => {
+  const screen = await render(WatchfaceCard, { wf });
+  const link = screen.container.querySelector<HTMLAnchorElement>(".open-link")!;
+
+  link.dispatchEvent(new PointerEvent("pointerdown", { pointerType: "touch", bubbles: true }));
+
+  // Stop navigation only after checking whether the component intercepted the click.
+  let intercepted = true;
+
+  window.addEventListener(
+    "click",
+    (event) => {
+      intercepted = event.defaultPrevented;
+      event.preventDefault();
+    },
+    { once: true },
+  );
+  link.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+  expect(intercepted).toBe(false);
 });

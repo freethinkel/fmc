@@ -97,6 +97,25 @@ export const $likes = createStore<RecordModel[]>([]);
 export const $watchface = createStore<RecordModel | null>(null);
 export const $watchfaceLoading = marketApi.loadWatchfaceFx.pending;
 export const $items = createStore<RecordModel[]>([]);
+
+interface MarketView {
+  mine: boolean;
+  scrollTop: number;
+  visibleCount: number;
+  query: string;
+  sort: string;
+  device: string;
+}
+
+export const $marketView = createStore<MarketView>({
+  mine: false,
+  scrollTop: 0,
+  visibleCount: 60,
+  query: "",
+  sort: "new",
+  device: "",
+});
+
 export const $myItems = createStore<RecordModel[]>([]);
 export const $marketErr = createStore("");
 // creator profile (/user/[id]) — the viewed user and their published faces
@@ -106,6 +125,28 @@ export const $profileLoading = marketApi.loadProfileFx.pending;
 
 // ---- events ----
 export const marketLoadRequested = createEvent();
+export const marketViewPatched = createEvent<Partial<MarketView>>();
+
+sample({
+  clock: marketViewPatched,
+  source: $marketView,
+  fn: (view, patch) => {
+    const next = { ...view, ...patch };
+
+    if (
+      next.query !== view.query ||
+      next.sort !== view.sort ||
+      next.device !== view.device ||
+      next.mine !== view.mine
+    ) {
+      next.visibleCount = 60;
+      next.scrollTop = 0;
+    }
+    return next;
+  },
+  target: $marketView,
+});
+
 export const myLoadRequested = createEvent<string>();
 // fired by profile.svelte on mount and whenever the id in the url changes
 export const profileLoadRequested = createEvent<string>();
@@ -126,7 +167,6 @@ export const publishDialogClosed = createEvent();
 export const publishFormPatched = createEvent<Partial<PublishForm>>();
 // showcase page: load one watchface by id, and open its page from a card
 export const watchfaceRequested = createEvent<string>();
-export const showcaseRequested = createEvent<RecordModel>();
 // cross-module signal (analytics counts views): a finished load, unlike $watchface, which a
 // download bump rewrites too
 export const watchfaceLoaded = createEvent<RecordModel>();
@@ -182,7 +222,6 @@ const saveFx = attach({
 });
 export const $savePending = saveFx.pending;
 const navigateToMarketFx = createEffect(() => goto("/"));
-const navigateToShowcaseFx = createEffect((wf: RecordModel) => goto(`/market/${wf.id}`));
 // resolves the caller's existing like id from $likes so the api layer doesn't need to know about model state
 const toggleLikeFx = attach({
   source: $likes,
@@ -245,11 +284,6 @@ sample({
   filter: (p, saved) => p?.id === saved.id,
   fn: (_, saved) => saved,
   target: $profile,
-});
-
-sample({
-  clock: showcaseRequested,
-  target: navigateToShowcaseFx,
 });
 
 sample({

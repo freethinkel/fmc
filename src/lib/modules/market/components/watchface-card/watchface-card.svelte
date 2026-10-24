@@ -17,7 +17,6 @@
     canRemove?: boolean;
     showAuthor?: boolean;
     manage?: boolean;
-    onOpen?: () => void;
     onLike?: () => void;
     onRemove?: () => void;
     onEdit?: () => void;
@@ -32,7 +31,6 @@
     canRemove = false,
     showAuthor = true,
     manage = false,
-    onOpen,
     onLike,
     onRemove,
     onEdit,
@@ -50,10 +48,13 @@
 
   // "" for a face that doesn't claim a device — most of the marketplace predates the field
   const device = $derived(deviceLabel(wf.device));
+
+  const href = $derived(`/market/${wf.id}`);
 </script>
 
-<Card onClick={onOpen}>
+<Card>
   <div class="content">
+    <a class="open-link" {href} aria-label="Open {wf.name}"></a>
     <div class="top-line">
       <h3 title={wf.name} class="name">{wf.name}</h3>
       <div class="stats">
@@ -134,10 +135,28 @@
 
 <style>
   .content {
+    position: relative;
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
     height: 100%;
+  }
+  .open-link {
+    position: absolute;
+    inset: -0.8rem; /* Keep in sync with shared/components/card's padding. */
+    z-index: 1;
+    border-radius: var(--border-radius);
+    touch-action: manipulation;
+    &:focus-visible {
+      outline: 2px solid var(--color-accent);
+      outline-offset: 2px;
+    }
+  }
+  .stats,
+  .author,
+  .actions {
+    position: relative;
+    z-index: 2;
   }
   .preview {
     display: flex;
