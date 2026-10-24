@@ -1,7 +1,7 @@
 // The "Edit profile" panel's form lives in the profile model: it opens on the saved record, sends
 // the name trimmed, closes on success, and on a failure stays open with the input intact.
 import { test, expect } from "vitest";
-import type { RecordModel } from "pocketbase";
+import { ClientResponseError, type RecordModel } from "pocketbase";
 import { allSettled, fork } from "effector";
 import { authModel, profileModel } from "$lib/modules/auth/model";
 import { updateProfileFx } from "$lib/modules/auth/model/auth.api";
@@ -36,8 +36,8 @@ test("a failed save keeps the panel open with the input and shows the message", 
       [
         updateProfileFx,
         () => {
-          throw Object.assign(new Error("bad"), {
-            data: { data: { avatar: { message: "File too large" } } },
+          throw new ClientResponseError({
+            response: { message: "bad", data: { avatar: { message: "File too large" } } },
           });
         },
       ],

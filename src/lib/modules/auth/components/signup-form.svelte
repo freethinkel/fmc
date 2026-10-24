@@ -4,29 +4,30 @@
   import { Input } from "$lib/shared/components/input";
   import { authModel } from "../model";
 
-  const { registerRequested, $registerPending: busy, $registerErr: registerErr } = authModel;
-
-  let name = $state("");
-  let email = $state("");
-  let password = $state("");
-  let confirm = $state("");
-  let mismatchErr = $state("");
-  const err = $derived(mismatchErr || $registerErr);
-
-  function submit(e: Event) {
-    e.preventDefault();
-    if (password !== confirm) {
-      mismatchErr = "Passwords do not match.";
-      return;
-    }
-    mismatchErr = "";
-    registerRequested({ email, password, name });
-  }
+  const {
+    registerRequested,
+    signupFormPatched,
+    $signupForm: form,
+    $registerPending: busy,
+    $registerErr: err,
+  } = authModel;
 </script>
 
-<form onsubmit={submit}>
+<form
+  onsubmit={(e) => {
+    e.preventDefault();
+    registerRequested();
+  }}
+>
   <Field label="Full Name">
-    <Input type="text" placeholder="John Doe" required autocomplete="name" bind:value={name} />
+    <Input
+      type="text"
+      placeholder="John Doe"
+      required
+      autocomplete="name"
+      value={$form.name}
+      onInput={(name) => signupFormPatched({ name })}
+    />
   </Field>
   <Field label="Email">
     <Input
@@ -34,7 +35,8 @@
       placeholder="m@example.com"
       required
       autocomplete="email"
-      bind:value={email}
+      value={$form.email}
+      onInput={(email) => signupFormPatched({ email })}
     />
   </Field>
   <Field label="Password" hint="Must be at least 8 characters long.">
@@ -43,7 +45,8 @@
       required
       minlength={8}
       autocomplete="new-password"
-      bind:value={password}
+      value={$form.password}
+      onInput={(password) => signupFormPatched({ password })}
     />
   </Field>
   <Field label="Confirm Password">
@@ -52,11 +55,12 @@
       required
       minlength={8}
       autocomplete="new-password"
-      bind:value={confirm}
+      value={$form.confirm}
+      onInput={(confirm) => signupFormPatched({ confirm })}
     />
   </Field>
-  {#if err}
-    <p class="error">{err}</p>
+  {#if $err}
+    <p class="error">{$err}</p>
   {/if}
   <Button type="submit" kind="primary" disabled={$busy}>Create Account</Button>
   <p class="link">Already have an account? <a href="/login">Sign in</a></p>

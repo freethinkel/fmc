@@ -2,7 +2,7 @@
 // save. The panel is a view over these stores.
 import { attach, combine, createEffect, createEvent, createStore, sample } from "effector";
 import { reset } from "patronum";
-import { fileUrl } from "$lib/shared/api";
+import { fileUrl, pbErrorMessage } from "$lib/shared/api";
 import * as authApi from "./auth.api";
 import { $user } from "./auth.model";
 
@@ -91,11 +91,7 @@ sample({
 });
 sample({
   clock: authApi.updateProfileFx.failData,
-  fn: (e: any) =>
-    e.data?.data?.avatar?.message ||
-    e.data?.data?.name?.message ||
-    e.data?.data?.bio?.message ||
-    e.message,
+  fn: (e) => pbErrorMessage(e, "avatar", "name", "bio"),
   target: $profileErr,
 });
 reset({ clock: [profileEditOpened, profileSaveRequested], target: $profileErr });
