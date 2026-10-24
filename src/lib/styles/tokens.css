@@ -7,8 +7,10 @@
   --color-text: #1c1c1c;
   --color-background: #f2f2f2;
   --color-error: #d71921;
-  /* the editor canvas's selection boxes and handles — read once by the page, drawn on <canvas> */
+  /* the editor canvas's selection boxes/handles and snap guides — read once by the page,
+     drawn on <canvas> */
   --color-selection: #4af;
+  --color-guide: #ff44ff88;
 
   --color-on-accent: var(--color-text);
   --border-radius: 0.6rem;

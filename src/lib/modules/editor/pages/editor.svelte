@@ -15,7 +15,7 @@
   import type { LayerHit, Point } from "../core/render/canvas";
   import { drawOverlay, hitOf, resizable, type Guides } from "../core/render/overlay";
   import { snapTargets, type SnapTargets } from "../core/render/snap";
-  import { SNAP_THRESHOLD, GUIDE_WIDTH, GUIDE_COLOR } from "../shared/constants";
+  import { SNAP_THRESHOLD, GUIDE_WIDTH } from "../shared/constants";
   import {
     cursorAt,
     dragDelta,
@@ -263,9 +263,9 @@
     const ctx = canvas.getContext("2d");
 
     if (!ctx) return;
-    const color = getComputedStyle(document.documentElement)
-      .getPropertyValue("--color-selection")
-      .trim();
+    const css = getComputedStyle(document.documentElement);
+    const color = css.getPropertyValue("--color-selection").trim();
+    const guideColor = css.getPropertyValue("--color-guide").trim();
     let raf = 0;
     const loop = () => {
       const s = scene;
@@ -280,7 +280,7 @@
           selected: s.selected,
           guides,
           color,
-          guide: { color: GUIDE_COLOR, width: GUIDE_WIDTH * cvScale },
+          guide: { color: guideColor, width: GUIDE_WIDTH * cvScale },
         });
       } else {
         ctx.clearRect(0, 0, SCREEN, SCREEN);

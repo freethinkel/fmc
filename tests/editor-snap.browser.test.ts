@@ -2,6 +2,8 @@
 // here (targets taken on pointerdown, tolerance converted from screen px) is what breaks.
 import { test, expect } from "vitest";
 import { render as mount } from "vitest-browser-svelte";
+// the guide colour is the --color-guide token — without the stylesheet it would stroke black
+import "$lib/styles/tokens.css";
 import { EditorPage } from "$lib/modules/editor/pages";
 import { editorModel } from "$lib/modules/editor/model";
 import { renderDoc } from "$lib/modules/editor/core/render/render";
@@ -82,7 +84,7 @@ test("dragging a widget snaps its edge onto another widget's edge", async () => 
   // …and the guide is on screen while the pointer is still down
   await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
   const px = canvas.getContext("2d")!.getImageData(Math.round(other.x), 0, 1, SCREEN).data;
-  // magenta-ish rather than exactly GUIDE_COLOR: the guide is drawn over the face and may carry
+  // magenta-ish rather than exactly --color-guide: the guide is drawn over the face and may carry
   // alpha, so what identifies it is red+blue far above green
   let magenta = false;
 

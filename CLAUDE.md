@@ -129,8 +129,9 @@ and `frames` sections; `PropsPanel.svelte` is the container and owns the shared 
 
 - Design tokens in `lib/styles/tokens.css`: `--color-accent` (#ff5c00), `--color-text`,
   `--color-background`, `--color-error`, `--color-on-accent` (ink on an accent surface — the
-  dark shade in both schemes), `--color-selection` (#4af, the editor canvas's selection boxes
-  and handles — read once via `getComputedStyle`, since a canvas can't take a var),
+  dark shade in both schemes), `--color-selection` (#4af) and `--color-guide` (#ff44ff88), the
+  editor canvas's selection boxes/handles and snap guides — read once via `getComputedStyle`,
+  since a canvas can't take a var,
   `--border-radius`, `--font-family`, `--font-display` (Unbounded, display headings only),
   `--font-mono`, `--spring-transition`. Never hardcode a hex in a component — derive every shade via
   relative color: `oklch(from var(--color-text) l c h / 55%)` (muted text), `/ 12%`
