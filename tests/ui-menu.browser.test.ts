@@ -34,20 +34,42 @@ test("the menu animates shut instead of vanishing", async () => {
   // the menu is only in the DOM while it is open — it is Svelte's transition, not a CSS one
   const menu = document.querySelector<HTMLElement>('[role="menu"]')!;
 
-  await new Promise((r) => setTimeout(r, 200));
-  expect(getComputedStyle(menu).opacity).toBe("1");
+  await expect.poll(() => getComputedStyle(menu).opacity).toBe("1");
 
-  // the outro runs inline, frame by frame, so the node has to stay mounted and fade before it
-  // leaves — polling for one mid-flight opacity is a race, so sample every frame until it goes
-  await screen.getByTestId("outside").click();
+  // the outro lasts 100ms, and under a loaded suite the click's round trip alone can take longer,
+  // so sampling it against the clock finds it already gone. Svelte drives it through
+  // element.animate: freeze the fade as it starts and step it by hand instead
+  const animate = Element.prototype.animate;
+  const fades: Animation[] = [];
 
-  const fading: number[] = [];
+  Element.prototype.animate = function (keyframes, options) {
+    const a = animate.call(this, keyframes, options);
 
-  while (menu.isConnected && fading.length < 100) {
-    fading.push(Number(getComputedStyle(menu).opacity));
-    await new Promise((r) => requestAnimationFrame(r));
+    // the zero-length one is Svelte's delay placeholder, not the fade
+    if (this === menu && typeof options === "object" && Number(options.duration) > 0) {
+      a.pause();
+      fades.push(a);
+    }
+    return a;
+  };
+
+  try {
+    await screen.getByTestId("outside").click();
+    await expect.poll(() => fades.length).toBe(1);
+
+    const [fade] = fades;
+
+    fade.currentTime = Number(fade.effect!.getTiming().duration) / 2;
+
+    const mid = Number(getComputedStyle(menu).opacity);
+
+    expect(menu.isConnected).toBe(true);
+    expect(mid).toBeGreaterThan(0);
+    expect(mid).toBeLessThan(1);
+    fade.finish();
+  } finally {
+    Element.prototype.animate = animate;
   }
 
-  expect(fading.some((o) => o > 0 && o < 1)).toBe(true);
-  expect(document.querySelector('[role="menu"]')).toBe(null);
+  await expect.element(screen.getByRole("menu")).not.toBeInTheDocument();
 });
