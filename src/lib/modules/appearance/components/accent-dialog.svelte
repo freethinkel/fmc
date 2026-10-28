@@ -50,7 +50,6 @@
     border-radius: var(--border-radius);
     background: transparent;
     font: inherit;
-    font-size: 0.75rem;
     color: oklch(from var(--color-text) l c h / 70%);
     cursor: pointer;
 

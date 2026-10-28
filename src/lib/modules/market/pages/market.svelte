@@ -111,12 +111,14 @@
   {#if $marketErr}<p class="error">{$marketErr}</p>{/if}
 
   <div class="toolbar">
-    <!-- shown to everyone: "Join Community" is for visitors too, only "Mine" needs an account -->
+    <!-- shown to everyone: "Community" is for visitors too, only "Mine" needs an account.
+         The label stays short: the bar is split evenly on a phone (below) and a longer name
+         ("Join Community") clips to an ellipsis even on a Pro Max. -->
     <Tabs
       items={[
         { value: "all", label: "All" },
         ...($user ? [{ value: "mine", label: "Mine" }] : []),
-        { value: "community", label: "Join Community" },
+        { value: "community", label: "Community" },
       ]}
       value={tab}
       onChange={(v) =>
@@ -215,6 +217,9 @@
 
       :global(button) {
         flex: 1;
+        /* three 1rem labels split evenly on a 320px screen: the default 0.875rem side
+           padding leaves "Community" an ellipsis */
+        padding-inline: 0.375rem;
       }
     }
     /* two selects don't fit beside the search on a phone — the search takes its own row */
