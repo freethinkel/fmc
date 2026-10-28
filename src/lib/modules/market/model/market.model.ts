@@ -14,7 +14,7 @@ import { parseBin } from "$lib/modules/editor/core/format";
 import { fromLegacy, type Doc } from "$lib/modules/editor/core/document/doc";
 import { decodeAssets } from "$lib/modules/editor/core/render/pixels";
 import type { ImageStore } from "$lib/modules/editor/core/render/canvas";
-import { topCreatorIds } from "../lib/top-creators";
+import { topCreators } from "../lib/top-creators";
 import * as marketApi from "./market.api";
 
 export type { SavePayload } from "./market.api";
@@ -98,9 +98,9 @@ export const $likes = createStore<RecordModel[]>([]);
 export const $watchface = createStore<RecordModel | null>(null);
 export const $watchfaceLoading = marketApi.loadWatchfaceFx.pending;
 export const $items = createStore<RecordModel[]>([]);
-// creators over the "From top creators" thresholds — see lib/top-creators. Derived from the
+// creators over the "Top creators" thresholds — see lib/top-creators. Derived from the
 // catalog and likes the page already holds, so it follows a like or a download as they land.
-export const $topCreators = combine($items, $likes, (items, likes) => topCreatorIds(items, likes));
+export const $topCreators = combine($items, $likes, (items, likes) => topCreators(items, likes));
 
 interface MarketView {
   mine: boolean;

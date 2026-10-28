@@ -2,6 +2,7 @@
   import { page } from "$app/state";
   import { goto } from "$app/navigation";
   import { tick, untrack } from "svelte";
+  import type { RecordModel } from "pocketbase";
   import { SearchInput } from "$lib/shared/components/search-input";
   import { Select } from "$lib/shared/components/select";
   import { Tabs } from "$lib/shared/components/tabs";
@@ -9,6 +10,7 @@
   import { marketModel } from "../model";
   import { WatchfaceList } from "../components/watchface-list";
   import { CommunityPanel } from "../components/community-panel";
+  import { CreatorShelf } from "../components/creator-shelf";
   import { DEVICES, matchesDevice } from "../lib/devices";
 
   const { $user: user } = authModel;
@@ -42,8 +44,9 @@
   });
 
   const SORT_OPTIONS = [
-    // only creators over the thresholds in lib/top-creators — their faces, most downloaded first
-    { value: "creators", label: "From top creators", short: "Top creators" },
+    // not a sort of the grid: it swaps the grid for a shelf of creators over the thresholds in
+    // lib/top-creators, each with a horizontal rail of their faces
+    { value: "creators", label: "Top creators", short: "Top creators" },
     { value: "new", label: "Newest" },
     { value: "popular", label: "Popular" },
     { value: "downloads", label: "Most downloaded" },
@@ -58,18 +61,31 @@
 
   const likeCount = (id: string) => $likes.filter((l) => l.watchface === id).length;
 
+  const viewQuery = $derived($marketView.query.trim().toLowerCase());
+  const inView = (wf: RecordModel) =>
+    matchesDevice(wf.device, $marketView.device) && wf.name.toLowerCase().includes(viewQuery);
+
   const shown = $derived(
     (mine ? $myItems : $items.filter((wf) => Boolean(wf.owner)))
-      .filter((wf) => matchesDevice(wf.device, $marketView.device))
-      .filter((wf) => wf.name.toLowerCase().includes($marketView.query.trim().toLowerCase()))
-      .filter((wf) => $marketView.sort !== "creators" || $topCreators.has(wf.owner))
+      .filter(inView)
       .toSorted((a, b) =>
         $marketView.sort === "popular"
           ? likeCount(b.id) - likeCount(a.id)
-          : $marketView.sort === "downloads" || $marketView.sort === "creators"
+          : $marketView.sort === "downloads"
             ? (b.downloads || 0) - (a.downloads || 0)
             : b.created.localeCompare(a.created),
       ),
+  );
+
+  // the creators view narrows the same way, but per rail: the search and device filter pick
+  // which faces a creator shows, never the header's totals — a creator drops out only when
+  // nothing of theirs matches. Qualifying on the thresholds is the model's job ($topCreators),
+  // computed over the whole catalog. On ?mine the shelf is just you, if you made the cut
+  const creatorsShown = $derived(
+    $topCreators
+      .filter((c) => !mine || c.id === $user?.id)
+      .map((c) => ({ ...c, faces: c.faces.filter(inView) }))
+      .filter((c) => c.faces.length),
   );
 
   const PAGE = 60;
@@ -154,6 +170,8 @@
   >
     {#if community}
       <CommunityPanel />
+    {:else if $marketView.sort === "creators"}
+      <CreatorShelf creators={creatorsShown} loading={mine ? $myLoading : $marketLoading} />
     {:else}
       <WatchfaceList
         items={visible}
@@ -162,9 +180,7 @@
         showAuthor={!mine}
         empty={mine
           ? "Nothing here yet — create a watchface in the editor and hit Save."
-          : $marketView.sort === "creators"
-            ? "No top creators yet."
-            : "No community watchfaces yet — publish yours from the editor."}
+          : "No community watchfaces yet — publish yours from the editor."}
         onMore={$marketView.visibleCount < shown.length
           ? () =>
               marketViewPatched({
