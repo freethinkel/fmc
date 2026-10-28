@@ -8,6 +8,7 @@
   import { authModel } from "$lib/modules/auth/model";
   import { marketModel } from "../model";
   import { WatchfaceList } from "../components/watchface-list";
+  import { CommunityPanel } from "../components/community-panel";
   import { DEVICES, matchesDevice } from "../lib/devices";
 
   const { $user: user } = authModel;
@@ -19,6 +20,7 @@
     $marketLoading: marketLoading,
     $myLoading: myLoading,
     $marketView: marketView,
+    $topCreators: topCreators,
     marketViewPatched,
     marketLoadRequested,
     myLoadRequested,
@@ -31,11 +33,17 @@
   const mine = $derived(Boolean($user) && page.url.searchParams.has("mine"));
   const uid = $derived($user?.id);
 
+  // a third page on the same route: not a shelf of faces but a panel of links (?community)
+  const community = $derived(page.url.searchParams.has("community"));
+  const tab = $derived(community ? "community" : mine ? "mine" : "all");
+
   $effect(() => {
     if (mine && uid) myLoadRequested(uid);
   });
 
   const SORT_OPTIONS = [
+    // only creators over the thresholds in lib/top-creators — their faces, most downloaded first
+    { value: "creators", label: "From top creators", short: "Top creators" },
     { value: "new", label: "Newest" },
     { value: "popular", label: "Popular" },
     { value: "downloads", label: "Most downloaded" },
@@ -54,10 +62,11 @@
     (mine ? $myItems : $items.filter((wf) => Boolean(wf.owner)))
       .filter((wf) => matchesDevice(wf.device, $marketView.device))
       .filter((wf) => wf.name.toLowerCase().includes($marketView.query.trim().toLowerCase()))
+      .filter((wf) => $marketView.sort !== "creators" || $topCreators.has(wf.owner))
       .toSorted((a, b) =>
         $marketView.sort === "popular"
           ? likeCount(b.id) - likeCount(a.id)
-          : $marketView.sort === "downloads"
+          : $marketView.sort === "downloads" || $marketView.sort === "creators"
             ? (b.downloads || 0) - (a.downloads || 0)
             : b.created.localeCompare(a.created),
       ),
@@ -102,31 +111,37 @@
   {#if $marketErr}<p class="error">{$marketErr}</p>{/if}
 
   <div class="toolbar">
-    {#if $user}
-      <Tabs
-        items={[
-          { value: "all", label: "All" },
-          { value: "mine", label: "Mine" },
-        ]}
-        value={mine ? "mine" : "all"}
-        onChange={(v) => goto(v === "mine" ? "/?mine" : "/", { replaceState: true })}
-      />
+    <!-- shown to everyone: "Join Community" is for visitors too, only "Mine" needs an account -->
+    <Tabs
+      items={[
+        { value: "all", label: "All" },
+        ...($user ? [{ value: "mine", label: "Mine" }] : []),
+        { value: "community", label: "Join Community" },
+      ]}
+      value={tab}
+      onChange={(v) =>
+        goto(v === "mine" ? "/?mine" : v === "community" ? "/?community" : "/", {
+          replaceState: true,
+        })}
+    />
+    <!-- search, device and sort filter faces — the links panel has none to filter -->
+    {#if !community}
+      <SearchInput bind:value={() => $marketView.query, (query) => marketViewPatched({ query })} />
+      <div class="device">
+        <Select
+          value={$marketView.device}
+          onChange={(device) => marketViewPatched({ device })}
+          options={DEVICE_OPTIONS}
+        />
+      </div>
+      <div class="sort">
+        <Select
+          value={$marketView.sort}
+          onChange={(sort) => marketViewPatched({ sort })}
+          options={SORT_OPTIONS}
+        />
+      </div>
     {/if}
-    <SearchInput bind:value={() => $marketView.query, (query) => marketViewPatched({ query })} />
-    <div class="device">
-      <Select
-        value={$marketView.device}
-        onChange={(device) => marketViewPatched({ device })}
-        options={DEVICE_OPTIONS}
-      />
-    </div>
-    <div class="sort">
-      <Select
-        value={$marketView.sort}
-        onChange={(sort) => marketViewPatched({ sort })}
-        options={SORT_OPTIONS}
-      />
-    </div>
   </div>
 
   <main
@@ -135,21 +150,27 @@
       if (!restoring && scroller) marketViewPatched({ scrollTop: scroller.scrollTop });
     }}
   >
-    <WatchfaceList
-      items={visible}
-      loading={mine ? $myLoading : $marketLoading}
-      manage={mine}
-      showAuthor={!mine}
-      empty={mine
-        ? "Nothing here yet — create a watchface in the editor and hit Save."
-        : "No community watchfaces yet — publish yours from the editor."}
-      onMore={$marketView.visibleCount < shown.length
-        ? () =>
-            marketViewPatched({
-              visibleCount: Math.min($marketView.visibleCount + PAGE, shown.length),
-            })
-        : undefined}
-    />
+    {#if community}
+      <CommunityPanel />
+    {:else}
+      <WatchfaceList
+        items={visible}
+        loading={mine ? $myLoading : $marketLoading}
+        manage={mine}
+        showAuthor={!mine}
+        empty={mine
+          ? "Nothing here yet — create a watchface in the editor and hit Save."
+          : $marketView.sort === "creators"
+            ? "No top creators yet."
+            : "No community watchfaces yet — publish yours from the editor."}
+        onMore={$marketView.visibleCount < shown.length
+          ? () =>
+              marketViewPatched({
+                visibleCount: Math.min($marketView.visibleCount + PAGE, shown.length),
+              })
+          : undefined}
+      />
+    {/if}
   </main>
 </div>
 
@@ -211,5 +232,18 @@
   main {
     flex: 1;
     overflow-y: auto;
+  }
+
+  /* The tab bar is translucent glass on a phone (app-nav). The layout reserves a strip for it
+     under the page, so nothing would ever scroll beneath it: stretch the page into that strip
+     and pad the scroller by the same amount, so the last card still clears the bar. */
+  @media (max-width: 767px) {
+    .page {
+      height: calc(100% + var(--nav-bar-height) + var(--safe-area-bottom));
+      margin-block-end: calc(-1 * (var(--nav-bar-height) + var(--safe-area-bottom)));
+    }
+    main {
+      padding-block-end: calc(var(--nav-bar-height) + var(--safe-area-bottom));
+    }
   }
 </style>
