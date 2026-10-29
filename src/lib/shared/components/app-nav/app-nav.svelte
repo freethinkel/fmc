@@ -3,11 +3,15 @@
   import { authModel } from "$lib/modules/auth/model";
   import { fileUrl } from "$lib/shared/api";
   import WatchSheet from "$lib/modules/device/components/watch-sheet.svelte";
+  // importing the model is also what puts a saved accent colour on the page at startup
+  import { appearanceModel } from "$lib/modules/appearance/model";
+  import AccentDialog from "$lib/modules/appearance/components/accent-dialog.svelte";
   import { Avatar } from "$lib/shared/components/avatar";
   import { Icon, type IconName } from "$lib/shared/components/icon";
   import { Menu, MenuItem } from "$lib/shared/components/menu";
 
   const { $user: user, logout } = authModel;
+  const { accentDialogOpened } = appearanceModel;
   const path = $derived(page.url.pathname);
   const nav = $derived<{ title: string; url: string; icon: IconName; active: boolean }[]>([
     // one section for the whole shelf: the marketplace lives at the root, /my redirects there
@@ -63,6 +67,10 @@
           <Icon name="person" size={16} />
           Profile
         </MenuItem>
+        <MenuItem onClick={() => accentDialogOpened()}>
+          <Icon name="palette" size={16} />
+          Accent color
+        </MenuItem>
         <MenuItem href="https://github.com/freethinkel/fmc/issues">
           <Icon name="help" size={16} />
           Report an issue
@@ -82,6 +90,7 @@
     </a>
   {/if}
 </nav>
+<AccentDialog />
 
 <style>
   nav {
@@ -240,6 +249,35 @@
     }
     .account :global(.root) {
       flex: none;
+    }
+  }
+
+  /* The phone's tab bar as glass. Kept apart from the rules above, and phone-only: the md+
+     rail sits beside the page, with nothing scrolling under it to blur.
+
+     Cost, since the bar is on screen all the time: one small blur (a big radius is what makes
+     backdrop-filter expensive on a weak GPU), no saturate/brightness passes, nothing animated
+     on the filter, and an opaque fallback wherever it isn't supported or the user asked for
+     less transparency. The tint is --color-background itself, at partial alpha, so the glass
+     follows the colour scheme; the ink, the border and the pills already derive from
+     --color-text in the rules above and read correctly over it. */
+  @media (max-width: 767px) {
+    nav {
+      background: oklch(from var(--color-background) l c h / 94%);
+    }
+    @supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+      nav {
+        background: oklch(from var(--color-background) l c h / 60%);
+        -webkit-backdrop-filter: blur(0.75rem);
+        backdrop-filter: blur(0.75rem);
+      }
+    }
+    @media (prefers-reduced-transparency: reduce) {
+      nav {
+        background: var(--color-background);
+        -webkit-backdrop-filter: none;
+        backdrop-filter: none;
+      }
     }
   }
 </style>
