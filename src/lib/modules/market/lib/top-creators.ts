@@ -9,9 +9,9 @@
 // if it ever isn't, the totals belong in a PocketBase view, not in the browser.
 
 /** A creator needs at least this many downloads across all their published faces… */
-export const TOP_CREATOR_MIN_DOWNLOADS = 1800;
+export const TOP_CREATOR_MIN_DOWNLOADS = 800;
 /** …and at least this many likes across them. */
-export const TOP_CREATOR_MIN_LIKES = 100;
+export const TOP_CREATOR_MIN_LIKES = 50;
 
 interface Face {
   id: string;
