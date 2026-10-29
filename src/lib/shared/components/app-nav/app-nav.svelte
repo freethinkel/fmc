@@ -252,42 +252,32 @@
     }
   }
 
-  /* The phone's tab bar as dark glass. Kept apart from the rules above, and phone-only: the md+
+  /* The phone's tab bar as glass. Kept apart from the rules above, and phone-only: the md+
      rail sits beside the page, with nothing scrolling under it to blur.
 
      Cost, since the bar is on screen all the time: one small blur (a big radius is what makes
      backdrop-filter expensive on a weak GPU), no saturate/brightness passes, nothing animated
      on the filter, and an opaque fallback wherever it isn't supported or the user asked for
-     less transparency. The tint is a fixed dark in both colour schemes on purpose — the bar is
-     always dark glass — so the ink on it is fixed too, rather than read from --color-text. */
+     less transparency. The tint is --color-background itself, at partial alpha, so the glass
+     follows the colour scheme; the ink, the border and the pills already derive from
+     --color-text in the rules above and read correctly over it. */
   @media (max-width: 767px) {
     nav {
-      background: oklch(0.16 0 0 / 94%);
-      border-top-color: oklch(1 0 0 / 10%);
+      background: oklch(from var(--color-background) l c h / 94%);
     }
     @supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
       nav {
-        background: oklch(0.16 0 0 / 60%);
+        background: oklch(from var(--color-background) l c h / 60%);
         -webkit-backdrop-filter: blur(0.75rem);
         backdrop-filter: blur(0.75rem);
       }
     }
     @media (prefers-reduced-transparency: reduce) {
       nav {
-        background: oklch(0.16 0 0);
+        background: var(--color-background);
         -webkit-backdrop-filter: none;
         backdrop-filter: none;
       }
-    }
-    a,
-    button {
-      color: oklch(1 0 0 / 55%);
-    }
-    a.active {
-      color: oklch(0.97 0 0);
-    }
-    .icon::before {
-      background: oklch(1 0 0 / 10%);
     }
   }
 </style>
